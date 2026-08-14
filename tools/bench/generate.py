@@ -347,7 +347,8 @@ _I64Array = np.ndarray[Any, np.dtype[np.int64]]
 
 def _normalized(weights: Sequence[float] | np.ndarray[Any, np.dtype[Any]]) -> _F64Array:
     arr = np.asarray(weights, dtype=np.float64)
-    return arr / arr.sum()
+    # np.asarray again: numpy's stubs type `arr / arr.sum()` as Any under Python 3.11.
+    return np.asarray(arr / arr.sum(), dtype=np.float64)
 
 
 def _pick(
@@ -522,7 +523,7 @@ def _seasonal_day_weights() -> _F64Array:
     for i in range(FACT_HISTORY_DAYS):
         day = start + timedelta(days=i)
         weights[i] = MONTH_SEASONALITY[day.month - 1] * WEEKDAY_SEASONALITY[day.weekday()]
-    return weights / weights.sum()
+    return _normalized(weights)
 
 
 def build_order_items(rng: np.random.Generator, products: pa.Table, *, scale: int = 1) -> pa.Table:
