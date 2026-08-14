@@ -1,0 +1,15 @@
+== Physical plan ==
+Remote [tier 2 · sql → POST /api/v1/query/run]
+  topic: order_items   model: bench_ecommerce
+  sql:
+    SELECT
+      "users.state",
+      "order_items.sale_price",
+      "order_items.quantity",
+      "order_items.sale_price" / "order_items.quantity" AS "unit_price"
+    FROM ref_1
+    LIMIT 25
+  references:
+    ref_1 [semantic]: fields [users.state, order_items.sale_price, order_items.quantity]  (unlimited)
+Local [pandas]
+  (none — fully pushed down)

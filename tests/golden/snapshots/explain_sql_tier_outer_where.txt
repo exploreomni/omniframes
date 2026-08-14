@@ -1,0 +1,17 @@
+== Physical plan ==
+Remote [tier 2 · sql → POST /api/v1/query/run]
+  topic: order_items   model: bench_ecommerce
+  sql:
+    SELECT
+      "users.state",
+      "users.age"
+    FROM ref_1
+    WHERE
+      (
+        "users.state" = 'California' OR "users.age" > 60
+      )
+    … (+1 more lines)
+  references:
+    ref_1 [semantic]: fields [users.state, users.age]  filters: order_items.status = 'complete'  (unlimited)
+Local [pandas]
+  (none — fully pushed down)

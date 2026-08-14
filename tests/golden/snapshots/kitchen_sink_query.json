@@ -1,0 +1,112 @@
+{
+  "calculations": [
+    {
+      "calc_name": "revenue_x100",
+      "sql_expression": {
+        "operands": [
+          {
+            "field_name": "order_items.total_sale_price",
+            "type": "field"
+          },
+          {
+            "type": "literal",
+            "value": 100
+          }
+        ],
+        "operator": "Omni.OMNI_FX_MULTIPLY",
+        "type": "call"
+      }
+    }
+  ],
+  "column_totals": {
+    "::total::": {
+      "type": "aggregation"
+    },
+    "order_items.total_sale_price": {
+      "type": "aggregation"
+    }
+  },
+  "default_group_by": true,
+  "fields": [
+    "users.state",
+    "order_items.created_at[month]",
+    "order_items.status",
+    "order_items.total_sale_price",
+    "order_items.count",
+    "revenue_x100"
+  ],
+  "fill_fields": [
+    "order_items.created_at[month]"
+  ],
+  "filters": {
+    "order_items.created_at": {
+      "kind": "TIME_FOR_INTERVAL_DURATION",
+      "left_side": "30 days ago",
+      "right_side": "30 days",
+      "type": "date"
+    },
+    "order_items.created_at[hour_of_day]": {
+      "is_inclusive": true,
+      "kind": "GREATER_THAN",
+      "type": "number",
+      "values": [
+        "8"
+      ]
+    },
+    "order_items.sale_price": {
+      "is_inclusive": false,
+      "kind": "BETWEEN",
+      "type": "number",
+      "values": [
+        "10",
+        "99.99"
+      ]
+    },
+    "products.category": {
+      "ignore_if_unjoinable": true,
+      "is_negative": true,
+      "type": "null"
+    },
+    "users.is_business": {
+      "is_negative": false,
+      "treat_nulls_as_false": true,
+      "type": "boolean"
+    },
+    "users.state": {
+      "case_insensitive": true,
+      "kind": "EQUALS",
+      "type": "string",
+      "values": [
+        "CA",
+        "NY"
+      ]
+    }
+  },
+  "join_paths_from_topic_name": "order_items",
+  "limit": 25000,
+  "modelId": "123e4567-e89b-12d3-a456-426614174000",
+  "offset": 100,
+  "pivots": [
+    "order_items.status"
+  ],
+  "row_totals": {
+    "order_items.total_sale_price": {
+      "type": "aggregation"
+    }
+  },
+  "sorts": [
+    {
+      "column_name": "order_items.created_at[month]",
+      "null_sort": "LAST",
+      "sort_descending": false
+    },
+    {
+      "column_name": "order_items.total_sale_price",
+      "null_sort": "OMNI_DEFAULT",
+      "sort_descending": true
+    }
+  ],
+  "table": "order_items",
+  "userEditedSQL": "",
+  "version": 9
+}

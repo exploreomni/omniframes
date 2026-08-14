@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+.python-version
+
+# Tooling caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Docs site build output
+site/
+
+# OS
+.DS_Store
+
+# Local env / credentials — never commit keys
+.env
+.env.*
+
+# OMC session state
+.omc/

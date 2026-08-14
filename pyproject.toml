@@ -1,0 +1,119 @@
+[project]
+name = "omniframes"
+version = "0.1.0.dev0"
+description = "A PySpark-style DataFrame library for Omni: dataframe code in, governed semantic queries out."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Omni", email = "dan@omni.co" }]
+keywords = ["omni", "dataframe", "semantic-layer", "analytics", "pyspark"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Typing :: Typed",
+]
+dependencies = [
+    "httpx>=0.27",
+    "pyarrow>=15.0",
+    "pandas>=2.1",
+    "sqlglot>=25.0",
+]
+
+[project.optional-dependencies]
+polars = ["polars>=1.0"]
+
+[project.urls]
+Homepage = "https://github.com/exploreomni/omniframes"
+Documentation = "https://github.com/exploreomni/omniframes"
+Issues = "https://github.com/exploreomni/omniframes/issues"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
+    "mypy>=1.13",
+    "ruff>=0.8",
+    "duckdb>=1.1",
+    "pandas-stubs>=2.1",
+    "pyarrow-stubs>=17",
+    "nbclient>=0.10",
+    "nbformat>=5.10",
+    "ipykernel>=6.29",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.26",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/omniframes"]
+
+[tool.uv]
+package = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "UP",       # pyupgrade
+    "B",        # bugbear
+    "SIM",      # simplify
+    "RUF",      # ruff-specific
+    "PT",       # pytest style
+]
+ignore = [
+    "E501",   # line length is enforced by the formatter
+    "SIM108", # ternary is not always clearer
+]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+strict = true
+files = ["src/omniframes", "tests", "tools", "scripts"]
+warn_unreachable = true
+pretty = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+
+[[tool.mypy.overrides]]
+module = ["duckdb.*", "polars.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+    # Reserved so `-m \"not live\"` (the milestone gate) keeps working and so a live test can be
+    # added without touching config. Nothing carries it today: checks that need a real org are
+    # `scripts/live_smoke.py`, a standalone script, so `pytest -m live` collects ZERO tests and
+    # its green exit means nothing. See docs/DESIGN.md §5.
+    "live: needs a live Omni org (OMNI_BASE_URL + OMNI_API_KEY); no test uses it yet",
+]
+filterwarnings = [
+    "error::DeprecationWarning:omniframes.*",
+]
+
+[tool.coverage.run]
+source = ["src/omniframes"]

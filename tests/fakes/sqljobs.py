@@ -1,0 +1,534 @@
+"""Raw-SQL jobs for the FakeOmniAPI — CONTRACT_NOTES §3.4, §3.5 and the §2.7 sidecars.
+
+A job whose ``query`` carries ``userEditedSQL`` **plus** one of the "do not rewrite" markers runs
+the caller's SQL verbatim instead of compiling the semantic query object.  Everything else about
+the exchange is unchanged: the same NDJSON framing, the same base64 Arrow ``result``, the same
+``summary`` keys.
+
+**The fake's warehouse schema.**  The SQL runs against DuckDB with the three bench tables
+registered under their **bare** names — ``users``, ``products`` and ``order_items`` — with no
+schema qualifier, so ``SELECT ... FROM order_items oi LEFT JOIN users u ON u.id = oi.user_id``
+is the shape a tier-2 query takes offline.  A live org puts them behind whatever schema the
+connection uses (``OMNIFRAMES_BENCH`` in docs/bench_omni_model.md §1), so a SQL string that must
+run in both lanes has to be schema-qualified by the caller, not by the fake.
+
+Three server behaviors are reproduced literally because they are the ones that bite clients:
+
+* **``userEditedSQL`` alone is IGNORED.**  Without ``rewriteSql: false`` (or ``parsed: false`` /
+  ``dbtMode: true``) the server drops the SQL on the floor and plans the query object instead —
+  a silent, plausible, *wrong* answer.  The fake does the same, so a client that forgets the
+  marker fails offline the way it would fail live.
+* **``sqlSortsEnabled``** gates ``sorts`` and ``column_totals``: truthy applies them on top of
+  the SQL result, falsy strips them **silently** (the server forces them to ``[]``).
+* **Measure-keyed ``filters`` entries are silently SKIPPED** — the view Omni wraps around the
+  SQL has an empty measures map (§3.1, ``OmniJobPlanner.kt``).  Dimension-keyed entries would
+  need Omni's mustache templating, which the fake refuses loudly instead of approximating.
+
+``staticQueryReferences`` (§3.5) are validated through the ordinary semantic planner, executed,
+and registered as temp views named **exactly** the reference key, so the outer SQL can name a
+reference as a bare table identifier.  That syntax is LIVE-VALIDATE #1 — an assumption, flagged
+as one in docs/bench_omni_model.md.
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from dataclasses import dataclass
+from typing import Any, Final
+
+import pyarrow as pa
+
+from tests.fakes.engine import (
+    COLUMN_TOTAL_INDICATOR,
+    GRAND_TOTAL_KEY,
+    NULL_SORT_SQL,
+    TOTAL_INDICATOR_COLUMN,
+    BenchEngine,
+    PlanFailure,
+    PlannedQuery,
+    arrow_data_type,
+    fetch_arrow,
+    sql_ident,
+)
+
+__all__ = [
+    "SQL_WRAPPER_ALIAS",
+    "SUMM_SIDECAR_SUFFIX",
+    "QueryReference",
+    "SqlJob",
+    "is_raw_sql_job",
+    "run_sql_job",
+    "sidecar_name",
+    "synthesize_fields",
+]
+
+#: Suffix of the totals sidecar column a raw-SQL ``column_totals`` job emits (§2.7).  The prefix
+#: is the **lowercased** result-column name, which is why the client's normalizer lowercases
+#: before matching a sidecar back to its field.
+SUMM_SIDECAR_SUFFIX: Final = "__omni_summ"
+
+#: Alias the fake gives the sub-select it wraps ``userEditedSQL`` in for sorts and totals.
+SQL_WRAPPER_ALIAS: Final = "omni_sql_wrapper"
+
+#: A ``staticQueryReferences`` key has to be usable as a bare table identifier in the outer SQL
+#: (LIVE-VALIDATE #1), so the fake insists on one rather than quoting something exotic and
+#: pretending it knows how the server would spell it.
+_REFERENCE_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+#: Keys a *referenced* query may not carry: references fold into the outer plan as a single job,
+#: and a reference that itself needs SQL, further references or a totals row is not modeled.
+_REFERENCE_REFUSED: Final = (
+    "userEditedSQL",
+    "staticQueryReferences",
+    "column_totals",
+    "row_totals",
+    "pivots",
+    "calculations",
+    "fill_fields",
+)
+
+
+def is_raw_sql_job(query: Mapping[str, Any]) -> bool:
+    """Whether this query runs the caller's SQL (§3.4) rather than the semantic query object.
+
+    ``userEditedSQL`` on its own is **not** enough — that is the whole point.  One of the three
+    "do not rewrite this" markers has to sit next to it; without one the server ignores the SQL
+    and plans the query object, and so does the fake.
+    """
+    sql = query.get("userEditedSQL")
+    if not isinstance(sql, str) or not sql.strip():
+        return False
+    return (
+        query.get("rewriteSql") is False
+        or query.get("parsed") is False
+        or query.get("dbtMode") is True
+    )
+
+
+# --------------------------------------------------------------------------------------
+# The compiled SQL job
+# --------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class QueryReference:
+    """One materialized ``staticQueryReferences`` entry (§3.5).
+
+    ``key`` is registered as a DuckDB temp view under exactly that name, so the outer SQL names
+    it as a bare identifier.  Its columns are the referenced query's field names verbatim
+    (``users.state``, ``order_items.total_sale_price``), dots included — the outer SQL therefore
+    has to quote them.
+    """
+
+    key: str
+    planned: PlannedQuery
+    table: pa.Table
+
+    @property
+    def column_names(self) -> tuple[str, ...]:
+        return tuple(self.table.schema.names)
+
+
+@dataclass(frozen=True)
+class _SqlTotals:
+    """The compiled ``column_totals`` request of a raw-SQL job: which columns, and the SUM SQL."""
+
+    columns: tuple[str, ...]
+    sql: str
+
+
+@dataclass(frozen=True)
+class SqlJob:
+    """A compiled raw-SQL job: what ran, what it returns, and what was dropped on the way."""
+
+    #: The SQL actually executed — ``user_sql``, wrapped in a sort sub-select when
+    #: ``sqlSortsEnabled`` applied envelope sorts.  This is what ``summary.display_sql`` reports.
+    sql: str
+    #: ``query.userEditedSQL`` as the caller wrote it.
+    user_sql: str
+    #: The result schema.  ``summary.fields`` is synthesized from it (:func:`synthesize_fields`);
+    #: it never includes the sidecars or the indicator column the fake appends afterwards.
+    schema: pa.Schema
+    references: tuple[QueryReference, ...] = ()
+    #: Result columns that got a ``__omni_summ`` sidecar and a totals row.
+    totaled_columns: tuple[str, ...] = ()
+    #: ``filters`` entries keyed by a governed measure — silently skipped, per §3.1.
+    skipped_filters: tuple[str, ...] = ()
+    #: Whether ``sqlSortsEnabled`` was on *and* ``sorts`` were non-empty.
+    sorts_applied: bool = False
+
+    @property
+    def reference_keys(self) -> tuple[str, ...]:
+        return tuple(reference.key for reference in self.references)
+
+
+# --------------------------------------------------------------------------------------
+# summary.fields for a SQL result
+# --------------------------------------------------------------------------------------
+
+
+def sidecar_name(column: str) -> str:
+    """The ``__omni_summ`` sidecar column for ``column`` — the prefix is **lowercased** (§2.7)."""
+    return f"{column.lower()}{SUMM_SIDECAR_SUFFIX}"
+
+
+def synthesize_fields(schema: pa.Schema) -> dict[str, Any]:
+    """``summary.fields`` for a raw-SQL result, synthesized from the Arrow schema.
+
+    Every column is reported as a **dimension**: the view Omni wraps around ``userEditedSQL``
+    has an empty measures map (§3.1 — the same fact that makes measure-keyed filters a no-op on
+    a SQL job), so there is nothing for the fake to call a measure.  ``data_type`` comes from the
+    Arrow type, and the key is the result column name exactly as the SQL spelled it, which is
+    what makes ``summary.fields`` usable as the schema authority for the decoded Arrow (§2.3).
+    """
+    fields: dict[str, Any] = {}
+    for column in schema:
+        view_name, _, field_name = column.name.partition(".")
+        fields[column.name] = {
+            "field_name": field_name or column.name,
+            "fully_qualified_name": column.name,
+            "view_name": view_name,
+            "data_type": arrow_data_type(column.type),
+            "is_dimension": True,
+            "is_calc": False,
+            "label": (field_name or column.name).replace("_", " ").title(),
+            "format": None,
+            "date_type": None,
+            "aggregate_type": None,
+            "filter_only_field": False,
+            "hidden": False,
+            "sql": "",
+        }
+    return fields
+
+
+# --------------------------------------------------------------------------------------
+# Running a SQL job
+# --------------------------------------------------------------------------------------
+
+
+def run_sql_job(
+    engine: BenchEngine,
+    query: Mapping[str, Any],
+    *,
+    model_id: str,
+    plan_only: bool = False,
+) -> tuple[SqlJob, pa.Table | None]:
+    """Compile and (unless ``plan_only``) run a raw-SQL job.
+
+    Planning and execution are one call because ``staticQueryReferences`` are live temp views:
+    they exist only for the duration of the job, and both the schema probe and the execution
+    have to see them.
+
+    Returns the compiled job and its result table (``None`` for ``planOnly``).  Every refusal is
+    a :class:`~tests.fakes.engine.PlanFailure`, which the HTTP layer turns into an in-band job
+    error line — a SQL job the warehouse rejects reports ``error_type: "QUERY"`` instead of
+    ``"PLAN"``, matching the server's split between planner and query failures (§2.2).
+    """
+    user_sql = _statement(query)
+    skipped = _partition_filters(engine, query)
+    references = _materialize_references(engine, query, model_id=model_id)
+
+    with _registered(engine, references):
+        schema = _probe_schema(engine, user_sql)
+        # `sqlSortsEnabled` falsy strips sorts AND column_totals, silently: the server forces
+        # both to empty for a SQL job that did not opt in (§3.4).
+        sorts_enabled = bool(query.get("sqlSortsEnabled"))
+        order_by = _order_by(query.get("sorts"), schema) if sorts_enabled else ""
+        totals = (
+            _resolve_totals(query.get("column_totals"), schema, user_sql) if sorts_enabled else None
+        )
+
+        sql = _with_order_by(user_sql, order_by) if order_by else user_sql
+        job = SqlJob(
+            sql=sql,
+            user_sql=user_sql,
+            schema=schema,
+            references=references,
+            totaled_columns=() if totals is None else totals.columns,
+            skipped_filters=skipped,
+            sorts_applied=bool(order_by),
+        )
+        if plan_only:
+            return job, None
+        table = _execute(engine, sql)
+        if totals is not None:
+            table = _append_sidecar_totals(engine, table, totals)
+    return job, table
+
+
+def _statement(query: Mapping[str, Any]) -> str:
+    """``userEditedSQL``, trimmed of the trailing semicolon a sub-select cannot carry."""
+    raw = query.get("userEditedSQL")
+    if not isinstance(raw, str):  # pragma: no cover - guarded by is_raw_sql_job
+        raise PlanFailure("query.userEditedSQL must be a string")
+    return raw.strip().rstrip(";").strip()
+
+
+def _execute(engine: BenchEngine, sql: str) -> pa.Table:
+    try:
+        return fetch_arrow(engine.connection.execute(sql))
+    except Exception as exc:  # duckdb raises a family of its own error types
+        raise PlanFailure(_sql_error(exc), error_type="QUERY") from None
+
+
+def _probe_schema(engine: BenchEngine, user_sql: str) -> pa.Schema:
+    """The SQL's result schema, without running it for real — also how ``planOnly`` is served."""
+    return _execute(
+        engine, f"SELECT * FROM (\n{user_sql}\n) AS {sql_ident(SQL_WRAPPER_ALIAS)} LIMIT 0"
+    ).schema
+
+
+def _sql_error(exc: Exception) -> str:
+    return f"userEditedSQL failed: {type(exc).__name__}: {exc}".strip()
+
+
+def _with_order_by(user_sql: str, order_by: str) -> str:
+    return f"SELECT * FROM (\n{user_sql}\n) AS {sql_ident(SQL_WRAPPER_ALIAS)}\nORDER BY {order_by}"
+
+
+# --------------------------------------------------------------------------------------
+# filters (§3.1) — measures skipped, dimensions refused
+# --------------------------------------------------------------------------------------
+
+
+def _partition_filters(engine: BenchEngine, query: Mapping[str, Any]) -> tuple[str, ...]:
+    """Decide what happens to each ``filters`` entry on a SQL job; return the skipped measures.
+
+    Source-pinned (§3.1): a measure-keyed entry is a **silent no-op** because the SQL wrapper
+    view has no measures.  A dimension-keyed entry is where Omni would splice a mustache
+    template into the SQL text; the fake will not guess at that, so it refuses loudly rather
+    than return rows that look filtered but are not.
+    """
+    raw = query.get("filters")
+    if not raw:
+        return ()
+    if not isinstance(raw, Mapping):
+        raise PlanFailure("query.filters must be an object keyed by field name")
+    skipped: list[str] = []
+    for key in raw:
+        name = str(key)
+        resolved = engine.resolve(name)
+        if resolved is None:
+            raise PlanFailure(f'query.filters[{name!r}]: No such field "{name}"')
+        if resolved.is_dimension:
+            raise PlanFailure(
+                f"query.filters[{name!r}]: a dimension-keyed filter on a raw-SQL job is applied "
+                "by templating it into the SQL text, which FakeOmniAPI does not model; express "
+                "the predicate in query.userEditedSQL itself"
+            )
+        skipped.append(name)
+    return tuple(skipped)
+
+
+# --------------------------------------------------------------------------------------
+# sorts (§3.4)
+# --------------------------------------------------------------------------------------
+
+
+def _order_by(raw: object, schema: pa.Schema) -> str:
+    """``sorts`` rendered as an ORDER BY over the SQL result — only when ``sqlSortsEnabled``."""
+    terms: list[str] = []
+    for index, entry in enumerate(_sequence(raw, "query.sorts")):
+        where = f"query.sorts[{index}]"
+        if not isinstance(entry, Mapping):
+            raise PlanFailure(f"{where} must be an object")
+        column_name = entry.get("column_name")
+        if not isinstance(column_name, str) or not column_name:
+            raise PlanFailure(f"{where}: column_name is required")
+        if column_name not in schema.names:
+            raise PlanFailure(
+                f"{where}: {column_name!r} is not a column of the userEditedSQL result "
+                f"({', '.join(schema.names)}); a SQL job sorts by result column, not by field"
+            )
+        direction = "DESC" if entry.get("sort_descending") else "ASC"
+        nulls = NULL_SORT_SQL.get(str(entry.get("null_sort") or ""), "")
+        terms.append(f"{sql_ident(column_name)} {direction}{nulls}")
+    return ", ".join(terms)
+
+
+# --------------------------------------------------------------------------------------
+# column_totals → __omni_summ sidecars (§2.7)
+# --------------------------------------------------------------------------------------
+
+
+def _resolve_totals(raw: object, schema: pa.Schema, user_sql: str) -> _SqlTotals | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        raise PlanFailure("query.column_totals must be an object keyed by result column name")
+    if not raw:
+        return None
+
+    names: list[str] = []
+    for key, payload in raw.items():
+        name = str(key)
+        where = f"query.column_totals[{name!r}]"
+        if not isinstance(payload, Mapping) or payload.get("type") != "aggregation":
+            raise PlanFailure(f'{where}: expected {{"type": "aggregation"}}')
+        if name == GRAND_TOTAL_KEY:
+            raise PlanFailure(
+                f"{where}: {GRAND_TOTAL_KEY!r} totals every MEASURE of the query, and the view "
+                "Omni wraps around userEditedSQL has an empty measures map (CONTRACT_NOTES "
+                "§3.1); name the result columns to total instead"
+            )
+        if name not in schema.names:
+            raise PlanFailure(
+                f"{where}: {name!r} is not a column of the userEditedSQL result "
+                f"({', '.join(schema.names)})"
+            )
+        if not _is_numeric(schema.field(name).type):
+            raise PlanFailure(
+                f"{where}: only numeric columns can be totaled; {name!r} is "
+                f"{schema.field(name).type}"
+            )
+        if name not in names:
+            names.append(name)
+
+    select = ", ".join(f"SUM({sql_ident(name)}) AS {sql_ident(name)}" for name in names)
+    return _SqlTotals(
+        columns=tuple(names),
+        sql=f"SELECT {select}\nFROM (\n{user_sql}\n) AS {sql_ident(SQL_WRAPPER_ALIAS)}",
+    )
+
+
+def _append_sidecar_totals(engine: BenchEngine, data: pa.Table, spec: _SqlTotals) -> pa.Table:
+    """Append the §2.7 raw-SQL totals framing: one totals row, sidecars, and the indicator.
+
+    The shape is the one ``tests/wire/fixtures/totals_with_sidecars.ndjson`` models, because
+    that fixture is what the client's normalizer was written against:
+
+    * every base column is **NULL** on the appended row — the value lives in the sidecar;
+    * ``<column-lowercased>__omni_summ`` is NULL on the data rows and carries ``SUM(column)`` on
+      the totals row, in the base column's own Arrow type;
+    * ``$omni_column_total_indicator`` is NULL on data rows and ``column_total`` on the totals
+      row, since the totals were requested per column rather than as ``::total::``.
+    """
+    totals = _execute(engine, spec.sql)
+    rows = data.num_rows
+
+    # pyarrow's stubs type array/field construction by concrete Arrow type, which a generic
+    # column loop cannot satisfy; the public signature above stays precise.
+    arrays: list[Any] = []
+    fields: list[Any] = []
+    for column in data.schema:
+        dtype: Any = column.type
+        fields.append(column)
+        arrays.append(_with_null_row(data.column(column.name), dtype))
+        if column.name not in spec.columns:
+            continue
+        value: Any = totals.column(column.name).combine_chunks()
+        try:
+            value = value.cast(dtype)
+        except (pa.ArrowInvalid, pa.ArrowNotImplementedError, ValueError) as exc:
+            raise PlanFailure(
+                f"query.column_totals[{column.name!r}]: the total does not fit the column's "
+                f"type ({dtype}): {exc}"
+            ) from None
+        fields.append(pa.field(sidecar_name(column.name), dtype))
+        arrays.append(pa.chunked_array([pa.nulls(rows, type=dtype), value], type=dtype))
+
+    text: Any = pa.string()
+    fields.append(pa.field(TOTAL_INDICATOR_COLUMN, text))
+    arrays.append(
+        pa.chunked_array(
+            [pa.nulls(rows, type=text), pa.array([COLUMN_TOTAL_INDICATOR], type=text)],
+            type=text,
+        )
+    )
+    return pa.table(arrays, schema=pa.schema(fields))
+
+
+def _with_null_row(column: Any, dtype: Any) -> Any:
+    """``column`` plus one trailing NULL — the totals row's value for every base column."""
+    return pa.chunked_array([*column.chunks, pa.nulls(1, type=dtype)], type=dtype)
+
+
+def _is_numeric(dtype: pa.DataType) -> bool:
+    return bool(
+        pa.types.is_integer(dtype) or pa.types.is_floating(dtype) or pa.types.is_decimal(dtype)
+    )
+
+
+# --------------------------------------------------------------------------------------
+# staticQueryReferences (§3.5)
+# --------------------------------------------------------------------------------------
+
+
+def _materialize_references(
+    engine: BenchEngine, query: Mapping[str, Any], *, model_id: str
+) -> tuple[QueryReference, ...]:
+    """Validate, compile and execute every ``staticQueryReferences`` entry.
+
+    Each referenced query is an ordinary semantic query object with an extra **snake_case**
+    ``model_id`` (§3.5), so it goes through the same planner as a model job: fields, grains,
+    filters and sorts all have to compile, and a reference that does not is a ``PLAN`` failure
+    naming the reference — never a silently empty table.
+    """
+    raw = query.get("staticQueryReferences")
+    if not raw:
+        return ()
+    if not isinstance(raw, Mapping):
+        raise PlanFailure("query.staticQueryReferences must be an object keyed by reference name")
+
+    references: list[QueryReference] = []
+    for key, payload in raw.items():
+        name = str(key)
+        where = f"query.staticQueryReferences[{name!r}]"
+        if not _REFERENCE_KEY.match(name):
+            raise PlanFailure(
+                f"{where}: a reference key must be a bare SQL identifier so the outer "
+                "userEditedSQL can name it as a table (CONTRACT_NOTES §3.5, LIVE-VALIDATE #1)"
+            )
+        if not isinstance(payload, Mapping):
+            raise PlanFailure(f"{where} must be a query object")
+        referenced_model = payload.get("model_id")
+        if referenced_model is None:
+            raise PlanFailure(
+                f"{where}: a referenced query carries its model as snake_case 'model_id' (§3.5)"
+            )
+        if referenced_model != model_id:
+            raise PlanFailure(f"{where}: Model {referenced_model} not found")
+        for refused in _REFERENCE_REFUSED:
+            if payload.get(refused):
+                raise PlanFailure(
+                    f"{where}: a referenced query carrying {refused!r} is not modeled by "
+                    "FakeOmniAPI; references fold into the outer plan as one job"
+                )
+        try:
+            planned = engine.plan(payload)
+            table = engine.execute(planned)
+        except PlanFailure as exc:
+            raise PlanFailure(f"{where}: {exc}", error_type=exc.error_type) from None
+        references.append(QueryReference(key=name, planned=planned, table=table))
+    return tuple(references)
+
+
+@contextmanager
+def _registered(engine: BenchEngine, references: Sequence[QueryReference]) -> Iterator[None]:
+    """Register each reference as a temp view named exactly its key, for this job only."""
+    connection = engine.connection
+    registered: list[str] = []
+    try:
+        for reference in references:
+            connection.register(reference.key, reference.table)
+            registered.append(reference.key)
+        yield
+    finally:
+        for key in reversed(registered):
+            connection.unregister(key)
+
+
+# --------------------------------------------------------------------------------------
+# Small helpers
+# --------------------------------------------------------------------------------------
+
+
+def _sequence(raw: object, where: str) -> Sequence[Any]:
+    if raw is None:
+        return ()
+    if isinstance(raw, str) or not isinstance(raw, Sequence):
+        raise PlanFailure(f"{where} must be an array")
+    return raw

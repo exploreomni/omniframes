@@ -1,0 +1,32 @@
+{
+  "cache": "Standard",
+  "query": {
+    "calculations": [],
+    "column_totals": {
+      "order_count": {
+        "type": "aggregation"
+      }
+    },
+    "default_group_by": true,
+    "fields": [],
+    "fill_fields": [],
+    "filters": {},
+    "limit": 1000,
+    "modelId": "123e4567-e89b-12d3-a456-426614174000",
+    "offset": 0,
+    "pivots": [],
+    "rewriteSql": false,
+    "row_totals": {},
+    "sorts": [
+      {
+        "column_name": "order_count",
+        "null_sort": "LAST",
+        "sort_descending": true
+      }
+    ],
+    "sqlSortsEnabled": true,
+    "table": "",
+    "userEditedSQL": "SELECT status, COUNT(*) AS order_count FROM order_items GROUP BY 1",
+    "version": 9
+  }
+}

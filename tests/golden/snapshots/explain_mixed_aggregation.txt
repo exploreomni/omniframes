@@ -1,0 +1,24 @@
+== Physical plan ==
+Remote step 1 [tier 1 · semantic → POST /api/v1/query/run]
+  topic: order_items   model: bench_ecommerce
+  fields: [users.state, order_items.total_sale_price]
+  group by: [users.state]
+  measures: [order_items.total_sale_price]
+  sort: (none)   limit: 50000   version: 9
+  aliases: order_items.total_sale_price -> revenue
+Remote step 2 [tier 2 · sql → POST /api/v1/query/run]
+  topic: order_items   model: bench_ecommerce
+  sql:
+    SELECT
+      "users.state",
+      COUNT(DISTINCT "users.id") AS "buyers"
+    FROM ref_1
+    GROUP BY
+      "users.state"
+    LIMIT 50000
+  references:
+    ref_1 [semantic]: fields [users.state, users.id]  (unlimited)
+Local [arrow compute]
+  align-join: step 1 ⨝ step 2 on [users.state]
+  sort: buyers desc
+  project: [users.state, revenue, buyers]

@@ -1,0 +1,15 @@
+== Physical plan ==
+Remote [tier 2 · sql → POST /api/v1/query/run]
+  topic: order_items   model: bench_ecommerce
+  sql:
+    SELECT
+      "products.category",
+      AVG("order_items.sale_price") AS "avg(order_items.sale_price)"
+    FROM ref_1
+    GROUP BY
+      "products.category"
+    LIMIT 50000
+  references:
+    ref_1 [semantic]: fields [products.category, order_items.sale_price]  (unlimited)
+Local [pandas]
+  (none — fully pushed down)

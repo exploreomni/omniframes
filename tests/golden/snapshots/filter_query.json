@@ -1,0 +1,56 @@
+{
+  "calculations": [],
+  "column_totals": {},
+  "default_group_by": true,
+  "fields": [
+    "users.state",
+    "order_items.count"
+  ],
+  "fill_fields": [],
+  "filters": {
+    "users.id": {
+      "disregard_limit": true,
+      "field_name": "users.id",
+      "query_id": "top_users",
+      "type": "query"
+    }
+  },
+  "join_paths_from_topic_name": "order_items",
+  "limit": 100,
+  "modelId": "123e4567-e89b-12d3-a456-426614174000",
+  "offset": 0,
+  "pivots": [],
+  "row_totals": {},
+  "sorts": [],
+  "staticQueryReferences": {
+    "top_users": {
+      "calculations": [],
+      "column_totals": {},
+      "default_group_by": true,
+      "fields": [
+        "users.id"
+      ],
+      "fill_fields": [],
+      "filters": {},
+      "limit": 10,
+      "modelId": "0f8fad5b-d9cb-469f-a165-70867728950e",
+      "model_id": "0f8fad5b-d9cb-469f-a165-70867728950e",
+      "offset": 0,
+      "pivots": [],
+      "row_totals": {},
+      "sorts": [
+        {
+          "column_name": "users.lifetime_value",
+          "null_sort": "OMNI_DEFAULT",
+          "sort_descending": true
+        }
+      ],
+      "table": "users",
+      "userEditedSQL": "",
+      "version": 9
+    }
+  },
+  "table": "",
+  "userEditedSQL": "",
+  "version": 9
+}

@@ -1,0 +1,17 @@
+== Physical plan ==
+Remote [tier 2 · sql → POST /api/v1/query/run]
+  topic: order_items   model: bench_ecommerce
+  sql:
+    SELECT
+      "users.state",
+      COUNT(DISTINCT "users.id") AS "buyers",
+      SUM("order_items.sale_price") AS "sum(order_items.sale_price)"
+    FROM ref_1
+    GROUP BY
+      "users.state"
+    HAVING
+    … (+4 more lines)
+  references:
+    ref_1 [semantic]: fields [users.state, users.id, order_items.sale_price]  (unlimited)
+Local [pandas]
+  (none — fully pushed down)

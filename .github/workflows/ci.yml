@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Drop the default GITHUB_TOKEN scopes; nothing here needs more than reading the checkout.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: uv sync --all-extras
+      - name: Format check
+        run: uv run ruff format --check
+      - name: Lint
+        run: uv run ruff check
+      - name: Types
+        run: uv run mypy
+      # Includes tests/e2e/test_demo_notebook.py, which executes examples/demo.ipynb headlessly
+      # against the in-process fake — no credentials, no network.
+      - name: Tests
+        run: uv run pytest -m "not live" -q
+
+  # `uv sync` installs the lockfile, so every job here tests one exact dependency set and the
+  # floors declared in pyproject.toml are never exercised. This job pins the two that have
+  # actually diverged rather than using `--resolution lowest-direct`, which rewrites uv.lock and
+  # currently resolves `pandas>=2.1.0` against a numpy it is not ABI-compatible with.
+  # pyarrow 15-20 is the case that motivated it: those releases do not widen a grouped decimal
+  # SUM, which the local engine now does itself (docs/HYBRID.md §3.3).
+  floors:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: uv sync --all-extras
+      - name: Downgrade to the declared floors
+        run: uv pip install "pyarrow==15.0.0" "sqlglot==25.0.0" "httpx==0.27.0"
+      - name: Tests
+        run: uv run --no-sync pytest -m "not live" -q
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: uv sync --all-extras
+      # --strict turns every MkDocs warning (broken intra-doc link, missing nav target, a
+      # mkdocstrings identifier that no longer resolves) into a build failure.
+      - name: Build the docs site
+        run: uv run mkdocs build --strict

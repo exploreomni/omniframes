@@ -1,0 +1,42 @@
+{
+  "query": {
+    "calculations": [],
+    "column_totals": {},
+    "default_group_by": true,
+    "fields": [
+      "users.state",
+      "order_items.created_at[month]"
+    ],
+    "fill_fields": [],
+    "filters": {
+      "users.state": {
+        "kind": "EQUALS",
+        "type": "string",
+        "values": [
+          "California"
+        ]
+      }
+    },
+    "join_paths_from_topic_name": "order_items",
+    "limit": 50000,
+    "modelId": "3f2b1a0c-9d8e-4c7b-a6f5-000000000001",
+    "offset": 0,
+    "pivots": [],
+    "row_totals": {},
+    "sorts": [
+      {
+        "column_name": "order_items.created_at[month]",
+        "null_sort": "OMNI_DEFAULT",
+        "sort_descending": true
+      },
+      {
+        "column_name": "users.state",
+        "null_sort": "OMNI_DEFAULT",
+        "sort_descending": false
+      }
+    ],
+    "table": "order_items",
+    "userEditedSQL": "",
+    "version": 9
+  }
+}

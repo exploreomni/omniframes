@@ -1,0 +1,19 @@
+== Physical plan ==
+Remote step 1 [tier 1 · semantic → POST /api/v1/query/run]
+  topic: order_items   model: bench_ecommerce
+  fields: [users.state, order_items.total_sale_price]
+  group by: [users.state]
+  measures: [order_items.total_sale_price]
+  sort: (none)   limit: 50000   version: 9
+  aliases: order_items.total_sale_price -> revenue
+Remote step 2 [tier 1 · semantic → POST /api/v1/query/run]
+  topic: order_items   model: bench_ecommerce
+  fields: [users.state, users.count]
+  group by: [users.state]
+  measures: [users.count]
+  sort: (none)   limit: 50000   version: 9
+  aliases: users.count -> buyers
+Local [arrow compute]
+  join [left]: step 1 ⨝ step 2 on [users.state]
+  sort: revenue desc
+  project: [users.state, revenue, buyers]

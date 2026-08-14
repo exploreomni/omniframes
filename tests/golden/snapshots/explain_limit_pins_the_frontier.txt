@@ -1,0 +1,8 @@
+== Physical plan ==
+Remote step 1 [tier 1 · semantic → POST /api/v1/query/run]
+  topic: order_items   model: bench_ecommerce
+  fields: [users.state, order_items.status]
+  sort: (none)   limit: 100   version: 9
+Local [arrow compute]
+  filter over step 1: users.state = 'California'
+  project: [users.state, order_items.status]

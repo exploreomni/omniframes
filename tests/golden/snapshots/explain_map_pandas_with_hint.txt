@@ -1,0 +1,8 @@
+== Physical plan ==
+Remote step 1 [tier 1 · semantic → POST /api/v1/query/run]
+  topic: order_items   model: bench_ecommerce
+  fields: [users.state]
+  sort: (none)   limit: 50   version: 9
+Local [arrow compute]
+  map_pandas over step 1: rank_states
+  project: [state, rank]

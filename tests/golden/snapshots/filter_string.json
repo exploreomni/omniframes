@@ -1,0 +1,30 @@
+{
+  "calculations": [],
+  "column_totals": {},
+  "default_group_by": true,
+  "fields": [
+    "users.state",
+    "order_items.count"
+  ],
+  "fill_fields": [],
+  "filters": {
+    "users.state": {
+      "case_insensitive": true,
+      "kind": "CONTAINS",
+      "type": "string",
+      "values": [
+        "cal"
+      ]
+    }
+  },
+  "join_paths_from_topic_name": "order_items",
+  "limit": 100,
+  "modelId": "123e4567-e89b-12d3-a456-426614174000",
+  "offset": 0,
+  "pivots": [],
+  "row_totals": {},
+  "sorts": [],
+  "table": "",
+  "userEditedSQL": "",
+  "version": 9
+}

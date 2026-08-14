@@ -1,0 +1,70 @@
+name: Release
+
+# Builds and validates distribution artifacts on every v* tag.
+#
+# SETUP PREREQUISITE — this workflow cannot enforce it, so it is written down here.
+# The `publish` job below is gated on the `pypi` environment. GitHub **auto-creates** an
+# environment that a workflow references but the repository does not define, and an auto-created
+# environment has **no protection rules** — so until someone opens
+# Settings -> Environments -> pypi and adds "Required reviewers", a `v*` tag push publishes to
+# PyPI with no human in the loop. Configure the reviewers (and the PyPI trusted publisher, which
+# is what actually authorizes the upload) before the first tag, or the gate below is decorative.
+#
+# Every action is pinned to a commit SHA: a tag or a branch (`@v4`, `@release/v1`) is mutable, and
+# the publish job holds an OIDC token that can upload to PyPI. The trailing comment records the
+# human-readable version each SHA corresponds to.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+# Drop the default GITHUB_TOKEN scopes; each job re-grants only what it needs.
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: uv sync --all-extras
+      - name: Gate
+        run: |
+          uv run ruff format --check
+          uv run ruff check
+          uv run mypy
+          uv run pytest -m "not live" -q
+      - name: Build artifacts
+        run: uv build
+      - name: Validate metadata
+        run: uv run --with twine twine check dist/*
+      - name: Smoke-install the wheel in a clean venv
+        run: |
+          uv venv /tmp/smoke --python 3.12
+          VIRTUAL_ENV=/tmp/smoke uv pip install dist/*.whl
+          /tmp/smoke/bin/python -c "import omniframes; print(omniframes.__version__)"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # The manual approval step — but only once the `pypi` environment carries required
+    # reviewers (see the SETUP PREREQUISITE at the top of this file). Do not remove it.
+    environment: pypi
+    permissions:
+      id-token: write  # PyPI trusted publishing
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2

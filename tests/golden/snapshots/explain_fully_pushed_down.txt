@@ -1,0 +1,7 @@
+== Physical plan ==
+Remote [tier 1 · semantic → POST /api/v1/query/run]
+  topic: order_items   model: bench_ecommerce
+  fields: [users.state, order_items.total_sale_price]
+  sort: (none)   limit: 10   version: 9
+Local [pandas]
+  (none — fully pushed down)

@@ -1,0 +1,14 @@
+== Physical plan ==
+Remote step 1 [tier 2 · raw SQL job → POST /api/v1/query/run]
+  sql: <raw SQL job>   model: bench_ecommerce
+  userEditedSQL:
+    SELECT u.state AS state, SUM(oi.sale_price) AS revenue
+    FROM order_items oi LEFT JOIN users u ON u.id = oi.user_id
+    GROUP BY 1
+  rewriteSql: false   sqlSortsEnabled: true
+  limit: 50000   version: 9
+Local [arrow compute]
+  project over step 1: [state, revenue]
+  filter: state = 'California'
+  limit: 5
+  project: [state, revenue]

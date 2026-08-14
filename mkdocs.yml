@@ -1,0 +1,93 @@
+site_name: Omniframes
+site_description: A PySpark-style DataFrame library for Omni — dataframe code in, governed semantic queries out.
+# No site_url yet: the site is built in CI (`mkdocs build --strict`) but not published, and a
+# canonical URL that 404s is worse than none. Set it in the change that adds a deploy job.
+repo_url: https://github.com/exploreomni/omniframes
+repo_name: exploreomni/omniframes
+copyright: Apache-2.0
+
+docs_dir: docs
+
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.instant
+    - navigation.tracking
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            docstring_section_style: table
+            show_source: false
+            show_root_heading: true
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            show_if_no_docstring: false
+            filters: ["!^_"]
+            members_order: source
+            separate_signature: true
+            signature_crossrefs: true
+            show_signature_annotations: true
+            merge_init_into_class: true
+            inherited_members: false
+            heading_level: 3
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - Mental model: mental-model.md
+  - API reference: api.md
+  - Offline testing: offline-testing.md
+  - Design notes:
+      - Wire contract: CONTRACT_NOTES.md
+      - Architecture: DESIGN.md
+      - Internals: INTERNALS.md
+      - Hybrid engine (tier 3): HYBRID.md
+      - SQL tier (tier 2): SQLTIER.md
+      - Bench dataset: BENCH_DATASET.md
+      - Bench Omni model: bench_omni_model.md
