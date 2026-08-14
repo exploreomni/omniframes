@@ -266,7 +266,9 @@ def _parse(text: str) -> exp.Select:
             f"{REJECTION}: FakeOmniAPI models a single SELECT statement, got "
             f"{type(statement).__name__}"
         )
-    if statement.args.get("with_"):
+    # find() instead of an args key: the WITH arg is "with" at the sqlglot 25.0 floor and
+    # "with_" at 30.x, and a miss here silently ACCEPTS the CTE this check exists to reject.
+    if statement.find(exp.With):
         raise PlanFailure(
             f"{REJECTION}: the server accepts CTEs and FLATTENS them into one statement "
             "(CONTRACT_NOTES §3.6), which FakeOmniAPI does not model; emit the flat statement"
@@ -521,7 +523,9 @@ def _render(
         "expressions",
         [exp.alias_(output.expression.copy(), output.name, quoted=True) for output in outputs],
     )
-    statement.set("from_", exp.From(this=exp.to_table(sql_ident(base_view), dialect="duckdb")))
+    # Select's FROM arg key differs by sqlglot version ("from" at the 25.0 floor, "from_" at
+    # 30.x) and set() stores an unknown key inertly — the builder method resolves it on both.
+    statement.from_(exp.to_table(sql_ident(base_view), dialect="duckdb"), copy=False)
     statement.set(
         "joins",
         [
