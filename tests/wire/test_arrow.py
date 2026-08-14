@@ -17,6 +17,7 @@ from omniframes.transport.arrow import (
     schema_from_summary,
 )
 from omniframes.transport.ndjson import parse_response
+from omniframes.transport.normalize import normalize
 from omniframes.types import OmniDataType
 from tests.wire import read_fixture
 
@@ -177,6 +178,49 @@ def test_schema_matches_the_decoded_arrow_columns():
     table = decode_result(line.result)
 
     assert list(schema.names) == table.column_names
+
+
+def test_schema_collapses_a_formatted_grain_pair():
+    """docs/SQLTIER.md §5: one field, under the plain name, with the ``__raw`` half's type."""
+    line = job("grain_pair.ndjson")
+    assert line.summary is not None
+
+    schema = schema_from_summary(line.summary["fields"])
+
+    assert schema.names == ("order_items.created_at[month]", "order_items.total_sale_price")
+    month = schema["order_items.created_at[month]"]
+    assert month.data_type is OmniDataType.TIMESTAMP
+    assert month.date_type == "timestamp"
+    # The display format belongs to the string half that was dropped.
+    assert month.raw["format"] is None
+
+
+@pytest.mark.parametrize("fixture", ["grain_pair.ndjson", "omnisql_expressions.ndjson"])
+def test_schema_and_normalized_result_agree_on_the_collapsed_columns(fixture):
+    line = job(fixture)
+    assert line.summary is not None
+    assert line.result is not None
+
+    schema = schema_from_summary(line.summary["fields"])
+    result = normalize(decode_result(line.result), line.summary["fields"])
+
+    assert list(schema.names) == result.data.column_names
+
+
+def test_schema_leaves_a_lone_raw_entry_alone():
+    schema = schema_from_summary(
+        {
+            "order_items.created_at[month]__raw": {"data_type": "TIMESTAMP"},
+            "revenue__raw": {"data_type": "NUMBER"},
+            "revenue": {"data_type": "STRING"},
+        }
+    )
+
+    assert schema.names == (
+        "order_items.created_at[month]__raw",
+        "revenue__raw",
+        "revenue",
+    )
 
 
 # --------------------------------------------------------------------------------------------

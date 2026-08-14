@@ -1,34 +1,43 @@
-"""Tier 2 — the SQL-job compiler (docs/SQLTIER.md).
+"""Tier 2 — the OmniSQL compiler (docs/SQLTIER.md §3).
 
 Tier 2 exists to kill tier 3's biggest cost: the **unlimited raw scan** feeding a local
 aggregate.  A ``GROUP BY`` that runs in the warehouse moves five orders of magnitude less data,
 and everything else this tier picks up — a cross-field ``OR`` in ``WHERE``, a computed ``SELECT``
-expression, a ``HAVING`` over an ad-hoc aggregate, ``ORDER BY``/``LIMIT`` on top — rides the same
-envelope for free.
+expression, a governed measure sitting next to an ad-hoc aggregate, a ``HAVING``,
+``ORDER BY``/``LIMIT`` on top — rides the same statement for free.
 
-A tier-2 job is **one** run envelope whose query is a raw-SQL job (``userEditedSQL`` +
-``rewriteSql: false``) over a **reference core**: a governed tier-1 query passed in
-``staticQueryReferences`` under the key ``ref_1`` and named as a table by the SQL.  So the rows
-the SQL sees are still the rows Omni's model would have handed back — same joins, same access
-grants, same filters — and only the shape of the computation is written by omniframes.
+A tier-2 job is **one OmniSQL statement**: ``userEditedSQL`` with ``rewriteSql`` *absent*, which
+is what makes the server parse the text against the model rather than hand it to the warehouse
+(CONTRACT_NOTES §3.5/§3.6).  Joins come from the topic's relationships, ``${view.measure}``
+expands to its governed SQL, row-level policies apply — the statement *is* the governed plan::
 
-Three rules make that safe, and each one is enforced here rather than hoped for:
+    SELECT ${users.state}, ${order_items.sale_price_sum},
+        COUNT(DISTINCT ${users.id}) AS of_expr_1
+    FROM ${order_items}
+    GROUP BY 1
+    HAVING COUNT(DISTINCT ${users.id}) > 10
+    ORDER BY 3 DESC
+    LIMIT 50000
 
-* **The reference core is built with the tier-1 compiler.**  This module constructs plan nodes
-  and calls :func:`~omniframes.compile.semantic.compile_semantic`; it never hand-assembles a
-  :class:`~omniframes.compile.querymodel.Query`.  A filter that tier 1 can express is pushed
-  *into* the reference (governed, pre-aggregation); one it cannot moves to the outer ``WHERE``.
-* **Values are never string-formatted into SQL.**  Every literal becomes a typed
-  :mod:`sqlglot` node, so a filter value containing a quote — or a whole statement — arrives at
-  the warehouse as a literal and nothing else.  The injection test pins it.  The rendering of a
-  literal is nonetheless dialect-dependent where a backslash escapes inside a string (Snowflake,
-  BigQuery, Redshift, Databricks/Spark, MySQL), and omniframes is never told the connection's
-  dialect — so a backslash-bearing value is *refused* unless ``sql_dialect`` names the warehouse
-  (:func:`_refuse_dialect_sensitive_literals`), and the constructed ``LIKE`` patterns escape with
-  ``!`` rather than ``\\`` (:data:`_LIKE_ESCAPE`), which does not even tokenize there.
-* **Governed measures never appear.**  A measure has no client-side definition, so a plan that
-  mentions one is refused here and the splitter keeps the governed half remote (docs/HYBRID.md
-  §2.1).  Only the ad-hoc half is ever rewritten as SQL.
+Four rules make that safe, and each one is enforced here rather than hoped for:
+
+* **Values are never string-formatted into SQL.**  Every literal becomes a typed :mod:`sqlglot`
+  node, so a filter value containing a quote — or a whole statement — arrives at the warehouse as
+  a literal and nothing else.  The injection tests pin it.
+* **Model references never travel as text either.**  ``${users.state}`` is not a sqlglot
+  identifier (the ``.`` splits into table/column, the ``$``/``{`` invite quoting), so every
+  reference renders as an opaque ``__OF_REF_<n>__`` sentinel and is substituted *after*
+  ``.sql()`` — see :class:`_References`.  A name that fails the sentinel charset is refused, so a
+  hostile field name can never smuggle text into the statement, and a value that merely *looks*
+  like a sentinel is refused too.
+* **Only what the server guarantees is predicted** (docs/SQLTIER.md §3.2).  Bare refs come back
+  under their canonical ``view.field`` name with aliases ignored and duplicates collapsed, so
+  they are emitted unaliased and de-duplicated here; every other select item gets a generated
+  ``of_expr_<n>`` alias that :func:`~omniframes.transport.normalize.normalize` matches by
+  suffix, because the scope prefix the server prepends is not predictable.
+* **The limit lives in the text.**  The server ignores the query object's ``limit`` on this path
+  and a statement without ``LIMIT`` runs unlimited (§3.6), so the always-explicit-limit invariant
+  is a ``LIMIT`` clause, not an envelope field.
 
 Anything this module cannot express raises :class:`~omniframes.compile.semantic.CannotCompile`
 internally and surfaces as ``None`` from :func:`try_sql`; the splitter then falls through to the
@@ -75,8 +84,6 @@ from omniframes.compile.semantic import (
     CannotCompile,
     SemanticCompilation,
     column_key,
-    compile_filters,
-    compile_semantic,
     display_name,
     split_grain,
     wire_name,
@@ -88,27 +95,28 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from omniframes.compile.splitter import SplitOptions
 
 __all__ = [
-    "REFERENCE_PREFIX",
+    "EXPR_ALIAS_PREFIX",
     "SQL_EXPLAIN_LINES",
     "compile_sql",
-    "reference_summary",
     "render_expr",
     "sql_lines",
     "try_sql",
 ]
 
-#: ``staticQueryReferences`` keys are ``ref_1``, ``ref_2``, … in first-use order: deterministic,
-#: and a bare SQL identifier so the outer statement can name one as a table (CONTRACT_NOTES §3.5).
-REFERENCE_PREFIX: Final = "ref"
-
-#: How many lines of generated SQL ``explain()`` prints before eliding the rest.
+#: How many lines of generated OmniSQL ``explain()`` prints before eliding the rest.
 SQL_EXPLAIN_LINES: Final = 8
 
+#: Prefix of the aliases generated for **expression** select items (docs/SQLTIER.md §3.2).  The
+#: server honors the alias but prefixes it with a scope view no client can predict, so the result
+#: column is matched by ``.endswith("." + alias)`` — which is unambiguous exactly because these
+#: names are generated, globally unique within one statement, and never chosen by a user.
+EXPR_ALIAS_PREFIX: Final = "of_expr_"
+
 #: The escape character the constructed ``LIKE`` patterns use for ``%``, ``_`` and itself.
-#: Deliberately **not** a backslash: ``ESCAPE '\'`` does not even tokenize on Snowflake,
-#: BigQuery, Redshift, Databricks/Spark or MySQL, where a backslash escapes inside a string
-#: literal, so ``'\'`` swallows the closing quote.  ``!`` has no meaning inside a string literal
-#: in any dialect, and the pattern builder escapes it like any other special character.
+#: Deliberately **not** a backslash: the parser re-renders ``ESCAPE`` with the warehouse's own
+#: escape character (CONTRACT_NOTES §3.6, probe L2), and ``ESCAPE '\'`` does not even tokenize on
+#: Snowflake, BigQuery, Redshift, Databricks/Spark or MySQL.  ``!`` has no meaning inside a string
+#: literal in any dialect, and the pattern builder escapes it like any other special character.
 _LIKE_ESCAPE: Final = "!"
 
 #: Omni's relative date grammar (CONTRACT_NOTES §3.1).  Those literals only have a meaning
@@ -122,6 +130,18 @@ _RELATIVE_DATE: Final = re.compile(
     r")\s*$",
     re.IGNORECASE,
 )
+
+#: The opaque stand-in a model reference renders as inside the sqlglot AST.  ``[A-Z0-9_]`` only,
+#: so no dialect quotes it, rewrites it or changes its case.
+_SENTINEL_PREFIX: Final = "__OF_REF_"
+_SENTINEL: Final = re.compile(r"__OF_REF_\d+__")
+
+#: What a substituted name may contain: ``view.field``, ``view.field[grain]``, or a bare name.
+#: Anything else refuses to tier 3 rather than becoming text inside the statement.
+_REF_CHARSET: Final = re.compile(r"^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)?(\[[A-Za-z0-9_]+\])?$")
+
+#: What a ``FROM ${…}`` target may contain — a topic or view name, so the first group alone.
+_SOURCE_CHARSET: Final = re.compile(r"^[A-Za-z0-9_]+$")
 
 _AGGREGATES: Final[Mapping[AggFn, type[exp.AggFunc]]] = {
     AggFn.SUM: exp.Sum,
@@ -149,50 +169,131 @@ _ARITHMETIC: Final[Mapping[ArithOp, type[exp.Binary]]] = {
 
 
 # --------------------------------------------------------------------------------------
-# Expr -> sqlglot (docs/SQLTIER.md §3)
+# Sentinel substitution (docs/SQLTIER.md §3.1)
 # --------------------------------------------------------------------------------------
 
 
-def render_expr(expr: Expr) -> exp.Expr:
-    """Translate one omniframes expression into a sqlglot AST node.
+class _References:
+    """The model references one statement names, each behind an opaque sentinel.
 
-    Public for the unit lane, which pins the translation table row by row.  Identifiers are
-    always quoted (fields keep their dotted wire names) and values are always typed literal
-    nodes — this function never formats a user value into a string of SQL.
+    sqlglot cannot carry ``${users.state}`` as an identifier, so the AST holds
+    ``__OF_REF_<n>__`` instead and the tokens are replaced *after* rendering.  The pass is a
+    single regex sweep over the finished text: nothing it inserts is re-scanned, so a field
+    legitimately named like a sentinel cannot chain into the next replacement — and it is refused
+    at registration anyway, together with every name outside the charset.
+
+    No user **value** ever travels through this: values are typed literal nodes in the AST, and a
+    literal that merely *contains* the sentinel prefix refuses the whole statement to tier 3
+    (:func:`_refuse_sentinel_literals`).
+    """
+
+    def __init__(self) -> None:
+        self._tokens: dict[str, str] = {}
+        self._names: dict[str, str] = {}
+
+    def field(self, name: str) -> exp.Expr:
+        """The sqlglot node standing in for ``${name}`` — a field, grain or measure ref."""
+        return exp.column(self._sentinel(name, _REF_CHARSET, "field"), quoted=False)
+
+    def source(self, name: str) -> exp.Expr:
+        """The sqlglot table standing in for ``FROM ${name}`` — a topic, or a bare view."""
+        return exp.to_table(self._sentinel(name, _SOURCE_CHARSET, "topic/view"))
+
+    def _sentinel(self, name: str, charset: re.Pattern[str], kind: str) -> str:
+        existing = self._tokens.get(name)
+        if existing is not None:
+            return existing
+        if _SENTINEL_PREFIX in name or not charset.match(name):
+            raise CannotCompile(
+                f"{name!r} is not a {kind} name omniframes will write into an OmniSQL statement: "
+                "a reference is substituted as text after the statement is rendered, so only "
+                "letters, digits, underscores, one dot and one bracketed grain are accepted "
+                "(docs/SQLTIER.md §3.1)"
+            )
+        token = f"{_SENTINEL_PREFIX}{len(self._tokens) + 1}__"
+        self._tokens[name] = token
+        self._names[token] = name
+        return token
+
+    def substitute(self, sql: str) -> str:
+        """Replace every sentinel with its ``${…}`` reference, in one pass over the text."""
+
+        def replace(match: re.Match[str]) -> str:
+            name = self._names.get(match.group(0))
+            if name is None:  # pragma: no cover - the literal guard makes this unreachable
+                raise CannotCompile(
+                    "the rendered statement contains a reference sentinel omniframes did not "
+                    "write; refusing to substitute it"
+                )
+            return "${" + name + "}"
+
+        return _SENTINEL.sub(replace, sql)
+
+
+def _refuse_sentinel_literals(statement: exp.Expr) -> None:
+    """Refuse a *value* that looks like a sentinel, so substitution can never touch one.
+
+    The sentinel pass is textual by necessity, and the one thing that could put sentinel-shaped
+    text into the rendered statement without going through :class:`_References` is a string
+    literal a user chose.  Declining costs one tier and keeps the guarantee absolute.
+    """
+    for literal in statement.find_all(exp.Literal):
+        if literal.is_string and _SENTINEL_PREFIX in str(literal.this):
+            raise CannotCompile(
+                f"a value containing {_SENTINEL_PREFIX!r} collides with the reference sentinels "
+                "omniframes substitutes into an OmniSQL statement; it runs one tier down instead"
+            )
+
+
+# --------------------------------------------------------------------------------------
+# Expr -> sqlglot (docs/SQLTIER.md §3.1)
+# --------------------------------------------------------------------------------------
+
+
+def render_expr(expr: Expr) -> str:
+    """Translate one omniframes expression into the OmniSQL fragment it becomes.
+
+    Public for the unit lane, which pins the translation table row by row.  Model references come
+    back as ``${view.field}`` / ``${view.field[grain]}`` / ``${view.measure}``; values are always
+    typed literal nodes — this function never formats a user value into a string of SQL.
 
     Raises:
-        CannotCompile: the expression has no tier-2 rendering (a UDF, a governed measure, a
-            relative date literal that would have to be compared as SQL).
+        CannotCompile: the expression has no tier-2 rendering (a UDF, a relative date literal
+            that would have to be compared as SQL, a name outside the sentinel charset).
     """
-    if isinstance(expr, FieldRef):
-        return exp.column(wire_name(expr), quoted=True)
-    if isinstance(expr, MeasureRef):
-        raise CannotCompile(
-            f"{expr.name} is a governed measure: its definition lives in the model, so tier 2 "
-            "cannot write the SQL for it (the governed half of an aggregate stays a tier-1 step)"
-        )
+    refs = _References()
+    rendered = _render(expr, refs)
+    _refuse_sentinel_literals(rendered)
+    return refs.substitute(rendered.sql())
+
+
+def _render(expr: Expr, refs: _References) -> exp.Expr:
+    if isinstance(expr, FieldRef | MeasureRef):
+        return refs.field(wire_name(expr))
     if isinstance(expr, Literal):
         return _literal(expr.value)
     if isinstance(expr, AdHocAgg):
-        return _aggregate(expr)
+        return _aggregate(expr, refs)
     if isinstance(expr, Arithmetic):
-        return _ARITHMETIC[expr.op](this=render_expr(expr.left), expression=render_expr(expr.right))
+        return _ARITHMETIC[expr.op](
+            this=_render(expr.left, refs), expression=_render(expr.right, refs)
+        )
     if isinstance(expr, Comparison):
-        return _comparison(expr)
+        return _comparison(expr, refs)
     if isinstance(expr, BooleanOp):
-        operands = [render_expr(operand) for operand in expr.operands]
+        operands = [_render(operand, refs) for operand in expr.operands]
         combined = exp.and_(*operands) if expr.op is BoolOp.AND else exp.or_(*operands)
         return exp.paren(combined) if len(operands) > 1 else combined
     if isinstance(expr, Not):
-        return exp.not_(exp.paren(render_expr(expr.operand)))
+        return exp.not_(exp.paren(_render(expr.operand, refs)))
     if isinstance(expr, IsNull):
-        return exp.Is(this=render_expr(expr.operand), expression=exp.Null())
+        return exp.Is(this=_render(expr.operand, refs), expression=exp.Null())
     if isinstance(expr, IsIn):
-        return _isin(expr)
+        return _isin(expr, refs)
     if isinstance(expr, StringPredicate):
-        return _string_predicate(expr)
+        return _string_predicate(expr, refs)
     if isinstance(expr, Between):
-        return _between(expr)
+        return _between(expr, refs)
     raise CannotCompile(f"{display_name(expr)} has no SQL rendering omniframes can write")
 
 
@@ -218,14 +319,14 @@ def _literal(value: object) -> exp.Expr:
     raise CannotCompile(f"{type(value).__name__} is not a value omniframes can render as SQL")
 
 
-def _aggregate(expr: AdHocAgg) -> exp.Expr:
-    operand = render_expr(expr.operand)
+def _aggregate(expr: AdHocAgg, refs: _References) -> exp.Expr:
+    operand = _render(expr.operand, refs)
     if expr.fn is AggFn.COUNT and expr.distinct:
         return exp.Count(this=exp.Distinct(expressions=[operand]))
     return _AGGREGATES[expr.fn](this=operand)
 
 
-def _comparison(expr: Comparison) -> exp.Expr:
+def _comparison(expr: Comparison, refs: _References) -> exp.Expr:
     left, right = expr.left, expr.right
     _refuse_null_literal(left, expr)
     _refuse_null_literal(right, expr)
@@ -233,7 +334,7 @@ def _comparison(expr: Comparison) -> exp.Expr:
     _refuse_grained_date_literal(right, left)
     _refuse_relative_date(left)
     _refuse_relative_date(right)
-    return _COMPARISONS[expr.op](this=render_expr(left), expression=render_expr(right))
+    return _COMPARISONS[expr.op](this=_render(left, refs), expression=_render(right, refs))
 
 
 def _refuse_null_literal(side: Expr, expr: Comparison) -> None:
@@ -274,7 +375,7 @@ def _refuse_grained_date_literal(field: Expr, value: Expr) -> None:
     ``'2026-03'`` to the warehouse as a string (a conversion error on a strict dialect, a
     silently different row set on a coercing one), and ``between()`` would additionally turn
     tier 1's half-open upper bound into an inclusive one.  Tier 3 answers it correctly, so this
-    declines instead (docs/SQLTIER.md §5).
+    declines instead (docs/SQLTIER.md §1).
 
     A **bare** field compared to a string stays as it is: with no grain there is no type to read,
     and tier 1 deliberately treats that as a string filter too (docs/INTERNALS.md §2).
@@ -292,19 +393,19 @@ def _refuse_grained_date_literal(field: Expr, value: Expr) -> None:
         )
 
 
-def _isin(expr: IsIn) -> exp.Expr:
+def _isin(expr: IsIn, refs: _References) -> exp.Expr:
     for value in expr.values:
         # Same rule as ==/!=: one `IN` list is n equality tests, and each of them has to be a
         # value SQL can compare, not a phrase only Omni's date grammar understands.
         _refuse_grained_date_literal(expr.operand, Literal(value))
         _refuse_relative_date(Literal(value))
     return exp.In(
-        this=render_expr(expr.operand),
+        this=_render(expr.operand, refs),
         expressions=[_literal(value) for value in expr.values],
     )
 
 
-def _string_predicate(expr: StringPredicate) -> exp.Expr:
+def _string_predicate(expr: StringPredicate, refs: _References) -> exp.Expr:
     """CONTAINS / STARTS_WITH / ENDS_WITH / LIKE, all as a portable ``LIKE``.
 
     The three positional predicates build their pattern from the **escaped** value, so a value
@@ -312,7 +413,7 @@ def _string_predicate(expr: StringPredicate) -> exp.Expr:
     wildcard; ``like()`` passes the user's pattern through, because there the wildcards are the
     point.  ``case_insensitive`` wraps both sides in ``LOWER()`` — ``ILIKE`` is not portable.
     """
-    operand = render_expr(expr.operand)
+    operand = _render(expr.operand, refs)
     if expr.kind is StrPredKind.LIKE:
         pattern: exp.Expr = exp.Literal.string(expr.value)
         escaped = False
@@ -339,13 +440,18 @@ def _like_pattern(kind: StrPredKind, value: str) -> str:
     return f"%{escaped}%"
 
 
-def _between(expr: Between) -> exp.Expr:
-    """Numbers are inclusive at both ends; dates are half-open — matching M2 exactly."""
+def _between(expr: Between, refs: _References) -> exp.Expr:
+    """One canonical parenthesized range per column — numbers inclusive, dates half-open.
+
+    The compound form is emitted as a single conjunct rather than two loose ones because that is
+    the shape the OmniSQL parser was probed with: ``(${f} >= x AND ${f} < y)`` survives with both
+    bounds intact (CONTRACT_NOTES §3.6, probe L1).
+    """
     _refuse_relative_date(Literal(expr.low))
     _refuse_relative_date(Literal(expr.high))
     _refuse_grained_date_literal(expr.operand, Literal(expr.low))
     _refuse_grained_date_literal(expr.operand, Literal(expr.high))
-    operand = render_expr(expr.operand)
+    operand = _render(expr.operand, refs)
     lower = exp.GTE(this=operand, expression=_literal(expr.low))
     if isinstance(expr.high, date | datetime):
         upper: exp.Expr = exp.LT(this=operand.copy(), expression=_literal(expr.high))
@@ -414,8 +520,8 @@ def _match(plan: nodes.PlanNode) -> _Shape:
         elif isinstance(node, nodes.Aggregate | nodes.Project):
             if core is not None:
                 raise CannotCompile(
-                    "two projections/aggregates in one tier-2 statement; the inner one is the "
-                    "reference core and cannot also be the outer SELECT"
+                    "two projections/aggregates in one tier-2 statement; one OmniSQL statement "
+                    "writes one SELECT"
                 )
             core = node
         else:
@@ -443,7 +549,12 @@ def _match(plan: nodes.PlanNode) -> _Shape:
 
 
 def _core_selects(core: nodes.Aggregate | nodes.Project) -> tuple[tuple[_Select, ...], bool]:
-    """The core's output columns, in order, and whether the statement aggregates."""
+    """The core's output columns, in order, and whether the statement aggregates.
+
+    A governed measure is a legal select item here (docs/SQLTIER.md §1): ``${view.measure}``
+    expands server-side and mixes freely with ad-hoc aggregates in one statement, which is what
+    lets a mixed ``agg()`` collapse into a single tier-2 job instead of decomposing.
+    """
     if isinstance(core, nodes.Aggregate):
         for key in core.keys:
             if not isinstance(key.expr, FieldRef):
@@ -452,36 +563,48 @@ def _core_selects(core: nodes.Aggregate | nodes.Project) -> tuple[tuple[_Select,
                     "dimensions (optionally at a grain)"
                 )
         for agg in core.aggs:
-            if not isinstance(agg.expr, AdHocAgg):
+            if not _aggregates_rows(agg.expr):
                 raise CannotCompile(
-                    f"{display_name(agg.expr)} is not an ad-hoc aggregation; a governed measure "
-                    "stays a tier-1 step"
+                    f"{display_name(agg.expr)} is neither an aggregation nor a governed measure, "
+                    "so it has no value beside a GROUP BY"
                 )
         selects = [_Select(_name(column), column.expr, is_key=True) for column in core.keys]
         selects.extend(_Select(_name(column), column.expr) for column in core.aggs)
         return tuple(selects), True
 
-    aggregated = any(isinstance(column.expr, AdHocAgg) for column in core.columns)
+    aggregated = any(_is_aggregation(column.expr) for column in core.columns)
     selects = []
     for column in core.columns:
         expr = column.expr
-        if isinstance(expr, MeasureRef):
-            raise CannotCompile(
-                f"{expr.name} is a governed measure; tier 2 never writes a measure's definition"
-            )
-        if aggregated and not isinstance(expr, AdHocAgg | FieldRef):
+        if aggregated and not isinstance(expr, FieldRef) and not _aggregates_rows(expr):
             raise CannotCompile(
                 f"{display_name(expr)} is neither a group key nor an aggregation, so it has no "
                 "value in an aggregated SELECT"
             )
         selects.append(
-            _Select(_name(column), expr, is_key=aggregated and not isinstance(expr, AdHocAgg))
+            _Select(_name(column), expr, is_key=aggregated and isinstance(expr, FieldRef))
         )
     return tuple(selects), aggregated
 
 
 def _name(column: Column) -> str:
     return column.alias_name or column_key(column.expr)
+
+
+def _is_aggregation(expr: Expr) -> bool:
+    """Whether this expression collapses rows — an ad-hoc aggregate, or a governed measure."""
+    return any(isinstance(sub, AdHocAgg | MeasureRef) for sub in _walk(expr))
+
+
+def _aggregates_rows(expr: Expr) -> bool:
+    """Whether this expression is legal beside a ``GROUP BY`` without being a key.
+
+    Aggregates and measures qualify, and so does arithmetic over them
+    (``${m1} / COUNT(DISTINCT ${f})`` — CONTRACT_NOTES §3.6, probe L3).  A bare field outside an
+    aggregate call disqualifies the whole item: it is neither grouped nor aggregated, which is a
+    binder error on every ``ONLY_FULL_GROUP_BY`` engine.
+    """
+    return _is_aggregation(expr) and not _bare_fields(expr)
 
 
 # --------------------------------------------------------------------------------------
@@ -493,7 +616,7 @@ def _substitute(expr: Expr, definitions: Mapping[str, Expr]) -> Expr:
     """Replace references to output columns with the expressions that produce them.
 
     ANSI ``HAVING`` and ``WHERE`` cannot see ``SELECT`` aliases, so a predicate written against
-    ``buyers`` has to become the full ``COUNT(DISTINCT "users.id")``.  The replacement is
+    ``buyers`` has to become the full ``COUNT(DISTINCT ${users.id})``.  The replacement is
     single-pass by construction: derived columns are substituted against the map built so far,
     so a chain resolves without ever re-walking its own result.
     """
@@ -530,10 +653,6 @@ def _walk(expr: Expr) -> Iterator[Expr]:
         yield from _walk(child)
 
 
-def _has_aggregate(expr: Expr) -> bool:
-    return any(isinstance(sub, AdHocAgg) for sub in _walk(expr))
-
-
 def _conjuncts(predicates: Sequence[Expr]) -> list[Expr]:
     """Flatten a stack of ``filter()`` calls into the conditions they AND together."""
     flat: list[Expr] = []
@@ -543,18 +662,6 @@ def _conjuncts(predicates: Sequence[Expr]) -> list[Expr]:
         else:
             flat.append(predicate)
     return flat
-
-
-def _fields(expr: Expr, seen: dict[str, FieldRef]) -> None:
-    """Collect the bare fields an expression needs the reference to fetch, in first-use order."""
-    for sub in _walk(expr):
-        if isinstance(sub, FieldRef):
-            seen.setdefault(wire_name(sub), sub)
-        elif isinstance(sub, MeasureRef):
-            raise CannotCompile(
-                f"{sub.name} is a governed measure; tier 2 selects only bare fields from its "
-                "reference"
-            )
 
 
 # --------------------------------------------------------------------------------------
@@ -569,7 +676,7 @@ def try_sql(
 
     A tier-2 construction failure is never a user error: tier 3 can express everything tier 2
     can, so the splitter simply falls through to the local engine and ``explain()`` says which
-    tier ran (docs/SQLTIER.md §5).
+    tier ran (docs/SQLTIER.md §1).
     """
     try:
         return compile_sql(plan, options=options)
@@ -580,12 +687,16 @@ def try_sql(
 def compile_sql(
     plan: nodes.PlanNode, *, options: SplitOptions | None = None
 ) -> SemanticCompilation:
-    """Compile ``plan`` into a tier-2 SQL job over a governed reference core.
+    """Compile ``plan`` into one OmniSQL statement the server parses against the model.
 
     Raises:
         CannotCompile: the plan is outside tier 2 (the reason names the operation).
         CompileError: the plan is tier-2 shaped but invalid.
     """
+    # Nothing outside the plan changes the emission any more: the server re-renders the parsed
+    # statement per warehouse, so there is no dialect to be told (docs/SQLTIER.md §6).
+    del options
+
     shape = _match(plan)
     selects, aggregated = _core_selects(shape.core)
 
@@ -597,7 +708,11 @@ def compile_sql(
     outputs = list(selects)
     for name, raw in shape.derived:
         resolved = _substitute(raw, definitions)
-        if aggregated and not _has_aggregate(resolved) and not _references_keys(resolved, outputs):
+        if (
+            aggregated
+            and not _aggregates_rows(resolved)
+            and not _references_keys(resolved, outputs)
+        ):
             raise CannotCompile(
                 f"{name} is computed from rows the aggregate consumed, so it has no value in an "
                 "aggregated SELECT"
@@ -615,94 +730,64 @@ def compile_sql(
         definitions[name] = resolved
 
     where, having = _partition(shape, definitions, outputs, aggregated=aggregated)
-    pushed, outer_where = _split_pushable(where)
+    _refuse_where_hazards(where)
 
-    ordered = _order_by(shape.sort, definitions, outputs, aggregated=aggregated)
-
-    # Fields in first-use order: the SELECT list, then WHERE, then HAVING, then ORDER BY — which
-    # is the order a reader of the statement meets them.
-    seen: dict[str, FieldRef] = {}
-    for out in outputs:
-        _fields(out.expr, seen)
-    for predicate in (*outer_where, *having):
-        _fields(predicate, seen)
-    for sort_key in shape.sort.keys if shape.sort is not None else ():
-        _fields(_substitute(sort_key.expr, definitions), seen)
-    if not seen:
-        raise CannotCompile("a tier-2 statement needs at least one field from its reference")
-
-    reference = _reference(shape, tuple(seen.values()), pushed)
-    reference_key = f"{REFERENCE_PREFIX}_1"
+    refs = _References()
+    emission = _emit_selects(outputs, refs)
+    ordered = _order_by(shape.sort, definitions, emission, refs, aggregated=aggregated)
 
     statement = _statement(
-        outputs,
-        reference=reference_key,
-        where=outer_where,
-        group_keys=[out for out in outputs if out.is_key] if aggregated else [],
+        emission,
+        source=refs.source(_from_ref(shape.scan.source)),
+        refs=refs,
+        where=where,
+        group_positions=(
+            [emission.positions[out.name] for out in outputs if out.is_key] if aggregated else []
+        ),
         having=having,
         ordered=ordered,
         limit=_sql_limit(shape.limit),
         offset=shape.limit.offset if shape.limit is not None else 0,
     )
-    dialect = None if options is None else options.sql_dialect
-    _refuse_dialect_sensitive_literals(statement, dialect)
-    sql = statement.sql(dialect=dialect, pretty=True)
+    _refuse_sentinel_literals(statement)
+    sql = refs.substitute(statement.sql(pretty=True))
 
-    query = Query.for_sql(
-        reference.query.model_id,
+    query = Query.for_omnisql(
+        _model_id(shape.scan.source),
         sql,
-        sql_sorts_enabled=False,
         limit=_wire_limit(shape.limit),
         offset=shape.limit.offset if shape.limit is not None else 0,
-        static_query_references={reference_key: reference.query},
     )
     query.validate()
 
     return SemanticCompilation(
         query=query,
         scan=shape.scan.source,
-        # The statement already selects each column AS its final user-facing name, so there is
-        # nothing left for normalize() to rename (docs/SQLTIER.md §2).
-        aliases={},
-        columns=tuple(out.name for out in outputs),
+        aliases=emission.aliases,
+        columns=emission.columns,
         sorts=tuple(
             (_sort_label(entry, outputs), entry.descending)
             for entry in (shape.sort.keys if shape.sort is not None else ())
         ),
         group_keys=tuple(out.name for out in outputs if out.is_key) if aggregated else (),
+        measures=tuple(wire_name(out.expr) for out in outputs if isinstance(out.expr, MeasureRef)),
         tier=2,
     )
 
 
-def _refuse_dialect_sensitive_literals(statement: exp.Expression, dialect: str | None) -> None:
-    """Refuse a string literal whose SQL *text* depends on the warehouse's escaping rules.
+def _model_id(source: nodes.ScanSource) -> str:
+    if isinstance(source, nodes.TopicScan | nodes.ViewScan):
+        return source.model_id
+    raise CannotCompile(f"{type(source).__name__} is not a tier-2 source")
 
-    This module's promise is that "a value is a value, never a fragment of statement".  With
-    sqlglot's default (ANSI-ish) dialect that promise holds only where a backslash is an ordinary
-    character — ANSI, Postgres, DuckDB (``standard_conforming_strings``).  On every
-    backslash-escaping warehouse (Snowflake, BigQuery, Redshift, Databricks/Spark, MySQL) the
-    default rendering of ``x\\'`` closes the literal one character early and the rest of the
-    value is parsed as SQL: a filter value can become a tautology, or a subquery against a table
-    outside the governed model.  Benign values corrupt just as quietly (``C:\\Users\\dan``,
-    ``a\\nb``, a trailing backslash).
 
-    Omniframes cannot learn the connection's dialect — neither ``whoami`` nor ``/models`` reports
-    it (CONTRACT_NOTES §4) — so when the caller has not named one with
-    ``SessionBuilder.sql_dialect(...)``, a backslash-bearing literal is refused and the predicate
-    is evaluated one tier down instead of rendered.  Falling through to tier 3 is always a
-    correct answer (docs/SQLTIER.md §5); guessing the escaping rules is not.  With an explicit
-    dialect sqlglot escapes for that dialect and the value rides through untouched.
-    """
-    if dialect is not None:
-        return
-    for literal in statement.find_all(exp.Literal):
-        if literal.is_string and "\\" in str(literal.this):
-            raise CannotCompile(
-                "a filter value containing a backslash cannot be written into SQL without "
-                "knowing the warehouse's string-escaping rules, and omniframes is never told "
-                "them. Name the warehouse with OmniSession.builder.sql_dialect(...) to push this "
-                "down, or let it run in the local engine"
-            )
+def _from_ref(source: nodes.ScanSource) -> str:
+    """The ``FROM ${…}`` target: the topic (which brings its join graph), or a bare view."""
+    if isinstance(source, nodes.TopicScan):
+        return source.topic
+    if isinstance(source, nodes.ViewScan):
+        return source.view
+    raise CannotCompile(f"{type(source).__name__} has no OmniSQL FROM reference")
 
 
 def _references_keys(expr: Expr, outputs: Sequence[_Select]) -> bool:
@@ -712,7 +797,7 @@ def _references_keys(expr: Expr, outputs: Sequence[_Select]) -> bool:
     over group keys means the same thing before or after the ``GROUP BY``, and a predicate over
     a column the aggregate consumed means nothing at all above it.
 
-    Fields *inside* an aggregate call are not counted: ``COUNT("order_items.id")`` is legal in a
+    Fields *inside* an aggregate call are not counted: ``COUNT(${order_items.id})`` is legal in a
     ``HAVING`` precisely because the aggregate, not the raw column, survives the ``GROUP BY``.
     """
     keys = {display_name(out.expr) for out in outputs if out.is_key}
@@ -743,7 +828,7 @@ def _partition(
     having: list[Expr] = []
     for predicate in _conjuncts(shape.above):
         resolved = _substitute(predicate, definitions)
-        if not _has_aggregate(resolved):
+        if not _is_aggregation(resolved):
             if aggregated and not _references_keys(resolved, outputs):
                 # Not tier 2's to reinterpret: above an aggregate that never produced the column,
                 # this predicate is an error the splitter reports by name (docs/HYBRID.md §2.2),
@@ -766,8 +851,8 @@ def _partition(
             # an aggregate appears somewhere in the tree: `(n > 10) OR (users.age = 30)` is one
             # conjunct, so `users.age` would ride into the HAVING naming a column that is
             # neither grouped nor aggregated — a binder error on every ONLY_FULL_GROUP_BY engine
-            # and an arbitrary-row answer on the rest.  Declining is always correct
-            # (docs/SQLTIER.md §5); the splitter reports it by name.
+            # and an arbitrary-row answer on the rest.  Declining is always correct; the splitter
+            # reports it by name.
             raise CannotCompile(
                 f"filtering on {display_name(predicate)} above an aggregate that does not "
                 "produce it: only the group keys and the aggregates still exist there"
@@ -776,73 +861,142 @@ def _partition(
     return where, having
 
 
-def _split_pushable(predicates: Sequence[Expr]) -> tuple[list[Expr], list[Expr]]:
-    """Which row predicates ride *inside* the governed reference, and which stay in the SQL."""
-    pushed: list[Expr] = []
-    outer: list[Expr] = []
-    for predicate in predicates:
-        (pushed if _is_pushable(predicate) else outer).append(predicate)
-    return pushed, outer
+def _refuse_where_hazards(where: Sequence[Expr]) -> None:
+    """The two shapes a ``WHERE`` conjunct may not contain (docs/SQLTIER.md §3.3).
+
+    * A **grain ref**.  Mixing a bare ref and a grain ref of one field in a ``WHERE`` is the
+      one live-observed predicate loss on the OmniSQL path — the tighter bound is silently
+      dropped (CONTRACT_NOTES §3.6).  Rather than reason about which combinations are safe, no
+      grain ever reaches the ``WHERE``: a grain predicate tier 1 can express never gets here
+      (tier 1 wins first), and one it cannot refuses.  Grains stay legal as select items and
+      group keys.
+    * A **governed measure**.  Its definition is an aggregate, so it belongs in the ``HAVING``
+      the partition already routes it to; naming one in a ``WHERE`` is a different query.
+    """
+    for predicate in where:
+        for sub in _walk(predicate):
+            if isinstance(sub, MeasureRef):
+                raise CannotCompile(
+                    f"{sub.name} is a governed measure and expands to an aggregate, so it "
+                    "filters groups (HAVING), never rows (WHERE)"
+                )
+            if isinstance(sub, FieldRef) and split_grain(wire_name(sub))[1] is not None:
+                raise CannotCompile(
+                    f"{wire_name(sub)} is a grain reference, and the OmniSQL parser merges a "
+                    "grain ref with the bare field in one WHERE with predicate loss "
+                    "(CONTRACT_NOTES §3.6); this filter runs one tier down"
+                )
 
 
-def _is_pushable(predicate: Expr) -> bool:
-    """Whether tier 1 can express this predicate as a governed ``query.filters`` entry."""
-    if any(isinstance(sub, MeasureRef) for sub in _walk(predicate)):
-        return False
-    try:
-        compile_filters(predicate)
-    except (CannotCompile, CompileError):
-        return False
-    return True
+# --------------------------------------------------------------------------------------
+# Emission (docs/SQLTIER.md §3.1/§3.2)
+# --------------------------------------------------------------------------------------
 
 
-def _reference(
-    shape: _Shape, fields: Sequence[FieldRef], pushed: Sequence[Expr]
-) -> SemanticCompilation:
-    """Build the reference core with the tier-1 compiler — never by hand (docs/SQLTIER.md §2)."""
-    plan: nodes.PlanNode = shape.scan
-    if pushed:
-        predicate: Expr = pushed[0] if len(pushed) == 1 else BooleanOp(BoolOp.AND, tuple(pushed))
-        plan = nodes.Filter(plan, predicate)
-    plan = nodes.Project(plan, tuple(Column(_bare(ref)) for ref in fields))
-    # Unlimited: a reference that silently paged would make the outer aggregate wrong, which is
-    # the same reason the tier-3 raw scan is unlimited (docs/HYBRID.md §2.1).
-    plan = nodes.Limit(plan, None)
-    return compile_semantic(plan)
+@dataclass(frozen=True)
+class _Emission:
+    """The rendered SELECT list, plus everything the rest of the statement reads off it."""
+
+    #: The select items, in emitted order.
+    projections: tuple[exp.Expr, ...]
+    #: The user-facing output names, in result order.
+    columns: tuple[str, ...]
+    #: ``result column key -> user-facing name``: an exact wire name for a bare ref, an
+    #: ``of_expr_<n>`` suffix key for an expression item.
+    aliases: Mapping[str, str]
+    #: ``output name`` and ``column_key`` alike → the item's 1-based position, for the
+    #: positional GROUP BY / ORDER BY that is the only verified form (CONTRACT_NOTES §3.6).
+    positions: Mapping[str, int]
 
 
-def _bare(ref: FieldRef) -> FieldRef:
-    """The field as the reference must project it — grain included, exactly as it is named."""
-    base, grain = split_grain(wire_name(ref))
-    return FieldRef(base, grain)
+def _emit_selects(outputs: Sequence[_Select], refs: _References) -> _Emission:
+    """Render the select list under the two naming regimes of docs/SQLTIER.md §3.2.
+
+    Bare refs (fields, grains, measures) are emitted **unaliased and de-duplicated**: the server
+    ignores their aliases and collapses duplicates to one column, so emitting them twice would
+    shift every position after them.  Everything else is an expression item and carries a
+    generated ``of_expr_<n>`` alias, matched back by suffix because the scope prefix the server
+    prepends is not predictable.
+    """
+    projections: list[exp.Expr] = []
+    columns: list[str] = []
+    aliases: dict[str, str] = {}
+    positions: dict[str, int] = {}
+    bare: dict[str, tuple[int, str]] = {}
+    expressions = 0
+
+    for select in outputs:
+        if isinstance(select.expr, FieldRef | MeasureRef):
+            wire = wire_name(select.expr)
+            previous = bare.get(wire)
+            if previous is None:
+                projections.append(_render(select.expr, refs))
+                position = len(projections)
+                bare[wire] = (position, select.name)
+                if select.name != wire:
+                    aliases[wire] = select.name
+                columns.append(select.name)
+            else:
+                position, name = previous
+                if name != select.name:
+                    # The server returns ONE column per distinct bare ref whatever the SQL says,
+                    # so two output names over one field cannot both be produced remotely.  Tier
+                    # 1 refuses the same shape; tier 3 makes the copy.
+                    raise CannotCompile(
+                        f"{wire} is selected twice under different names ({name}, {select.name}): "
+                        "the OmniSQL parser de-duplicates a repeated field to one result column, "
+                        "so the copy has to be made outside the statement"
+                    )
+        else:
+            expressions += 1
+            alias = f"{EXPR_ALIAS_PREFIX}{expressions}"
+            projections.append(exp.alias_(_render(select.expr, refs), alias, quoted=False))
+            position = len(projections)
+            aliases[alias] = select.name
+            columns.append(select.name)
+        positions[select.name] = position
+        positions.setdefault(column_key(select.expr), position)
+
+    if not projections:
+        raise CannotCompile("a tier-2 statement needs at least one selected column")
+
+    return _Emission(
+        projections=tuple(projections),
+        columns=tuple(columns),
+        aliases=aliases,
+        positions=positions,
+    )
 
 
 def _order_by(
     sort: nodes.Sort | None,
     definitions: Mapping[str, Expr],
-    outputs: Sequence[_Select],
+    emission: _Emission,
+    refs: _References,
     *,
     aggregated: bool,
 ) -> list[exp.Ordered]:
+    """``ORDER BY <position>`` for a selected column; the expression inline for anything else.
+
+    Positional ordering is the only verified form, and over a formatted grain it sorts by the
+    ``__raw`` timestamp — i.e. chronologically (CONTRACT_NOTES §3.6, probe P4).  A non-aggregated
+    sort over a column the statement does not select renders inline: the server wraps the
+    statement in a subquery whose ``omni_sort_expr_<n>`` sidecars never reach the result (L5).
+    """
     if sort is None:
         return []
-    lookup: dict[str, str] = {}
-    for out in outputs:
-        lookup[out.name] = out.name
-        lookup.setdefault(column_key(out.expr), out.name)
-
     ordered: list[exp.Ordered] = []
     for key in sort.keys:
-        name = lookup.get(display_name(key.expr))
-        if name is not None:
-            target: exp.Expr = exp.column(name, quoted=True)
+        position = emission.positions.get(display_name(key.expr))
+        if position is not None:
+            target: exp.Expr = exp.Literal.number(position)
         elif aggregated:
             raise CannotCompile(
                 f"sorting by {display_name(key.expr)}: an aggregated query can only order by a "
                 "column it selects"
             )
         else:
-            target = render_expr(_substitute(key.expr, definitions))
+            target = _render(_substitute(key.expr, definitions), refs)
         # Nulls last in both directions, exactly like the local engine (docs/HYBRID.md §3.4), so
         # the tier-2 and tier-3 answers are the same rows in the same order.
         ordered.append(exp.Ordered(this=target, desc=key.descending, nulls_first=False))
@@ -859,7 +1013,7 @@ def _sort_label(key: SortKey, outputs: Sequence[_Select]) -> str:
 
 
 def _sql_limit(limit: nodes.Limit | None) -> int | None:
-    """The ``LIMIT`` the statement carries — the same value the envelope sends."""
+    """The ``LIMIT`` the statement carries — and the only limit the server applies (§3.6)."""
     rows = _wire_limit(limit)
     return DEFAULT_FETCH_LIMIT if rows is UNSET else rows
 
@@ -870,32 +1024,29 @@ def _wire_limit(limit: nodes.Limit | None) -> int | Unset | None:
 
 
 def _statement(
-    outputs: Sequence[_Select],
+    emission: _Emission,
     *,
-    reference: str,
+    source: exp.Expr,
+    refs: _References,
     where: Sequence[Expr],
-    group_keys: Sequence[_Select],
+    group_positions: Sequence[int],
     having: Sequence[Expr],
     ordered: Sequence[exp.Ordered],
     limit: int | None,
     offset: int,
 ) -> exp.Select:
-    """Assemble the statement. Every part is an AST node; nothing here concatenates SQL text."""
-    projections: list[exp.Expr] = []
-    for out in outputs:
-        rendered = render_expr(out.expr)
-        if isinstance(rendered, exp.Column) and rendered.name == out.name:
-            projections.append(rendered)
-        else:
-            projections.append(exp.alias_(rendered, out.name, quoted=True))
+    """Assemble the statement. Every part is an AST node; nothing here concatenates SQL text.
 
-    select = exp.Select().select(*projections).from_(exp.to_table(reference))
+    There is deliberately no ``SELECT DISTINCT`` branch: the parser strips one silently
+    (CONTRACT_NOTES §3.6), so de-duplication stays in the local engine.
+    """
+    select = exp.Select().select(*emission.projections).from_(source)
     if where:
-        select = select.where(_all(where))
-    if group_keys:
-        select = select.group_by(*(render_expr(key.expr) for key in group_keys))
+        select = select.where(_all(where, refs))
+    if group_positions:
+        select = select.group_by(*(exp.Literal.number(n) for n in group_positions))
     if having:
-        select = select.having(_all(having))
+        select = select.having(_all(having, refs))
     if ordered:
         select = select.order_by(*ordered)
     if limit is not None:
@@ -905,8 +1056,8 @@ def _statement(
     return select
 
 
-def _all(predicates: Sequence[Expr]) -> exp.Expr:
-    rendered = [render_expr(predicate) for predicate in predicates]
+def _all(predicates: Sequence[Expr], refs: _References) -> exp.Expr:
+    rendered = [_render(predicate, refs) for predicate in predicates]
     return rendered[0] if len(rendered) == 1 else exp.and_(*rendered)
 
 
@@ -921,16 +1072,3 @@ def sql_lines(sql: str, *, budget: int = SQL_EXPLAIN_LINES) -> list[str]:
     if len(lines) <= budget:
         return lines
     return [*lines[:budget], f"… (+{len(lines) - budget} more lines)"]
-
-
-def reference_summary(query: Query) -> str:
-    """One ``explain()`` line for a ``staticQueryReferences`` entry."""
-    from omniframes.compile.explain import describe_filters
-
-    parts = [f"fields [{', '.join(query.fields)}]"]
-    filters = describe_filters(dict(query.filters))
-    if filters:
-        parts.append(f"filters: {filters}")
-    limit = query.effective_limit
-    parts.append("(unlimited)" if limit is None else f"(limit {limit})")
-    return "  ".join(parts)

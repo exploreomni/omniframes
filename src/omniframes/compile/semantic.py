@@ -901,8 +901,9 @@ class SemanticCompilation:
         """Whether omniframes *wrote* this step's SQL — a tier-2 job (docs/SQLTIER.md §3).
 
         The opposite of :attr:`opaque`, which marks SQL omniframes was *handed*.  Both put
-        ``userEditedSQL`` on the wire; only this one has a reference core and output columns the
-        compiler chose, which is why ``explain()`` renders them differently.
+        ``userEditedSQL`` on the wire; only this one is OmniSQL the compiler wrote — parsed
+        against the model, with output columns it chose — which is why ``explain()`` renders
+        them differently.
         """
         return bool(self.query.user_edited_sql) and not self.opaque
 
@@ -1069,8 +1070,8 @@ def _compile_opaque(shape: _Shape, *, totals: bool) -> SemanticCompilation:
         )
 
     if isinstance(source, nodes.SqlScan):
-        # `Query.for_sql` pins `rewriteSql: false`; without it the server silently IGNORES the
-        # SQL and plans the query object instead (CONTRACT_NOTES §3.4).
+        # `Query.for_sql` pins `rewriteSql: false`; without it the server parses the SQL as
+        # OmniSQL instead of running it verbatim (CONTRACT_NOTES §3.5).
         query = Query.for_sql(source.model_id, source.sql)
         query.validate()
         return SemanticCompilation(query=query, scan=source, aliases={}, columns=(), tier=2)
@@ -1233,22 +1234,36 @@ class RemoteStep:
     user_limit: bool = False
 
     def __post_init__(self) -> None:
-        """Refuse, by construction, to put SQL on the wire without its "do not rewrite" marker.
+        """Refuse, by construction, to put SQL on the wire under the wrong reading.
 
-        ``userEditedSQL`` alone is the one failure mode the server does not report: it drops
-        the SQL and runs the query object instead, returning a well-formed answer to a question
-        nobody asked (CONTRACT_NOTES §3.4).  Every remote step passes through here, so no code
-        path — compiled or verbatim — can reach the transport without ``rewriteSql: false``.
+        The server picks between the two ``userEditedSQL`` paths from the ``rewriteSql`` key
+        alone (CONTRACT_NOTES §3.5/§3.6): ``false`` runs the text verbatim on the warehouse,
+        an absent key parses it as OmniSQL and plans a governed model job.  Taking the wrong
+        one is the failure mode the server does not report — verbatim SQL that got parsed comes
+        back as a well-formed answer to a question nobody asked, and OmniSQL sent verbatim ships
+        ``${...}`` refs to the warehouse.  So the bytes must agree with what the compilation
+        says it wrote, and every remote step passes through here.
         """
         query = self.envelope.get("query")
         if not isinstance(query, Mapping):
             return
         sql = query.get("userEditedSQL")
-        if isinstance(sql, str) and sql.strip() and query.get("rewriteSql") is not False:
+        if not (isinstance(sql, str) and sql.strip()):
+            return
+        if self.compilation.query.omnisql:
+            if "rewriteSql" in query:
+                raise CompileError(
+                    "this query was compiled as OmniSQL but carries a rewriteSql key "
+                    f"({query['rewriteSql']!r}); only an ABSENT key selects the parsed path, "
+                    "so the server would send the statement to the warehouse verbatim "
+                    "(CONTRACT_NOTES §3.6). Refusing to send it."
+                )
+            return
+        if query.get("rewriteSql") is not False:
             raise CompileError(
                 "this query carries userEditedSQL without rewriteSql: false, and the server "
-                "would silently ignore the SQL and run the query object instead "
-                "(CONTRACT_NOTES §3.4). Refusing to send it."
+                "would parse the text as OmniSQL instead of running it verbatim "
+                "(CONTRACT_NOTES §3.5). Refusing to send it."
             )
 
     @property

@@ -1,15 +1,24 @@
-"""Golden lane: the tier-2 statement omniframes writes, and the envelope it rides in.
+"""Golden lane: the tier-2 OmniSQL statement omniframes writes, and the envelope it rides in.
 
 Two checked-in artifacts per case, because they answer different questions and drift apart in
 different ways:
 
 * ``snapshots/sql_<case>.sql`` — the rendered statement, ``pretty=True``.  A diff here is a
-  change to the SQL a warehouse will execute, which is exactly the kind of change that should
+  change to what the server will parse and plan, which is exactly the kind of change that should
   need a human to look at it.
-* ``snapshots/semantic_sqltier_<case>.json`` — the whole run envelope, references included.  This is
-  where ``rewriteSql: false`` (without which the server silently ignores the SQL),
-  ``sqlSortsEnabled: false``, the explicit ``limit`` and each reference's snake_case ``model_id``
-  are pinned.
+* ``snapshots/semantic_sqltier_<case>.json`` — the whole run envelope.  This is where the
+  **absence** of ``rewriteSql`` (the only thing that selects the parsed-OmniSQL path —
+  CONTRACT_NOTES §3.6), the absence of ``staticQueryReferences``/``sqlSortsEnabled``, and the
+  mirrored ``limit`` are pinned.
+
+Two families of case, because tier 2's reach and the splitter's choice are different contracts:
+
+* :data:`CASES` compile through the **splitter**, so each one also pins that tier 1 declined and
+  tier 2 took the node.
+* :data:`DIRECT_CASES` compile through :func:`~omniframes.compile.sqlgen.compile_sql` itself.
+  Those are shapes tier 2 *can* write but does not always *get* — a measure-only select is tier
+  1's by right (docs/SQLTIER.md §4) — so pinning them through the splitter would pin the tier
+  choice instead of the emission.
 
 Between them the cases cover every row of docs/SQLTIER.md §1.  Nothing here talks to anything —
 compiling is pure.
@@ -31,14 +40,14 @@ import pytest
 from tests.golden.test_semantic_snapshots import (
     SNAPSHOT_DIR,
     UPDATE_ENV_VAR,
-    _session,
     assert_matches_snapshot,
     topic,
 )
 
 from omniframes import functions as F
-from omniframes.compile.querymodel import DEFAULT_FETCH_LIMIT
-from omniframes.compile.semantic import RemoteStep
+from omniframes.compile.querymodel import DEFAULT_FETCH_LIMIT, WireDict
+from omniframes.compile.semantic import RemoteStep, SemanticCompilation, build_envelope
+from omniframes.compile.sqlgen import compile_sql
 from omniframes.dataframe import DataFrame
 
 PREFIX = "sql_"
@@ -60,7 +69,7 @@ def ad_hoc_group_by() -> DataFrame:
 
 
 def pushed_filter() -> DataFrame:
-    """A tier-1-expressible filter is pushed **into** the reference, not written as SQL."""
+    """v1 pushed a tier-1-expressible filter into the reference core; now it is a WHERE (§3.3)."""
     return (
         topic()
         .filter(F.col("order_items.status") == "complete")
@@ -70,7 +79,7 @@ def pushed_filter() -> DataFrame:
 
 
 def cross_field_or_where() -> DataFrame:
-    """A cross-field OR has no wire filter, so it becomes the outer WHERE over ``ref_1``."""
+    """A cross-field OR has no wire filter, which is why the statement is written at all."""
     return (
         topic()
         .select("order_items.id", "users.state", "users.age")
@@ -89,7 +98,7 @@ def having_on_an_ad_hoc_aggregate() -> DataFrame:
 
 
 def computed_column() -> DataFrame:
-    """Arithmetic over fields: a SELECT expression aliased to its final user-facing name."""
+    """Arithmetic over fields: an expression select item under its generated ``of_expr_n`` alias."""
     return (
         topic()
         .select("users.state", PRICE, QUANTITY)
@@ -99,7 +108,7 @@ def computed_column() -> DataFrame:
 
 
 def sort_limit_offset() -> DataFrame:
-    """ORDER BY / LIMIT / OFFSET live in the SQL text — ``sqlSortsEnabled`` gates nothing."""
+    """ORDER BY / LIMIT / OFFSET live in the SQL text — the query object's limit is ignored."""
     return (
         topic()
         .group_by("users.state")
@@ -111,7 +120,7 @@ def sort_limit_offset() -> DataFrame:
 
 
 def grained_group_key() -> DataFrame:
-    """The reference computes the grain; the SQL quotes the bracketed name it produced."""
+    """A grain ref is a bare ref: ``${view.field[grain]}``, unaliased, grouped positionally."""
     month = F.col("order_items.created_at").grain("month").alias("month")
     return topic().group_by(month).agg(F.count_distinct("users.id").alias("buyers"))
 
@@ -156,12 +165,30 @@ CASES: dict[str, Callable[[], DataFrame]] = {
 
 
 def mixed_aggregation() -> DataFrame:
-    """The tier-2 half of a mixed aggregate: the governed measure stays a tier-1 step."""
+    """A governed measure beside an ad-hoc aggregate — ONE statement, no decomposition (§4)."""
     return (
         topic()
         .group_by("users.state")
         .agg(F.measure(REVENUE).alias("revenue"), F.count_distinct("users.id").alias("buyers"))
     )
+
+
+def measure_grand_total() -> DataFrame:
+    """A measure select with no GROUP BY is the grand total (CONTRACT_NOTES §3.6).
+
+    Tier 1 wins this shape through the splitter, and rightly so; the statement is pinned here
+    because tier 2 has to be able to write it for the mixed fallback path.
+    """
+    return topic().select(F.measure(REVENUE).alias("revenue"))
+
+
+#: Cases pinned off tier 2's own compiler rather than off the splitter's tier choice.
+DIRECT_CASES: dict[str, Callable[[], DataFrame]] = {
+    "mixed_aggregation": mixed_aggregation,
+    "measure_grand_total": measure_grand_total,
+}
+
+ALL_CASES: dict[str, Callable[[], DataFrame]] = {**CASES, **DIRECT_CASES}
 
 
 # ---------------------------------------------------------------------------------------
@@ -174,6 +201,18 @@ def sql_step(frame: DataFrame) -> RemoteStep:
     steps = [step for step in frame._compiled().steps if step.compilation.is_sql]
     assert len(steps) == 1, f"expected exactly one tier-2 step, got {len(steps)}"
     return steps[0]
+
+
+def compiled(name: str) -> SemanticCompilation:
+    """The tier-2 compilation of a case, however it is reached."""
+    frame = ALL_CASES[name]()
+    if name in DIRECT_CASES:
+        return compile_sql(frame.logical_plan)
+    return sql_step(frame).compilation
+
+
+def envelope(name: str) -> WireDict:
+    return build_envelope(compiled(name), None)
 
 
 def assert_matches_sql_snapshot(name: str, sql: str) -> None:
@@ -201,35 +240,25 @@ def assert_matches_sql_snapshot(name: str, sql: str) -> None:
 # ---------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", sorted(CASES))
+@pytest.mark.parametrize("name", sorted(ALL_CASES))
 def test_generated_sql_snapshot(name: str) -> None:
-    assert_matches_sql_snapshot(f"{PREFIX}{name}", sql_step(CASES[name]()).query.user_edited_sql)
+    assert_matches_sql_snapshot(f"{PREFIX}{name}", compiled(name).query.user_edited_sql)
 
 
-@pytest.mark.parametrize("name", sorted(CASES))
+@pytest.mark.parametrize("name", sorted(ALL_CASES))
 def test_tier_two_envelope_snapshot(name: str) -> None:
-    assert_matches_snapshot(f"{ENVELOPE_PREFIX}{name}", CASES[name]()._compiled().envelope)
-
-
-def test_the_mixed_aggregations_sql_half_is_pinned_too() -> None:
-    """A DAG has no single envelope, but its tier-2 step still has SQL worth diff-reviewing."""
-    assert_matches_sql_snapshot(
-        f"{PREFIX}mixed_aggregation", sql_step(mixed_aggregation()).query.user_edited_sql
-    )
-    assert_matches_snapshot(
-        f"{ENVELOPE_PREFIX}mixed_aggregation", sql_step(mixed_aggregation()).envelope
-    )
+    assert_matches_snapshot(f"{ENVELOPE_PREFIX}{name}", envelope(name))
 
 
 def test_no_orphan_sql_snapshots() -> None:
-    expected = {f"{PREFIX}{name}.sql" for name in (*CASES, "mixed_aggregation")}
+    expected = {f"{PREFIX}{name}.sql" for name in ALL_CASES}
     actual = {path.name for path in SNAPSHOT_DIR.glob(f"{PREFIX}*.sql")}
 
     assert actual == expected, "the generated-SQL snapshots are out of sync with the cases"
 
 
 def test_no_orphan_tier_two_envelope_snapshots() -> None:
-    expected = {f"{ENVELOPE_PREFIX}{name}.json" for name in (*CASES, "mixed_aggregation")}
+    expected = {f"{ENVELOPE_PREFIX}{name}.json" for name in ALL_CASES}
     actual = {path.name for path in SNAPSHOT_DIR.glob(f"{ENVELOPE_PREFIX}*.json")}
 
     assert actual == expected, "the tier-2 envelope snapshots are out of sync with the cases"
@@ -241,73 +270,74 @@ def test_no_orphan_tier_two_envelope_snapshots() -> None:
 
 
 def every_query() -> list[dict[str, Any]]:
-    return [sql_step(build()).envelope["query"] for build in (*CASES.values(), mixed_aggregation)]
+    return [envelope(name)["query"] for name in ALL_CASES]
 
 
-def test_every_tier_two_query_says_do_not_rewrite_my_sql() -> None:
-    """``userEditedSQL`` without ``rewriteSql: false`` is silently ignored (CONTRACT_NOTES §3.4)."""
+def test_every_tier_two_query_omits_rewrite_sql_entirely() -> None:
+    """An ABSENT key is what selects the parsed-OmniSQL path; ``false`` runs it verbatim (§3.6)."""
     for query in every_query():
         assert query["userEditedSQL"].strip()
-        assert query["rewriteSql"] is False
+        assert "rewriteSql" not in query, "even `false` would send the ${…} refs to the warehouse"
 
 
-def test_every_tier_two_query_disables_sql_sorts() -> None:
-    """ORDER BY lives in the SQL text, so the envelope's ``sorts`` gate nothing (§2 DECISION)."""
+def test_no_tier_two_query_carries_the_v1_mechanism() -> None:
+    """The statement IS the plan: there is no reference core and no SQL-sort wrapper (§2)."""
     for query in every_query():
-        assert query["sqlSortsEnabled"] is False
+        assert "staticQueryReferences" not in query
+        assert "sqlSortsEnabled" not in query
         assert query["sorts"] == []
         assert query["column_totals"] == {}
+        assert query["fields"] == []
+
+
+def test_every_tier_two_statement_binds_against_the_model() -> None:
+    """``FROM ${topic}`` is what makes this a governed job rather than warehouse SQL."""
+    for query in every_query():
+        assert "FROM ${order_items}" in query["userEditedSQL"]
+        assert "__OF_REF_" not in query["userEditedSQL"], "no sentinel survives substitution"
 
 
 def test_every_tier_two_query_sends_an_explicit_limit_and_version_9() -> None:
+    """The server ignores the query object's limit here, so the text carries the real one (§2)."""
     for query in every_query():
         assert query["limit"] is not None
         assert f"LIMIT {query['limit']}" in query["userEditedSQL"]
         assert query["version"] == 9
 
 
-def test_every_reference_is_unlimited_and_carries_its_snake_case_model_id() -> None:
-    """§3.5's extra ``model_id`` — the fake 400s without it, and so does the server."""
+def test_no_tier_two_statement_ever_says_select_distinct() -> None:
+    """``SELECT DISTINCT`` is silently stripped by the parser (§3.6), so dedup stays local."""
     for query in every_query():
-        references = query["staticQueryReferences"]
-        assert list(references) == ["ref_1"], "deterministic, first-use order, bare identifier"
-        for reference in references.values():
-            assert reference["model_id"] == reference["modelId"]
-            assert reference["limit"] is None, "a paged reference is a wrong answer, not a page"
-            assert reference["fields"], "a reference always projects the fields the SQL names"
-            assert reference["userEditedSQL"] == "", "the reference is a governed query"
+        assert "SELECT DISTINCT" not in query["userEditedSQL"]
 
 
-def test_a_tier_two_step_renames_nothing_after_the_fact() -> None:
-    """The SQL aliases each column to its final name, so ``normalize`` has nothing to rename."""
+def test_a_tier_two_step_renames_only_what_the_server_does_not_name() -> None:
+    """§3.2's two regimes: the bare ref keeps its wire name, the expression item is renamed."""
     frame = ad_hoc_group_by()
     step = sql_step(frame)
 
-    assert step.alias_map == {}
+    assert step.alias_map == {"of_expr_1": "buyers"}
     assert step.columns == ("users.state", "buyers")
     assert frame.columns == ("users.state", "buyers")
 
 
-def test_the_dialect_knob_changes_the_generated_sql() -> None:
-    """The escape hatch of §3: same plan, same envelope shape, dialect-specific text."""
-    session = _session(sql_dialect="bigquery")
-    frame = DataFrame(session, ad_hoc_group_by().logical_plan)
-    generated = sql_step(frame).query.user_edited_sql
+def test_a_bare_ref_is_emitted_without_an_alias_at_all() -> None:
+    """The server ignores aliases on bare refs, so writing one would only mislead a reader."""
+    statement = compiled("grained_group_key").query.user_edited_sql
 
-    assert "`users.state`" in generated, "bigquery quotes identifiers with backticks"
-    assert '"users.state"' not in generated
-    assert '"users.state"' in sql_step(ad_hoc_group_by()).query.user_edited_sql
+    assert "${order_items.created_at[month]}" in statement
+    assert "${order_items.created_at[month]} AS" not in statement
 
 
 def test_the_default_limit_applies_to_the_final_select_exactly_as_in_tier_one() -> None:
-    query = sql_step(ad_hoc_group_by()).envelope["query"]
+    query = envelope("ad_hoc_group_by")["query"]
 
     assert query["limit"] == DEFAULT_FETCH_LIMIT
     assert f"LIMIT {DEFAULT_FETCH_LIMIT}" in query["userEditedSQL"]
 
 
 def test_an_offset_rides_the_sql_text_and_the_envelope_together() -> None:
-    query = sql_step(sort_limit_offset()).envelope["query"]
+    query = envelope("sort_limit_offset")["query"]
 
     assert query["limit"] == 10
     assert query["offset"] == 5

@@ -29,7 +29,7 @@ does: a query the planner cannot handle still returns ``200`` with an in-band er
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -40,9 +40,11 @@ import pyarrow as pa
 from tests.fakes.bench_model import (
     BENCH_DATA_DIR,
     BENCH_TOPIC,
+    GRAIN_FORMATS,
     TABLE_NAMES,
     FakeField,
     FakeTopic,
+    GrainFormat,
 )
 
 __all__ = [
@@ -50,6 +52,7 @@ __all__ = [
     "GRAND_TOTAL_INDICATOR",
     "GRAND_TOTAL_KEY",
     "NULL_SORT_SQL",
+    "RAW_SUFFIX",
     "TIME_GRAINS",
     "TOTAL_INDICATOR_COLUMN",
     "BenchEngine",
@@ -60,6 +63,7 @@ __all__ = [
     "ResolvedField",
     "arrow_data_type",
     "fetch_arrow",
+    "grain_pair",
     "sql_ident",
 ]
 
@@ -68,6 +72,11 @@ DEFAULT_SERVER_LIMIT: Final = 1000
 
 #: The reserved indicator column that flags totals rows (CONTRACT_NOTES §2.7).
 TOTAL_INDICATOR_COLUMN: Final = "$omni_column_total_indicator"
+
+#: Suffix of the sidecar carrying a **formatted** grain's underlying ``DATE_TRUNC`` value
+#: (CONTRACT_NOTES §2.7).  It deliberately does NOT match the reserved-column regexes — a client
+#: has to reconcile the pair rather than strip it.
+RAW_SUFFIX: Final = "__raw"
 
 #: ``column_totals`` key meaning "the grand total over every measure in the query" (§3).
 GRAND_TOTAL_KEY: Final = "::total::"
@@ -186,24 +195,60 @@ class ResolvedField:
     expr: str
     data_type: str
     grain: Grain | None = None
+    #: Set when the model **formats** this grain: the field then projects as a §2.7 PAIR, and
+    #: :func:`grain_pair` is what splits it.  Cleared on both halves of a split pair.
+    grain_format: GrainFormat | None = None
+    #: ``summary.fields[*].format`` — carried by the formatted half of a grain pair.
+    output_format: str | None = None
 
     @property
     def is_dimension(self) -> bool:
         return self.base.is_dimension
 
+    @property
+    def sort_column(self) -> str:
+        """The result column a sort on this field orders by.
+
+        For a formatted grain that is the ``__raw`` half: the formatted string is display
+        formatting, and sorting a query by ``'2026-01'`` strings is only accidentally
+        chronological (docs/SQLTIER.md §5).
+        """
+        return f"{self.name}{RAW_SUFFIX}" if self.grain_format is not None else self.name
+
     def to_wire(self, *, redact_sql: bool = False) -> dict[str, Any]:
         """The ``summary.fields`` entry, adjusted for the grain when there is one."""
         payload = self.base.to_wire(redact_sql=redact_sql)
-        if self.grain is None:
-            return payload
-        payload["field_name"] = self.name.split(".", 1)[1]
-        payload["fully_qualified_name"] = self.name
-        payload["data_type"] = self.data_type
-        payload["label"] = f"{self.base.display_label} {self.grain.label}"
-        # Only the truncating grains still produce a date/timestamp; the numeric and name
-        # grains are plain numbers and strings, so they carry no ``date_type``.
-        payload["date_type"] = self.base.date_type if self.grain.kind == "trunc" else None
+        if self.grain is not None:
+            payload["field_name"] = self.name.split(".", 1)[1]
+            payload["fully_qualified_name"] = self.name
+            payload["data_type"] = self.data_type
+            payload["label"] = f"{self.base.display_label} {self.grain.label}"
+            # Only the truncating grains still produce a date/timestamp; the numeric and name
+            # grains are plain numbers and strings, so they carry no ``date_type``.
+            payload["date_type"] = self.base.date_type if self.grain.kind == "trunc" else None
+        payload["format"] = self.output_format
         return payload
+
+
+def grain_pair(field_def: ResolvedField) -> tuple[ResolvedField, ResolvedField]:
+    """Split a **formatted** grain into the ``__raw`` + formatted pair the server returns (§2.7).
+
+    The raw half keeps the item's select position and the ``DATE_TRUNC`` value; the formatted half
+    keeps the requested name and carries the display string.  Both are ordinary
+    :class:`ResolvedField`\\ s afterwards, so nothing downstream re-splits them.
+    """
+    fmt = field_def.grain_format
+    if fmt is None:  # pragma: no cover - callers check first
+        raise PlanFailure(f"{field_def.name} has no grain format to split")
+    raw = replace(field_def, name=f"{field_def.name}{RAW_SUFFIX}", grain_format=None)
+    formatted = replace(
+        field_def,
+        expr=f"strftime({field_def.expr}, {_text(fmt.strftime)})",
+        data_type="STRING",
+        grain_format=None,
+        output_format=fmt.label,
+    )
+    return raw, formatted
 
 
 @dataclass(frozen=True)
@@ -393,11 +438,14 @@ class BenchEngine:
         if where:
             body.append(f"WHERE {where}")
 
-        select_list = ",\n       ".join(f"{f.expr} AS {sql_ident(f.name)}" for f in selected)
+        # A formatted grain projects as the §2.7 PAIR, so the result columns are no longer 1:1
+        # with the requested fields from here on.
+        outputs = _expand_grain_pairs(selected)
+        select_list = ",\n       ".join(f"{f.expr} AS {sql_ident(f.name)}" for f in outputs)
         lines = [f"SELECT {select_list}", *body]
         # Dimensions + measures IS the group-by (Omni semantics, DESIGN.md §2).
         group_by = ", ".join(
-            str(position) for position, f in enumerate(selected, start=1) if f.is_dimension
+            str(position) for position, f in enumerate(outputs, start=1) if f.is_dimension
         )
         if aggregated and group_by:
             lines.append(f"GROUP BY {group_by}")
@@ -422,7 +470,7 @@ class BenchEngine:
 
         return PlannedQuery(
             sql="\n".join(lines),
-            fields=tuple(selected),
+            fields=outputs,
             missing_fields=tuple(missing),
             row_limit=limit,
             totals=totals,
@@ -497,7 +545,14 @@ class BenchEngine:
         if base.date_type not in grain.date_types:
             return None
         expression = grain.render(_column_expr(base), date_type=base.date_type)
-        return ResolvedField(name, base, expression, grain.data_type, grain=grain)
+        return ResolvedField(
+            name,
+            base,
+            expression,
+            grain.data_type,
+            grain=grain,
+            grain_format=GRAIN_FORMATS.get(grain.name),
+        )
 
     def _reference(self, name: str, where: str, context: _QueryContext) -> ResolvedField:
         """Resolve a field named by ``filters``/``sorts``; unknown names are hard failures."""
@@ -735,7 +790,7 @@ class BenchEngine:
             if not isinstance(column_name, str) or not column_name:
                 raise PlanFailure(f"{where}: column_name is required")
             if column_name in projected:
-                expr = sql_ident(column_name)
+                expr = sql_ident(projected[column_name].sort_column)
             else:
                 field_def = self._reference(column_name, where, context)
                 if aggregated or not field_def.is_dimension:
@@ -817,6 +872,26 @@ class BenchEngine:
 # --------------------------------------------------------------------------------------
 # Small helpers
 # --------------------------------------------------------------------------------------
+
+
+def _expand_grain_pairs(selected: Sequence[ResolvedField]) -> tuple[ResolvedField, ...]:
+    """Project a formatted grain as the ``__raw`` + formatted PAIR the server emits (§2.7).
+
+    ``X__raw`` takes the item's own select position and ``X`` — the formatted string — is appended
+    after every other column, which is exactly where the live server puts them on both the
+    semantic and the OmniSQL path.  Both halves are dimensions, so both join the GROUP BY; the
+    formatted one is a function of the raw one, so the group set is unchanged.
+    """
+    positional: list[ResolvedField] = []
+    appended: list[ResolvedField] = []
+    for field_def in selected:
+        if field_def.grain_format is None:
+            positional.append(field_def)
+            continue
+        raw, formatted = grain_pair(field_def)
+        positional.append(raw)
+        appended.append(formatted)
+    return tuple(positional + appended)
 
 
 def _split_grain(name: str) -> tuple[str, str | None]:

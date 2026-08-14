@@ -48,10 +48,12 @@ Scope note: the fake implements what the current milestone exercises and grows w
 milestones (docs/DESIGN.md §5).  Today's query scope is ``modelId`` + ``table`` /
 ``join_paths_from_topic_name`` + ``fields`` (dimensions, ``[grain]`` suffixes and the six
 governed measures) + filters (dimension-keyed → ``WHERE``, measure-keyed → ``HAVING``) + sorts +
-``column_totals`` + limit/offset, plus **raw-SQL jobs** (``userEditedSQL`` with a no-rewrite
-marker, ``sqlSortsEnabled``, ``__omni_summ`` totals sidecars) and ``staticQueryReferences``
-materialized as temp views — see :mod:`tests.fakes.sqljobs`.  Pivots, calculations,
-``fill_fields``, ``row_totals`` and ``resultType`` are refused loudly rather than faked.
+``column_totals`` + limit/offset, plus the two SQL paths: **verbatim SQL jobs**
+(``userEditedSQL`` with a no-rewrite marker, ``sqlSortsEnabled``, ``__omni_summ`` totals
+sidecars) and ``staticQueryReferences`` materialized as temp views — :mod:`tests.fakes.sqljobs` —
+and **parsed OmniSQL jobs** (``userEditedSQL`` with ``rewriteSql`` absent, ``${…}`` model
+references, governed joins) — :mod:`tests.fakes.omnisql`.  Pivots, calculations, ``fill_fields``,
+``row_totals`` and ``resultType`` are refused loudly rather than faked.
 
 API keys never reach the request log, the ``repr`` or any error message.
 """
@@ -86,7 +88,8 @@ from tests.fakes.documents import (
     generate_for_prompt,
 )
 from tests.fakes.engine import BenchEngine, PlanFailure, PlannedQuery, arrow_data_type
-from tests.fakes.sqljobs import SqlJob, is_raw_sql_job, run_sql_job, synthesize_fields
+from tests.fakes.omnisql import is_omnisql_job, run_omnisql_job
+from tests.fakes.sqljobs import SqlJob, is_raw_sql_job, run_sql_job
 
 __all__ = [
     "DEFAULT_TOKEN",
@@ -485,9 +488,10 @@ class FakeOmniAPI:
                 query=query,
             )
         try:
-            # ``userEditedSQL`` WITHOUT a no-rewrite marker is IGNORED and the query runs as a
-            # model job (§3.4).  The fall-through below is that behavior, deliberately literal.
-            if is_raw_sql_job(query):
+            # ``userEditedSQL`` selects one of two SQL paths, decided by the no-rewrite marker:
+            # with one the text runs verbatim (§3.4), without one it is parsed as OmniSQL and
+            # planned as a governed model job (§3.6).  It is never ignored.
+            if is_raw_sql_job(query) or is_omnisql_job(query):
                 return self._sql_job_line(job_id, query, plan_only=plan_only)
             if query.get("staticQueryReferences"):
                 raise PlanFailure(
@@ -507,8 +511,9 @@ class FakeOmniAPI:
     def _sql_job_line(
         self, job_id: str, query: Mapping[str, Any], *, plan_only: bool
     ) -> dict[str, Any]:
-        """A raw-SQL job (§3.4): same line shape, a summary synthesized from the SQL's schema."""
-        job, table = run_sql_job(self.engine, query, model_id=self.model_id, plan_only=plan_only)
+        """A SQL job — verbatim (§3.4) or parsed OmniSQL (§3.6): the same line shape either way."""
+        runner = run_omnisql_job if is_omnisql_job(query) else run_sql_job
+        job, table = runner(self.engine, query, model_id=self.model_id, plan_only=plan_only)
         if plan_only or table is None:
             return {
                 "job_id": job_id,
@@ -663,20 +668,23 @@ class FakeOmniAPI:
         }
 
     def _sql_summary(self, job: SqlJob, *, rows: int) -> dict[str, Any]:
-        """``summary`` for a raw-SQL job — ``fields`` synthesized from the result schema.
+        """``summary`` for a SQL job — see :attr:`SqlJob.result_fields` for where ``fields`` come
+        from on each path.
 
-        ``display_sql`` is the SQL that actually ran, so a ``sqlSortsEnabled`` sort wrapper is
-        visible in it; ``omni_sql`` is empty because a hand-written SQL job has no Omni-flavored
-        form.  There are no ``missing_fields``: a SQL job has no field names to miss.
+        ``display_sql`` is the SQL that actually ran, so a ``sqlSortsEnabled`` sort wrapper (or
+        the OmniSQL resolver's substituted, join-expanded statement) is visible in it.
+        ``omni_sql`` is the OmniSQL text on the parsed path and empty on the verbatim one, which
+        has no Omni-flavored form.  There are no ``missing_fields``: a SQL job has no field names
+        to miss.
 
         The ``used_query_references`` key §3.5 mentions is deliberately **not** emitted — the
         contract does not pin where on the job it lands, and a key in the wrong place teaches a
         client the wrong shape.
         """
         return {
-            "fields": synthesize_fields(job.schema),
+            "fields": dict(job.result_fields),
             "display_sql": "" if self.redact_sql else job.sql,
-            "omni_sql": "",
+            "omni_sql": "" if self.redact_sql else job.omni_sql,
             "omni_sql_parse_failed": False,
             "cache_type": "MISS",
             "stage_summaries": [{"succeeded": True, "warnings": []}],
@@ -744,9 +752,9 @@ def _validate_envelope(body: Mapping[str, Any], url: httpx.URL) -> httpx.Respons
 def _unsupported_feature(body: Mapping[str, Any], query: Mapping[str, Any]) -> str | None:
     """Loud refusal beats a plausible lie for envelope features the fake does not model yet.
 
-    ``userEditedSQL`` and ``staticQueryReferences`` are **not** listed: they are implemented
-    (:mod:`tests.fakes.sqljobs`), and a ``userEditedSQL`` without a no-rewrite marker has to be
-    silently ignored rather than rejected, because that is what the server does (§3.4).
+    ``userEditedSQL`` and ``staticQueryReferences`` are **not** listed: both SQL paths are
+    implemented (:mod:`tests.fakes.sqljobs`, :mod:`tests.fakes.omnisql`), and which one a query
+    takes is decided at the job line, not here.
     """
     if body.get("resultType") is not None:
         return "resultType"

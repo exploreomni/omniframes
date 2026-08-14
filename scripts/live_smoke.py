@@ -271,7 +271,18 @@ def step_models(client: HttpTransport, report: Report, model_id: str | None) -> 
     try:
         scoped = client.whoami((chosen,))
     except OmniframesError as exc:
-        report.record("2b. GET /whoami?modelId=", FAIL, describe_error(exc))
+        if "Model(s) not found" in str(exc):
+            # Documented (CONTRACT_NOTES §1): model-filtered whoami resolves only models with a
+            # role row and 404s otherwise, yet /models freely lists branch/schema models without
+            # one — so this combination is expected on orgs whose first listed model is such.
+            report.record(
+                "2b. GET /whoami?modelId=",
+                OBSERVED,
+                "404 for a listed model — model-filtered whoami resolves only role-backed models",
+                [describe_error(exc)],
+            )
+        else:
+            report.record("2b. GET /whoami?modelId=", FAIL, describe_error(exc))
         return chosen
 
     roles = scoped.get("rolesByModel")
@@ -506,10 +517,12 @@ def probe_sql_references(
     base_view: str,
     dimension: FieldRef,
 ) -> None:
-    """LIVE-VALIDATE #1 — how is a ``staticQueryReferences`` key spelled inside ``userEditedSQL``?
+    """LIVE-VALIDATE #1 (closed 2026-08-14) — refKeys canNOT be tables in ``userEditedSQL``.
 
-    Tries the plausible spellings in turn; whichever one comes back with a result (or with
-    ``used_query_references``) is the answer that goes into CONTRACT_NOTES §3.5.
+    All three spellings are expected to be rejected (CONTRACT_NOTES §3.5): with
+    ``rewriteSql: false`` the SQL reaches the warehouse verbatim (the relation doesn't exist);
+    with rewrite left on, ``${refKey}`` fails OmniSQL substitution (``No such view``).  A run
+    where any of them *succeeds* means the server grew a new mechanism — update §3.5.
     """
     reference = Query(
         model_id=model_id,
@@ -519,10 +532,11 @@ def probe_sql_references(
         limit=5,
     )
     candidates = (
-        ("bare identifier", f"SELECT * FROM {REFERENCE_KEY} LIMIT 5"),
-        ("quoted identifier", f'SELECT * FROM "{REFERENCE_KEY}" LIMIT 5'),
+        ("bare identifier, rewriteSql:false", f"SELECT * FROM {REFERENCE_KEY} LIMIT 5", False),
+        ("quoted identifier, rewriteSql:false", f'SELECT * FROM "{REFERENCE_KEY}" LIMIT 5', False),
+        ("${refKey}, rewriteSql omitted", f"SELECT * FROM ${{{REFERENCE_KEY}}} LIMIT 5", None),
     )
-    for label, sql in candidates:
+    for label, sql, rewrite in candidates:
         ref = f"LV#1 staticQueryReferences in userEditedSQL ({label})"
         query = Query.for_sql(
             model_id,
@@ -530,9 +544,14 @@ def probe_sql_references(
             limit=5,
             static_query_references={REFERENCE_KEY: reference},
         )
+        if rewrite is None:
+            query = replace(query, rewrite_sql=None)
         request = RunRequest(query=query)
         try:
-            request.validate()
+            if rewrite is not None:
+                # The ${refKey} candidate deliberately omits rewriteSql to reach the server's
+                # OmniSQL parse path, which the client-side guard otherwise refuses to emit.
+                request.validate()
             result = client.run(request.to_wire())
         except OmniframesError as exc:
             report.record(ref, OBSERVED, f"rejected — {describe_error(exc)}", [f"sql={sql}"])

@@ -28,6 +28,12 @@ org; the register at the bottom lists them all.
   (else 403 `"User-scoped API keys can only be used to act on behalf of the authenticated user."`).
 - **`GET /api/v1/whoami`** — the connect-time preflight. Works even when the `query-api` feature
   flag is off (it skips that check), so it's the right first call. Optional `?modelId=<uuid|csv>`.
+  **Model-filtered calls 404** (`"Model(s) not found: <id>"`) for any requested model without a
+  *resolved role row* — deliberately indistinguishable from a nonexistent model
+  (`api.v1.whoami/get-handler.server.ts:115-118`). `GET /models` freely lists models (branch
+  models, schema models) that trip this, so never treat the model list as whoami-resolvable;
+  live-confirmed 2026-08-14 (first listed model of the demo org 404s while its topics and
+  queries work fine). Omniframes only ever calls whoami unfiltered.
   Response: `{user: {id, membershipId}, keyScope: "user"|"organization", orgRole,
   rolesByModel: {<modelId>: {roleName, baseRole, connectionId, permissions: [...]}}}` with
   `rolesByModelTruncated: true` when >200 models. Relevant permissions: `QUERY_TOPICS` (topic
@@ -61,7 +67,9 @@ org; the register at the bottom lists them all.
   "resultType": "csv"|"json"|"xlsx",  // switches to single-document mode (§2.5)
   "formatResults": true,         // only valid WITH resultType
   "planOnly": false,             // schema/plan without execution (§2.4)
-  "timezone": "America/Los_Angeles", // LIVE-VALIDATE: requires org+connection settings, else 400
+  "timezone": "America/Los_Angeles", // 400 unless the connection enables user-specific timezones
+                                     // ("The timezone parameter requires user-specific timezones
+                                     //  to be enabled on the connection.") — live-confirmed 2026-08-14
   "userId": "<membershipId>",    // legacy body location; prefer ?userId= query param
   "workbookUrl": false           // true → response header X-Omni-Workbook-Url
 }
@@ -171,6 +179,13 @@ not field name.
   queries with `column_totals` — on a totals row read the sidecar, falling back to the base column.
   Only the first occurrence wins when `_\d+`-suffixed duplicates exist.
 - `column_name_mapping` appears only on requery lines; inert for us.
+- **Grain `__raw` sidecars (live-observed 2026-08-14, tier 1 AND OmniSQL alike).** When the
+  model formats a grain, selecting `field[grain]` yields TWO columns: `field[grain]__raw`
+  (`DATE_TRUNC` value, `TIMESTAMP`, at the item's original select position) and `field[grain]`
+  (formatted `STRING`, e.g. `TO_CHAR(..., 'YYYY-MM')`, appended after the other columns).
+  `__raw` does NOT match the reserved-column regexes above. Normalization reconciles the pair —
+  `__raw` wins, under the plain name, and the formatted column is dropped (docs/SQLTIER.md §5);
+  FakeOmniAPI emits the pair for the bench model's formatted month grain on both paths.
 
 ---
 
@@ -226,7 +241,8 @@ Keyed by field name; discriminated on `type`. Common optional keys on every arm:
 Cross-field OR requires the `controls` array (`MULTI_FIELD_FILTER`) — **out of scope for 0.1**
 (tier 2/3 handles cross-field OR instead).
 
-**Measure filters → HAVING (source-pinned).** A `filters` entry keyed by a MEASURE field name
+**Measure filters → HAVING (source-pinned; live-confirmed 2026-08-14** — `display_sql` came back
+with `HAVING COUNT(*) > 0` and correct rows**).** A `filters` entry keyed by a MEASURE field name
 compiles to a genuine `HAVING` over the aggregate on the semantic path
 (`QueryToRelContext.partitionFilters` branches on the model field type; the filter is translated
 against `meas.toAggregateExpression(...)` and applied post-`aggregate` —
@@ -268,24 +284,110 @@ if we ever emit one.
 
 ### 3.4 Raw SQL jobs
 
-Set `userEditedSQL: "<sql>"` **and** `rewriteSql: false` (else the SQL is IGNORED and the query
-runs as a model job). `sqlSortsEnabled: true` makes the server apply `sorts` / `calculations` /
+Set `userEditedSQL: "<sql>"` **and** `rewriteSql: false` (else the text is parsed as OmniSQL
+and planned as a governed model job — §3.5). `sqlSortsEnabled: true` makes the server apply `sorts` / `calculations` /
 `column_totals` on top of the SQL result; when false those are stripped. The connection is
 resolved server-side from `modelId`. `resultType`/NDJSON behavior is identical.
 
-### 3.5 `staticQueryReferences`
+### 3.5 `staticQueryReferences` — and how `userEditedSQL` actually composes
 
 `Record<refKey, <full query object> & {"model_id": "<uuid>"}>` (note the extra **snake_case**
 `model_id` inside each referenced query). The only way an external client passes query
 references; they become `query_references` on the job (single job per call — references fold
-into one plan). Consumed by:
+into one plan). Consumed by **exactly two** things:
 1. `type: "query"` filters (`query_id` = refKey);
-2. XLOOKUP-family calc operators (first operand = refKey string literal) — not used in 0.1;
-3. **Raw SQL** — the server SQL parser recognizes references used in the SQL text and emits
-   `used_query_references`. `LIVE-VALIDATE`: the exact syntax for referencing a refKey as a
-   table in `userEditedSQL` (expected: use the refKey as an identifier).
+2. XLOOKUP-family calc operators (`used_query_references` in a parse response is populated
+   *only* from calculation expressions — `QueryParseResponse.kt` `usedQueryRefs =
+   calculations.flatMap { collectLookupQueryIds(...) }`; reference translation feeds
+   filter-by-query and lookups — `OmniJobPlanner.kt` `translateQueryReferences`).
+
+**A refKey can NOT be referenced as a table in `userEditedSQL`.** Live-refuted 2026-08-14
+(omni.demo.exploreomni.dev): bare and double-quoted spellings pass through to the warehouse
+verbatim (`relation "<key>" does not exist` from Postgres); the `${refKey}` spelling fails
+OmniSQL substitution (`No such view "<key>"`). There is no server mechanism for it on
+`/query/run`.
+
+**How `userEditedSQL` is actually processed** (`OmniJobPlanner.kt:502-534`):
+- `rewriteSql: false` **or** a line matching `^\s*--\s*DO NOT PARSE\s*$` in the SQL
+  (`OmniSqlParser.doNotParseRegex`), with no sorts/calcs on the job → **verbatim raw SQL job**:
+  the text goes to the warehouse untouched. `staticQueryReferences`, the `filters` map's measure
+  entries, and all semantic constructs are ignored on this path.
+- Otherwise the SQL is parsed as **OmniSQL**: `${view}` / `${topic}` in FROM position and
+  `${view.field}` in expressions resolve against the model, and the job is planned as a governed
+  model job (parse failure falls back to a raw SQL job via `PlannerFailedException`; an
+  unresolvable `${…}` ref is a hard error, not a fallback). Live-confirmed 2026-08-14: plain
+  SELECTs and ad-hoc aggregates (`COUNT(DISTINCT ${view.field})` + GROUP BY/ORDER BY/LIMIT)
+  compile to governed SQL; result columns come back semantically scoped (`view.field`; an
+  SQL alias `n` surfaces as `<base_view>.n`). **This — not `staticQueryReferences` — is the
+  composition mechanism for tier-2-style outer SQL.**
 
 Constraint: rejected with `workbookUrl: true`.
+
+### 3.6 The OmniSQL path (`userEditedSQL` with `rewriteSql` omitted)
+
+All live-confirmed 2026-08-14 against omni.demo.exploreomni.dev (Postgres connection) with a
+~20-case probe battery; server-source pins in §3.5. This is the delivery mechanism for tier 2.
+
+**Envelope**: `userEditedSQL: "<omnisql>"` + `modelId`, with `rewriteSql` **absent** (not
+`false`). The server parses the text as OmniSQL and plans a **governed model job**: joins come
+from the topic's relationships (pruned to the views actually referenced), measures expand to
+their governed SQL, row-level policies apply.
+
+**Reference syntax**:
+- `${topic}` in FROM position — brings the topic's join graph. (`${view}` also resolves; the
+  view-vs-topic precedence when names differ is unverified — Omniframes always names its topic.)
+- `${view.field}` anywhere in an expression: select items, WHERE, HAVING, ORDER BY, function
+  args, arithmetic. Bracketed grain refs work: `${order_items.created_at[month]}`.
+- `${view.measure}` — a governed measure ref, expanded server-side (e.g.
+  `COALESCE(SUM("sale_price"), 0)`), **freely mixable with ad-hoc aggregates in one
+  statement**: `SELECT ${users.country}, ${order_items.sale_price_sum}, COUNT(DISTINCT
+  ${users.id}) FROM ${order_items} GROUP BY 1` works. Without GROUP BY a measure-only select
+  is a grand total.
+
+**Result naming (probed exhaustively 2026-08-14; two regimes)**:
+- **Bare refs** (`${view.field}`, `${view.measure}`, bare grain refs): SQL aliases are
+  **ignored** and duplicate selections are **deduplicated** — one column per distinct field,
+  named exactly `view.field`, regardless of aliasing or how many times it appears. This is
+  tier-1 semantics: renames are the client's job.
+- **Expression items** (anything that isn't a bare ref — arithmetic, functions, aggregates,
+  literals): the SQL alias **is** honored and duplicates survive, surfacing as
+  `<scope_view>.<alias>` (unaliased `COUNT(*)` → `count`; literal-only items scope to the FROM
+  ref's base view). The `scope_view` prefix is **not reliably predictable** for multi-view
+  expressions — first-ref-wins is refuted (`${users.age}+${products.cost}` → `users.…` but
+  `COALESCE(${products.brand}, ${users.country})` → `users.…` and
+  `${order_items.sale_price_sum}/COUNT(DISTINCT ${users.id})` → `users.…`); clients must
+  match expression columns by alias suffix, never by predicting the prefix.
+
+**Verified constructs**: GROUP BY (positional), HAVING over ad-hoc aggregates AND over
+`${measure}` refs (expanded inline, probe L4), ORDER BY with `NULLS LAST` — including ORDER BY
+a non-selected field (the server wraps the statement in a subquery with `omni_sort_expr_n`
+sidecars that do NOT leak into the result, probe L5) — `LIMIT`/`OFFSET`, functions (`UPPER`,
+`CAST`, `COALESCE`, `NULLIF`), arithmetic including measure arithmetic
+(`${m1}/NULLIF(${m2},0)`, `${m}/COUNT(DISTINCT ${f})`, probe L3), `LIKE … ESCAPE '!'` (parsed
+and re-rendered with the warehouse's escape char, probe L2), `''`-doubled string literals,
+CTEs (accepted and **flattened** — a CTE + outer WHERE on an aggregate is rewritten into
+HAVING on one statement). `planOnly` works; `summary.fields` carries the scoped names/types.
+
+**Hard constraints — silent rewrites observed**:
+- The **query-object `limit` is IGNORED** on this path, and a statement without `LIMIT` runs
+  unlimited. `LIMIT`/`OFFSET` must always be in the SQL text.
+- `SELECT DISTINCT` is **silently stripped**. Never emit it (dedup stays local).
+- WHERE predicates mixing a bare field ref AND a grain ref of the same field are **merged with
+  predicate loss** (observed: the tighter bound dropped). Plain same-column compound ranges are
+  SAFE — `(${f} >= x AND ${f} < y)` survives with both bounds intact (probe L1). Rule: never
+  reference a field's grain variant in WHERE alongside (or instead of) the bare field;
+  bare-ref-only conjuncts compose fine.
+- String literals: backslash is not an escape (passes verbatim); the server re-renders the
+  statement per warehouse dialect, so client-side dialect knowledge is unnecessary here (the
+  tier-2 `sql_dialect`/backslash-refusal machinery is obsolete on this path; it remains relevant
+  only to verbatim `read.sql`).
+- Grain select items split into `__raw` + formatted pairs exactly as tier 1 does (§2.7).
+
+**Errors**: unknown FROM ref → `Could not substitute Omni SQL … No such view "<name>"`;
+unknown field → `… Field "<name>" not found … No such field "<name>"`. Both arrive as normal
+job-error lines.
+
+`LIVE-VALIDATE` residue for this path is tracked in §6 item 11.
 
 ---
 
@@ -327,7 +429,7 @@ Field object (topic detail & `summary.fields`): `field_name`, `fully_qualified_n
 | Response format | single JSON object | `text/ndjson` stream |
 | `cache` enum | `disabled/normal/refresh/refresh_all` | `Standard/SkipRequery/SkipCache/SkipCacheAndRebuildExtracts` |
 | Default limit | 500 (schema description) / 1000 (openapi) | 1000 (`DEFAULT_ROW_LIMIT`) |
-| Max limit | 75000 | >50000 = high-limit override mode; no hard cap seen at 75000 in source (`LIVE-VALIDATE`) |
+| Max limit | 75000 | >50000 = high-limit override mode; no 75000 cap — live 2026-08-14: `planOnly` with `limit: 75001` accepted and echoed `limit: null` |
 | Invalid token | 401 | 403 |
 | Timeout | 408 | NDJSON path: in-band footer, always 200 (408 only in `resultType` mode) |
 | `/query/wait` params | `job_ids` JSON array | `jobIds` comma-separated preferred (legacy accepts both) |
@@ -337,38 +439,49 @@ Field object (topic detail & `summary.fields`): `field_name`, `fully_qualified_n
 
 ## 6. LIVE-VALIDATE register
 
-Run `scripts/live_smoke.py` against a real org (needs `OMNI_BASE_URL`, `OMNI_API_KEY`) to close:
+Run `scripts/live_smoke.py` against a real org (needs `OMNI_BASE_URL`, `OMNI_API_KEY`) to close.
 
-1. `staticQueryReferences` referenced from `userEditedSQL` — exact table-identifier syntax and
-   single-job ergonomics. **Offline half closed** (M5): tier 2 emits the refKey as a bare table
-   identifier (`FROM ref_1`) with the reference's dotted field names quoted as columns, and
-   FakeOmniAPI materializes each reference as a temp view named exactly its key — so client and
-   fake now share one assumption instead of the fake holding it alone. The live probe in
-   `scripts/live_smoke.py` still has to confirm it against a real warehouse.
-2. `timezone` request field — availability without org/connection settings.
-3. Effective max-limit behavior above 50000 / the documented 75000 cap.
-4. Measure-keyed entries in `filters` → HAVING: **source-pinned as real HAVING** (see §3.1);
-   live run is confirmation-only (check `display_sql` contains HAVING with the aggregate).
+**Closed 2026-08-14** (omni.demo.exploreomni.dev, Postgres connection; facts folded into the
+body sections above):
+
+1. `staticQueryReferences`-as-table in `userEditedSQL` — **REFUTED**; the real composition
+   mechanism is parsed OmniSQL `${…}` refs (§3.5). Consequence: the tier-2 envelope Omniframes
+   0.1 emits (`rewriteSql: false` + `FROM ref_1`) **fails on a live org** with
+   `relation "ref_1" does not exist`, and FakeOmniAPI's temp-view materialization of refKeys
+   models a mechanism the server does not have. Tier 2 (and the splitter shapes that prefer it,
+   e.g. mixed aggregation) needs redesign onto OmniSQL before live use.
+2. `timezone` — param exists; 400 unless the connection enables user-specific timezones (§2).
+3. Max limit — no 75000 cap; `limit: 75001` accepted, echoed as `null` (§5 table).
+4. Measure-keyed `filters` → HAVING — confirmed in live `display_sql` (§3.1).
+10. `workbookUrl` header — `X-Omni-Workbook-Url` spelling correct; live URL format is a share
+    link `https://<host>/e/<short-id>/<n>` (the fake's `/w/fake/<job-id>` pins plumbing only).
+    Emission on the in-band-timeout path is still unobserved.
+
+**Still open:**
+
 5. `generate-query` response variance (topic vs baseView, error shapes).
 6. High-limit mode (`limit > 50000`) result streaming behavior.
 7. WAF 429 shape under the shared 60/min bucket.
 8. Wait-loop timing under a genuinely cold warehouse (multi-minute jobs).
-9. **Tier-2 SQL across real warehouse dialects.** Omniframes generates the outer statement with
-   sqlglot's default (ANSI-ish) dialect: double-quoted identifiers carrying dots and brackets
-   (`"order_items.created_at[month]"`), `LIMIT`/`OFFSET`, `ORDER BY … NULLS LAST`,
-   `LIKE … ESCAPE '!'`, `LOWER()` on both sides for case-insensitive matching, and
-   `CAST('…' AS DATE/TIMESTAMP)` literals. Each of those is standard and each is somewhere
-   non-portable in practice (`LIMIT` on SQL Server, `NULLS LAST` on MySQL, quoting on BigQuery).
-   Confirm per connection type; `SessionBuilder.sql_dialect(name)` is the escape hatch when a
-   warehouse disagrees. Two things are **not** left to the live probe, because they are safety
-   rather than syntax: the LIKE escape character is `!`, never `\` (`ESCAPE '\'` does not
-   tokenize on Snowflake/BigQuery/Redshift/Spark/MySQL, where a backslash escapes inside a string
-   literal), and a filter value containing a backslash is **refused** at tier 2 unless
-   `sql_dialect` names the warehouse — the default dialect escapes only `'`, so its rendering of
-   such a value is a different string (or different SQL) on half the warehouses in that list.
-10. **`workbookUrl` response-header shape.** With `workbookUrl: true` the server is expected to
-    return the URL in the `X-Omni-Workbook-Url` response header alongside the normal NDJSON
-    stream. Unconfirmed: the exact header spelling/casing, the URL format, and whether it is
-    emitted when the run times out in-band (footer with `remaining_job_ids`) rather than
-    completing. `df.omni_url()` reads the header and raises when it is absent; the fake mints
-    `https://<host>/w/fake/<job-id>` so only the plumbing is pinned offline, never the format.
+9. **Dialect portability of `read.sql`.** A verbatim raw-SQL job (`rewriteSql: false`) reaches
+   the warehouse untouched, so its dialect is the user's own problem and omniframes has nothing
+   to confirm. Tier 2's half of this item closed 2026-08-14: an OmniSQL statement is parsed and
+   **re-rendered per warehouse** by the server (§3.6), quoting, `LIMIT`/`OFFSET`, `NULLS LAST`
+   and the `LIKE … ESCAPE` character included, so the dialect omniframes emits in is not
+   observable downstream. The `sql_dialect` builder knob and the backslash refusal that existed
+   for it were removed with the v1 mechanism (docs/SQLTIER.md §6).
+10. `workbookUrl` on the in-band-timeout path (footer with `remaining_job_ids`) — the header's
+    normal-path behavior closed 2026-08-14 (see above); whether it is emitted when the run times
+    out in-band is the one residue.
+11. **OmniSQL path residue** (§3.6, probed on one Postgres org only): exact semantics of the
+    same-column predicate merge (which side wins, when); whether `GROUP BY` over all columns is
+    a safe dedup substitute for the stripped `DISTINCT`; the scoping rule for multi-view
+    expressions beyond first-ref-wins (only one shape tested); topic-vs-view precedence for
+    `FROM ${name}` when a topic and an unrelated view share a name; which permission gates the
+    path (`QUERY_SQL` vs `QUERY_TOPICS`) and behavior on topic-locked orgs; re-verification on
+    a non-Postgres warehouse.
+12. **Grain `__raw` collapse, live re-verification** (§2.7): the client now keeps the `__raw`
+    values under the plain name and drops the formatted column, and FakeOmniAPI emits the pair
+    (docs/SQLTIER.md §5). What is still open is the check against a real org: that the pair
+    arrives in the shape assumed here for a grain the model formats, on both the semantic and
+    the OmniSQL path, and that `summary.fields` collapses the same way.

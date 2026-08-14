@@ -8,6 +8,7 @@ policy that decides which full page is worth interrupting a user about.
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 
 import pyarrow as pa
 import pytest
@@ -18,7 +19,7 @@ from omniframes.compile.executor import execute
 from omniframes.compile.local import AlignJoin, LocalFilter, LocalLimit, LocalProject
 from omniframes.compile.semantic import ExecutionPlan, LocalStep, RemoteStep
 from omniframes.compile.splitter import SplitOptions, split
-from omniframes.errors import CompileError, TruncationWarning
+from omniframes.errors import CompileError, QueryError, TruncationWarning
 from omniframes.plan import nodes
 
 SCAN = nodes.Scan(
@@ -144,3 +145,60 @@ def test_a_local_operator_still_takes_exactly_its_inputs() -> None:
 
     assert execute(execution, lambda step: STATES).column_names == ["users.state"]
     assert LocalLimit(1, 0).run((STATES,)).num_rows == 1
+
+
+# --------------------------------------------------------------------------------------
+# A statement the model does not bind (docs/SQLTIER.md §8)
+# --------------------------------------------------------------------------------------
+
+
+def tier_two() -> ExecutionPlan:
+    """A one-statement tier-2 plan: an ad-hoc aggregate over the bench topic."""
+    aggregate = nodes.Aggregate(SCAN, (F.col("users.state"),), (F.count_distinct("users.id"),))
+    return split(aggregate)
+
+
+def refusing(message: str) -> Callable[[RemoteStep], pa.Table]:
+    def run_remote(step: RemoteStep) -> pa.Table:
+        raise QueryError(message)
+
+    return run_remote
+
+
+def test_a_substitution_failure_on_a_tier_two_step_is_re_read_as_omniframes_own() -> None:
+    execution = tier_two()
+    assert execution.steps[0].tier == 2
+
+    with pytest.raises(QueryError, match="tier-2 statement omniframes generated") as caught:
+        execute(execution, refusing('Could not substitute Omni SQL: No such field "users.gone"'))
+    error = caught.value
+    assert "no field 'users.gone'" in str(error)
+    assert "explain()" in str(error)
+    assert error.statement is not None
+    assert "${users.state}" in error.statement
+
+
+def test_the_from_ref_arm_names_the_view() -> None:
+    with pytest.raises(QueryError, match="no view 'gone'"):
+        execute(tier_two(), refusing('Could not substitute Omni SQL: No such view "gone"'))
+
+
+def test_an_unparseable_substitution_failure_still_says_whose_sql_it_is() -> None:
+    """The two spellings above are the documented ones; the wrapper must not need them."""
+    with pytest.raises(QueryError, match="rejected a reference in it") as caught:
+        execute(tier_two(), refusing("Could not substitute Omni SQL: something new"))
+    assert caught.value.statement is not None
+
+
+def test_every_other_job_error_passes_through_untouched() -> None:
+    with pytest.raises(QueryError, match=r"^division by zero$") as caught:
+        execute(tier_two(), refusing("division by zero"))
+    assert caught.value.statement is None
+
+
+def test_a_tier_one_step_is_never_re_attributed() -> None:
+    """Only a step whose SQL omniframes wrote can be omniframes' emission bug."""
+    execution = split(nodes.Project(SCAN, (F.col("users.state"),)))
+
+    with pytest.raises(QueryError, match=r"^Could not substitute Omni SQL: whatever$"):
+        execute(execution, refusing("Could not substitute Omni SQL: whatever"))

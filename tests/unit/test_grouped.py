@@ -171,10 +171,8 @@ def test_alias_collisions_fail_when_the_aggregate_is_built(df: DataFrame) -> Non
         df.group_by(F.col("users.state").alias("x")).agg(F.measure(REVENUE).alias("x"))
 
 
-def test_ad_hoc_aggregations_compile_to_a_sql_job_over_a_governed_reference(
-    df: DataFrame,
-) -> None:
-    """M5: the GROUP BY runs in the warehouse, over a tier-1 reference core.
+def test_ad_hoc_aggregations_compile_to_one_omnisql_statement(df: DataFrame) -> None:
+    """M5: the GROUP BY runs in the warehouse, as one governed OmniSQL statement.
 
     M1 refused this plan, M3 executed it over an unlimited raw scan, and M5 pushes the whole
     aggregate into SQL — the plan never changed, only which tier can express it.
@@ -185,8 +183,8 @@ def test_ad_hoc_aggregations_compile_to_a_sql_job_over_a_governed_reference(
     assert isinstance(frame.logical_plan, Aggregate)
     assert frame.columns == ("users.state", "count_distinct(users.id)")
     assert "tier 2 · sql" in text
-    assert 'COUNT(DISTINCT "users.id")' in text
-    assert "ref_1 [semantic]: fields [users.state, users.id]" in text
+    assert "COUNT(DISTINCT ${users.id})" in text
+    assert "FROM ${order_items}" in text
 
 
 # --------------------------------------------------------------------------------------

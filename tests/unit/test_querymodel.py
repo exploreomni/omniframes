@@ -609,6 +609,113 @@ def test_sql_sorts_enabled_can_be_turned_off() -> None:
     assert wire["sqlSortsEnabled"] is False
 
 
+# ---------------------------------------------------------------------------------------
+# OmniSQL jobs (CONTRACT_NOTES §3.6, docs/SQLTIER.md §2)
+# ---------------------------------------------------------------------------------------
+
+OMNISQL = (
+    "SELECT ${users.state}, ${order_items.sale_price_sum}\n"
+    "FROM ${order_items}\n"
+    "GROUP BY 1\n"
+    "LIMIT 50000"
+)
+
+
+def test_for_omnisql_wire_shape() -> None:
+    """The parsed path is selected by what is ABSENT, so pin the whole object."""
+    query = Query.for_omnisql(MODEL_ID, OMNISQL)
+    query.validate()
+
+    assert query.to_wire() == {
+        "modelId": MODEL_ID,
+        "table": "",
+        "fields": [],
+        "filters": {},
+        "sorts": [],
+        "limit": DEFAULT_FETCH_LIMIT,
+        "offset": 0,
+        "pivots": [],
+        "calculations": [],
+        "fill_fields": [],
+        "column_totals": {},
+        "row_totals": {},
+        "userEditedSQL": OMNISQL,
+        "default_group_by": True,
+        "version": QUERY_VERSION,
+    }
+
+
+@pytest.mark.parametrize("key", ["rewriteSql", "staticQueryReferences", "sqlSortsEnabled"])
+def test_omnisql_omits_the_keys_that_would_change_the_path(key: str) -> None:
+    """``rewriteSql: false`` — even ``true`` — takes the statement off the parsed path."""
+    assert key not in Query.for_omnisql(MODEL_ID, OMNISQL).to_wire()
+
+
+def test_the_omnisql_flag_is_not_a_wire_key() -> None:
+    query = Query.for_omnisql(MODEL_ID, OMNISQL)
+
+    assert query.omnisql is True
+    assert not [key for key in query.to_wire() if key.lower() == "omnisql"]
+    assert not [key for key in query.to_reference_wire() if key.lower() == "omnisql"]
+
+
+@pytest.mark.parametrize(
+    ("limit", "expected"),
+    [(UNSET, DEFAULT_FETCH_LIMIT), (250, 250), (None, None), (HIGH_LIMIT_THRESHOLD + 1, 50_001)],
+)
+def test_for_omnisql_mirrors_the_statements_limit(limit: Any, expected: int | None) -> None:
+    """Bookkeeping only — the server ignores it here — but the truncation warning reads it."""
+    query = Query.for_omnisql(MODEL_ID, OMNISQL, limit=limit)
+    query.validate()
+
+    assert query.to_wire()["limit"] == expected
+    assert query.effective_limit == expected
+    assert query.limit_is_unset is (limit is UNSET)
+
+
+def test_for_omnisql_mirrors_the_offset() -> None:
+    query = Query.for_omnisql(MODEL_ID, OMNISQL, limit=10, offset=20)
+    query.validate()
+
+    assert query.to_wire()["offset"] == 20
+
+
+def test_for_sql_is_never_the_parsed_path() -> None:
+    """The structural half of the guarantee: user SQL is built here and cannot be OmniSQL."""
+    assert Query.for_sql(MODEL_ID, "SELECT 1 AS n").omnisql is False
+
+
+@pytest.mark.parametrize("rewrite_sql", [True, False])
+def test_omnisql_with_a_rewrite_sql_key_is_rejected(rewrite_sql: bool) -> None:
+    query = Query(model_id=MODEL_ID, user_edited_sql=OMNISQL, omnisql=True, rewrite_sql=rewrite_sql)
+    with pytest.raises(CompileError, match="must leave rewriteSql unset"):
+        query.validate()
+
+
+def test_the_omnisql_flag_without_sql_is_rejected() -> None:
+    with pytest.raises(CompileError, match="carries no SQL"):
+        make_query(omnisql=True).validate()
+
+
+def test_omnisql_with_sql_sorts_enabled_is_rejected() -> None:
+    query = Query(model_id=MODEL_ID, user_edited_sql=OMNISQL, omnisql=True, sql_sorts_enabled=False)
+    with pytest.raises(CompileError, match="sqlSortsEnabled belongs to verbatim SQL jobs"):
+        query.validate()
+
+
+def test_omnisql_with_static_query_references_is_rejected() -> None:
+    """A refKey is not a table on this path (CONTRACT_NOTES §3.5, live-refuted)."""
+    reference = Query(model_id=OTHER_UUID, fields=["users.id"], table="users")
+    query = Query(
+        model_id=MODEL_ID,
+        user_edited_sql=OMNISQL,
+        omnisql=True,
+        static_query_references={"ref_1": reference},
+    )
+    with pytest.raises(CompileError, match="cannot reference staticQueryReferences"):
+        query.validate()
+
+
 def test_static_query_reference_adds_snake_case_model_id() -> None:
     reference = Query(model_id=OTHER_UUID, fields=["users.id"], table="users", limit=10)
     query = make_query(

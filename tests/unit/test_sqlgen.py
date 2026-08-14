@@ -1,16 +1,17 @@
 """Unit tests for tier 2 (docs/SQLTIER.md §3).
 
-Two halves.  The first is the translation table, row by row: one expression in, one SQL fragment
-out, rendered through the same code path the compiler uses.  The second is the compiler itself —
-what shape it accepts, what it refuses, how the reference core is built, and where each predicate
-ends up.
+Three halves, really.  The first is the translation table, row by row: one expression in, one
+OmniSQL fragment out, rendered through the same code path the compiler uses.  The second is the
+compiler itself — what shape it accepts, what it refuses, how the two naming regimes of §3.2 are
+emitted, and where each predicate ends up.  The third is the safety net: values never become
+statement text, and neither do model names the sentinel charset does not recognize.
 
-The injection cases are the reason the translation goes through :mod:`sqlglot` nodes at all: a
-filter value is a *value*, and there is no code path that turns one into SQL text.
+Everything here is pure — nothing talks to anything.
 """
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
@@ -21,9 +22,9 @@ from tests.fakes import BENCH_MODEL_ID, BENCH_MODEL_NAME, BENCH_TOPIC_NAME
 
 from omniframes import functions as F
 from omniframes.column import Column, Expr
-from omniframes.compile.semantic import CannotCompile, SemanticCompilation
-from omniframes.compile.splitter import SplitOptions
-from omniframes.compile.sqlgen import compile_sql, render_expr, try_sql
+from omniframes.compile.querymodel import DEFAULT_FETCH_LIMIT
+from omniframes.compile.semantic import CannotCompile
+from omniframes.compile.sqlgen import EXPR_ALIAS_PREFIX, compile_sql, render_expr, try_sql
 from omniframes.plan import nodes
 from omniframes.types import OmniDataType, OmniField, OmniSchema
 
@@ -31,6 +32,7 @@ REVENUE = "order_items.total_sale_price"
 STATE = "users.state"
 AGE = "users.age"
 PRICE = "order_items.sale_price"
+CREATED = "order_items.created_at"
 
 SCAN = nodes.Scan(
     nodes.TopicScan(
@@ -40,6 +42,7 @@ SCAN = nodes.Scan(
         base_view="order_items",
     )
 )
+VIEW_SCAN = nodes.Scan(nodes.ViewScan(BENCH_MODEL_NAME, BENCH_MODEL_ID, "order_items"))
 SQL_SCAN = nodes.Scan(nodes.SqlScan(BENCH_MODEL_ID, "SELECT 1 AS x", BENCH_MODEL_NAME))
 STORED_SCAN = nodes.Scan(
     nodes.SavedQueryScan("doc", "saved", {"modelId": BENCH_MODEL_ID, "fields": [STATE]})
@@ -54,30 +57,29 @@ def selected(*names: str | Column) -> nodes.Project:
     return nodes.Project(SCAN, columns(*names))
 
 
-def sql(plan: nodes.PlanNode, **options: Any) -> str:
-    return compile_sql(plan, options=SplitOptions(**options)).query.user_edited_sql
-
-
-def reference_of(compilation: SemanticCompilation) -> Any:
-    references = compilation.query.static_query_references
-    assert list(references) == ["ref_1"]
-    return references["ref_1"]
+def sql(plan: nodes.PlanNode) -> str:
+    return compile_sql(plan).query.user_edited_sql
 
 
 def fragment(expr: Expr) -> str:
-    return render_expr(expr).sql()
+    return render_expr(expr)
+
+
+def aggregate(*aggs: Column, keys: tuple[Column, ...] = ()) -> nodes.Aggregate:
+    return nodes.Aggregate(SCAN, keys, aggs)
 
 
 # --------------------------------------------------------------------------------------
-# The translation table (docs/SQLTIER.md §3)
+# The translation table (docs/SQLTIER.md §3.1)
 # --------------------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
     ("expr", "expected"),
     [
-        (F.col(STATE).expr, '"users.state"'),
-        (F.col("order_items.created_at").grain("month").expr, '"order_items.created_at[month]"'),
+        (F.col(STATE).expr, "${users.state}"),
+        (F.col(CREATED).grain("month").expr, "${order_items.created_at[month]}"),
+        (F.measure(REVENUE).expr, "${order_items.total_sale_price}"),
         (F.lit("California").expr, "'California'"),
         (F.lit(42).expr, "42"),
         (F.lit(3.5).expr, "3.5"),
@@ -86,70 +88,122 @@ def fragment(expr: Expr) -> str:
         (F.lit(False).expr, "FALSE"),
         (F.lit(date(2026, 3, 1)).expr, "CAST('2026-03-01' AS DATE)"),
         (F.lit(datetime(2026, 3, 1, 12, 30)).expr, "CAST('2026-03-01 12:30:00' AS TIMESTAMP)"),
-        ((F.col(AGE) == 30).expr, '"users.age" = 30'),
-        ((F.col(AGE) != 30).expr, '"users.age" <> 30'),
-        ((F.col(AGE) < 30).expr, '"users.age" < 30'),
-        ((F.col(AGE) <= 30).expr, '"users.age" <= 30'),
-        ((F.col(AGE) > 30).expr, '"users.age" > 30'),
-        ((F.col(AGE) >= 30).expr, '"users.age" >= 30'),
-        ((F.col(AGE) + 1).expr, '"users.age" + 1'),
-        ((F.col(AGE) - 1).expr, '"users.age" - 1'),
-        ((F.col(AGE) * 2).expr, '"users.age" * 2'),
-        ((F.col(AGE) / 2).expr, '"users.age" / 2'),
+        ((F.col(AGE) == 30).expr, "${users.age} = 30"),
+        ((F.col(AGE) != 30).expr, "${users.age} <> 30"),
+        ((F.col(AGE) < 30).expr, "${users.age} < 30"),
+        ((F.col(AGE) <= 30).expr, "${users.age} <= 30"),
+        ((F.col(AGE) > 30).expr, "${users.age} > 30"),
+        ((F.col(AGE) >= 30).expr, "${users.age} >= 30"),
+        ((F.col(AGE) + 1).expr, "${users.age} + 1"),
+        ((F.col(AGE) - 1).expr, "${users.age} - 1"),
+        ((F.col(AGE) * 2).expr, "${users.age} * 2"),
+        ((F.col(AGE) / 2).expr, "${users.age} / 2"),
         (
             ((F.col(AGE) > 30) & (F.col(STATE) == "Ohio")).expr,
-            '("users.age" > 30 AND "users.state" = \'Ohio\')',
+            "(${users.age} > 30 AND ${users.state} = 'Ohio')",
         ),
         (
             ((F.col(AGE) > 30) | (F.col(STATE) == "Ohio")).expr,
-            '("users.age" > 30 OR "users.state" = \'Ohio\')',
+            "(${users.age} > 30 OR ${users.state} = 'Ohio')",
         ),
-        ((~(F.col(AGE) > 30)).expr, 'NOT ("users.age" > 30)'),
-        (F.col(STATE).is_null().expr, '"users.state" IS NULL'),
-        (F.col(STATE).is_not_null().expr, 'NOT ("users.state" IS NULL)'),
-        (F.col(STATE).isin("Ohio", "Texas").expr, "\"users.state\" IN ('Ohio', 'Texas')"),
-        (F.col(STATE).contains("cal").expr, "\"users.state\" LIKE '%cal%' ESCAPE '!'"),
-        (F.col(STATE).starts_with("New").expr, "\"users.state\" LIKE 'New%' ESCAPE '!'"),
-        (F.col(STATE).ends_with("ia").expr, "\"users.state\" LIKE '%ia' ESCAPE '!'"),
-        (F.col(STATE).like("%a_b%").expr, "\"users.state\" LIKE '%a_b%'"),
+        ((~(F.col(AGE) > 30)).expr, "NOT (${users.age} > 30)"),
+        (F.col(STATE).is_null().expr, "${users.state} IS NULL"),
+        (F.col(STATE).is_not_null().expr, "NOT (${users.state} IS NULL)"),
+        (F.col(STATE).isin("Ohio", "Texas").expr, "${users.state} IN ('Ohio', 'Texas')"),
+        (F.col(STATE).contains("cal").expr, "${users.state} LIKE '%cal%' ESCAPE '!'"),
+        (F.col(STATE).starts_with("New").expr, "${users.state} LIKE 'New%' ESCAPE '!'"),
+        (F.col(STATE).ends_with("ia").expr, "${users.state} LIKE '%ia' ESCAPE '!'"),
+        (F.col(STATE).like("%a_b%").expr, "${users.state} LIKE '%a_b%'"),
         (
             F.col(STATE).contains("cal", case_insensitive=True).expr,
-            "LOWER(\"users.state\") LIKE LOWER('%cal%') ESCAPE '!'",
+            "LOWER(${users.state}) LIKE LOWER('%cal%') ESCAPE '!'",
         ),
-        ((F.col(AGE).between(18, 21)).expr, '("users.age" >= 18 AND "users.age" <= 21)'),
+        ((F.col(AGE).between(18, 21)).expr, "(${users.age} >= 18 AND ${users.age} <= 21)"),
         (
-            (F.col("order_items.created_at").between(date(2026, 1, 1), date(2026, 2, 1))).expr,
-            "(\"order_items.created_at\" >= CAST('2026-01-01' AS DATE)"
-            " AND \"order_items.created_at\" < CAST('2026-02-01' AS DATE))",
+            (F.col(CREATED).between(date(2026, 1, 1), date(2026, 2, 1))).expr,
+            "(${order_items.created_at} >= CAST('2026-01-01' AS DATE)"
+            " AND ${order_items.created_at} < CAST('2026-02-01' AS DATE))",
         ),
-        (F.sum(PRICE).expr, 'SUM("order_items.sale_price")'),
-        (F.count(PRICE).expr, 'COUNT("order_items.sale_price")'),
-        (F.count_distinct(PRICE).expr, 'COUNT(DISTINCT "order_items.sale_price")'),
-        (F.avg(PRICE).expr, 'AVG("order_items.sale_price")'),
-        (F.min(PRICE).expr, 'MIN("order_items.sale_price")'),
-        (F.max(PRICE).expr, 'MAX("order_items.sale_price")'),
+        (F.sum(PRICE).expr, "SUM(${order_items.sale_price})"),
+        (F.count(PRICE).expr, "COUNT(${order_items.sale_price})"),
+        (F.count_distinct(PRICE).expr, "COUNT(DISTINCT ${order_items.sale_price})"),
+        (F.avg(PRICE).expr, "AVG(${order_items.sale_price})"),
+        (F.min(PRICE).expr, "MIN(${order_items.sale_price})"),
+        (F.max(PRICE).expr, "MAX(${order_items.sale_price})"),
+        (
+            (F.measure(REVENUE) / F.count_distinct("users.id")).expr,
+            "${order_items.total_sale_price} / COUNT(DISTINCT ${users.id})",
+        ),
+        (
+            (F.measure(REVENUE) / F.measure("users.count")).expr,
+            "${order_items.total_sale_price} / ${users.count}",
+        ),
     ],
 )
-def test_each_expression_renders_to_its_sql_fragment(expr: Expr, expected: str) -> None:
+def test_each_expression_renders_to_its_omnisql_fragment(expr: Expr, expected: str) -> None:
     assert fragment(expr) == expected
 
 
 def test_numbers_include_both_ends_and_dates_do_not() -> None:
     """The M2 split, carried into SQL unchanged (see Column.between)."""
     assert "<=" in fragment(F.col(AGE).between(18, 21).expr)
-    assert "<=" not in fragment(
-        F.col("order_items.created_at").between(date(2026, 1, 1), date(2026, 2, 1)).expr
-    )
-
-
-def test_a_governed_measure_has_no_tier_two_rendering() -> None:
-    with pytest.raises(CannotCompile, match="governed measure"):
-        fragment(F.measure(REVENUE).expr)
+    assert "<=" not in fragment(F.col(CREATED).between(date(2026, 1, 1), date(2026, 2, 1)).expr)
 
 
 def test_a_udf_has_no_tier_two_rendering() -> None:
     with pytest.raises(CannotCompile, match="no SQL rendering"):
         fragment(F.udf(str.upper)(STATE).expr)
+
+
+# --------------------------------------------------------------------------------------
+# Sentinel substitution and the charset gate (docs/SQLTIER.md §3.1)
+# --------------------------------------------------------------------------------------
+
+
+HOSTILE_NAMES = [
+    'weird"name',
+    "users.state} + (SELECT 1) + ${users.state",
+    "users.state; DROP TABLE users",
+    "users.state[month][week]",
+    "a.b.c",
+    "users state",
+]
+
+
+@pytest.mark.parametrize("name", HOSTILE_NAMES)
+def test_a_name_outside_the_sentinel_charset_refuses_to_tier_three(name: str) -> None:
+    """Substitution is textual by necessity, so the charset is the whole guarantee (§3.1)."""
+    with pytest.raises(CannotCompile, match="OmniSQL statement"):
+        fragment(F.col(name).expr)
+
+    assert try_sql(selected(F.col(name))) is None
+
+
+@pytest.mark.parametrize("name", ["users.state", "users.created_at[month]", "count"])
+def test_the_names_omniframes_actually_writes_pass_the_gate(name: str) -> None:
+    assert fragment(F.col(name).expr) == "${" + name + "}"
+
+
+def test_a_topic_name_outside_the_charset_refuses_too() -> None:
+    scan = nodes.Scan(nodes.TopicScan(BENCH_MODEL_NAME, BENCH_MODEL_ID, "order items", ""))
+
+    assert try_sql(nodes.Project(scan, columns(STATE))) is None
+
+
+def test_a_bare_view_scan_selects_from_the_view() -> None:
+    assert "FROM ${order_items}" in sql(nodes.Project(VIEW_SCAN, columns(STATE)))
+
+
+def test_the_sentinels_never_survive_into_the_statement() -> None:
+    statement = sql(
+        nodes.Filter(
+            aggregate(F.count_distinct("users.id").alias("n"), keys=columns(STATE)),
+            (F.col("n") > 1).expr,
+        )
+    )
+
+    assert "__OF_REF_" not in statement
+    assert statement.count("${") == statement.count("}")
 
 
 # --------------------------------------------------------------------------------------
@@ -161,14 +215,10 @@ MALICIOUS = "California'; DROP TABLE users; --"
 
 
 def test_a_sql_injection_arrives_as_a_literal_and_nothing_else() -> None:
-    """The headline safety property: a value is a value, never a fragment of statement.
-
-    The predicate is a cross-field OR on purpose — that is the shape tier 2 has to *write* as
-    SQL, rather than push into the reference as a typed wire filter.
-    """
+    """The headline safety property: a value is a value, never a fragment of statement."""
     predicate = ((F.col(STATE) == MALICIOUS) | (F.col(AGE) > 60)).expr
     statement = sql(nodes.Filter(selected("order_items.id", STATE, AGE), predicate))
-    parsed = sqlglot.parse(statement)
+    parsed = sqlglot.parse(_placeholder_free(statement))
 
     assert "'California''; DROP TABLE users; --'" in statement, "the payload survives, as data"
     assert len(parsed) == 1, "one statement: nothing the value contained terminated it"
@@ -180,193 +230,180 @@ def test_a_sql_injection_arrives_as_a_literal_and_nothing_else() -> None:
     assert not parsed[0].find(sqlglot.exp.Drop), "and nothing became a DROP"
 
 
-def test_an_injected_value_pushed_into_the_reference_is_a_typed_filter_value() -> None:
-    """The other half of the same guarantee: a pushable predicate never becomes SQL at all."""
-    plan = nodes.Aggregate(nodes.Filter(SCAN, (F.col(STATE) == MALICIOUS).expr), columns(STATE), ())
-    compiled = compile_sql(plan)
-
-    assert "DROP" not in compiled.query.user_edited_sql
-    entry = reference_of(compiled).to_wire()["filters"][STATE]
-    assert entry == {"type": "string", "kind": "EQUALS", "values": [MALICIOUS]}
-
-
 def test_an_injected_value_is_a_literal_in_every_arm_that_takes_one() -> None:
     quoted = "'California''; DROP TABLE users; --'"
-    assert fragment((F.col(STATE) == MALICIOUS).expr) == f'"users.state" = {quoted}'
-    assert fragment(F.col(STATE).isin(MALICIOUS).expr) == f'"users.state" IN ({quoted})'
+    assert fragment((F.col(STATE) == MALICIOUS).expr) == f"${{users.state}} = {quoted}"
+    assert fragment(F.col(STATE).isin(MALICIOUS).expr) == f"${{users.state}} IN ({quoted})"
     assert fragment(F.lit(MALICIOUS).expr) == quoted
 
 
-#: Warehouses where a backslash escapes *inside* a string literal, so the ANSI-ish default
-#: rendering of one is not the value that arrives.  (Postgres/DuckDB are the other family.)
-BACKSLASH_DIALECTS = ["snowflake", "bigquery", "redshift", "spark", "databricks", "mysql"]
+def test_a_value_that_looks_like_a_model_reference_stays_a_value() -> None:
+    """``${users.state}`` typed as a *value* is text, and the sentinel pass never sees it."""
+    payload = "${users.state}"
+    statement = sql(nodes.Filter(selected(STATE, AGE), (F.col(STATE) == payload).expr))
+
+    assert "${users.state} = '${users.state}'" in statement, "the value stayed quoted"
+    assert statement.count("'${users.state}'") == 1
 
 
-@pytest.mark.parametrize("dialect", BACKSLASH_DIALECTS)
-def test_the_generated_string_predicates_tokenize_on_backslash_escaping_warehouses(
-    dialect: str,
-) -> None:
-    """``ESCAPE '\\'`` is a *lexer* error there — the backslash swallows the closing quote.
+def test_a_value_that_looks_like_a_sentinel_refuses_the_statement() -> None:
+    """The only text that could reach substitution without going through the reference table."""
+    payload = "__OF_REF_1__"
 
-    Not a portability nuance (CONTRACT_NOTES §6 #9): those warehouses all support LIKE/ESCAPE,
-    the emitted text simply did not parse, so every tier-2 statement carrying a
-    contains/starts_with/ends_with failed outright until the escape character stopped being a
-    backslash.
+    assert try_sql(nodes.Filter(selected(STATE), (F.col(STATE) == payload).expr)) is None
+
+
+def test_a_backslash_in_a_value_rides_through_as_a_value() -> None:
+    """The server re-renders the parsed statement per warehouse, so escaping is its problem now.
+
+    v1 refused a backslash-bearing literal unless the caller named the warehouse; on the parsed
+    path a backslash is not an escape and passes verbatim (CONTRACT_NOTES §3.6, probe P7b), so
+    the refusal — and the ``sql_dialect`` knob behind it — is gone (docs/SQLTIER.md §6).
     """
-    predicate = (F.col(STATE).contains("cal") | (F.col(AGE) > 60)).expr
-    statement = sql(nodes.Filter(selected("order_items.id", STATE, AGE), predicate))
-
-    assert sqlglot.parse(statement, read=dialect), statement
-
-
-def test_a_backslash_in_a_value_is_refused_until_the_warehouse_is_named() -> None:
-    """The default dialect escapes only ``'``, so a backslash is dialect-dependent SQL text.
-
-    On Snowflake/BigQuery/Redshift/Spark/MySQL the default rendering of ``x\\'`` ends the literal
-    one character early and the rest of the value is parsed as SQL — a tautology, or a subquery
-    against a table outside the governed model.  Omniframes is never told the connection's
-    dialect, so without one it declines and the predicate runs one tier down.
-    """
-    payload = "x\\' OR 1=1 --"
-    plan = nodes.Filter(
-        selected("order_items.id", STATE, AGE), ((F.col(STATE) == payload) | (F.col(AGE) > 60)).expr
-    )
-
-    assert try_sql(plan) is None, "no dialect named: decline rather than guess the escaping"
-    statement = sql(plan, sql_dialect="snowflake")
-    parsed = sqlglot.parse(statement, read="snowflake")
-    assert len(parsed) == 1
-    select = parsed[0]
-    assert select is not None
-    literals = [
-        node.this for node in select.find_all(sqlglot.exp.Literal) if node.args.get("is_string")
-    ]
-    assert payload in literals, "named the warehouse: the value round-trips as one literal"
-    assert not select.find(sqlglot.exp.Boolean), "and 1=1 never became a predicate"
-
-
-def test_a_benign_backslash_is_not_silently_corrupted_either() -> None:
-    """``C:\\Users\\dan`` is not an attack and is mangled just the same. Same refusal."""
-    plan = nodes.Filter(
-        selected("order_items.id", STATE, AGE),
-        ((F.col(STATE) == "C:\\Users\\dan") | (F.col(AGE) > 60)).expr,
-    )
-
-    assert try_sql(plan) is None
-    assert try_sql(plan, options=SplitOptions(sql_dialect="bigquery")) is not None
+    for payload in ("x\\' OR 1=1 --", "C:\\Users\\dan"):
+        statement = sql(nodes.Filter(selected(STATE, AGE), (F.col(STATE) == payload).expr))
+        assert payload.replace("'", "''") in statement
 
 
 def test_like_metacharacters_in_a_value_are_escaped_not_interpreted() -> None:
     """``contains("50%")`` looks for the text ``50%``, not for "50 followed by anything"."""
-    assert fragment(F.col(STATE).contains("50%").expr) == (
-        "\"users.state\" LIKE '%50!%%' ESCAPE '!'"
+    assert fragment(F.col(STATE).contains("50%").expr) == "${users.state} LIKE '%50!%%' ESCAPE '!'"
+    assert (
+        fragment(F.col(STATE).starts_with("a_b").expr) == "${users.state} LIKE 'a!_b%' ESCAPE '!'"
     )
-    assert fragment(F.col(STATE).starts_with("a_b").expr) == (
-        "\"users.state\" LIKE 'a!_b%' ESCAPE '!'"
-    )
-    assert fragment(F.col(STATE).ends_with("c!d").expr) == (
-        "\"users.state\" LIKE '%c!!d' ESCAPE '!'"
-    )
+    assert fragment(F.col(STATE).ends_with("c!d").expr) == "${users.state} LIKE '%c!!d' ESCAPE '!'"
 
 
 def test_a_like_pattern_is_passed_through_because_there_the_wildcards_are_the_point() -> None:
     assert "ESCAPE" not in fragment(F.col(STATE).like("Cal%").expr)
 
 
-def test_a_quote_in_an_identifier_would_be_doubled_too() -> None:
-    assert fragment(F.col('weird"name').expr) == '"weird""name"'
-
-
 # --------------------------------------------------------------------------------------
-# The reference core (docs/SQLTIER.md §2)
+# The envelope: one OmniSQL statement, no reference core (docs/SQLTIER.md §2)
 # --------------------------------------------------------------------------------------
 
 
-def test_the_reference_key_is_ref_1_and_the_sql_names_it_as_a_bare_table() -> None:
-    compiled = compile_sql(nodes.Aggregate(SCAN, columns(STATE), columns(F.count("users.id"))))
+def test_the_statement_selects_from_the_topic_and_carries_no_references() -> None:
+    compiled = compile_sql(aggregate(F.count("users.id"), keys=columns(STATE)))
+    wire = compiled.query.to_wire()
 
-    assert list(compiled.query.static_query_references) == ["ref_1"]
-    assert "FROM ref_1" in compiled.query.user_edited_sql
+    assert f"FROM ${{{BENCH_TOPIC_NAME}}}" in compiled.query.user_edited_sql
+    assert compiled.query.omnisql is True
+    assert compiled.query.static_query_references == {}
+    assert "rewriteSql" not in wire, "an ABSENT key is what selects the parsed path (§3.6)"
+    assert "sqlSortsEnabled" not in wire
+    assert "staticQueryReferences" not in wire
+    assert wire["fields"] == []
+    assert wire["userEditedSQL"] == compiled.query.user_edited_sql
 
 
-def test_the_reference_projects_only_the_fields_the_sql_names_in_first_use_order() -> None:
+def test_the_envelope_limit_mirrors_the_text_because_only_the_text_is_applied() -> None:
+    """The server ignores the query object's limit on this path (§3.6); ``user_limit`` reads it."""
+    default = compile_sql(aggregate(F.count("users.id"), keys=columns(STATE)))
+    assert default.query.effective_limit == DEFAULT_FETCH_LIMIT
+    assert f"LIMIT {DEFAULT_FETCH_LIMIT}" in default.query.user_edited_sql
+    assert default.query.limit_is_unset is True
+
+    user = compile_sql(nodes.Limit(aggregate(F.count("users.id"), keys=columns(STATE)), 10, 5))
+    assert user.query.effective_limit == 10
+    assert user.query.offset == 5
+    assert "LIMIT 10" in user.query.user_edited_sql
+    assert "OFFSET 5" in user.query.user_edited_sql
+
+
+def test_only_limit_none_emits_a_statement_without_a_limit_clause() -> None:
+    unlimited = compile_sql(nodes.Limit(aggregate(F.count("users.id"), keys=columns(STATE)), None))
+
+    assert "LIMIT" not in unlimited.query.user_edited_sql
+    assert unlimited.query.effective_limit is None
+
+
+def test_no_statement_ever_says_select_distinct() -> None:
+    """The parser strips ``DISTINCT`` silently (§3.6), so dedup stays local — never emit one."""
+    statement = sql(aggregate(F.count_distinct("users.id").alias("n"), keys=columns(STATE)))
+
+    assert "SELECT DISTINCT" not in statement
+    assert "COUNT(DISTINCT ${users.id})" in statement
+
+
+# --------------------------------------------------------------------------------------
+# Naming — the two regimes of docs/SQLTIER.md §3.2
+# --------------------------------------------------------------------------------------
+
+
+def test_a_bare_ref_is_emitted_unaliased_and_renamed_client_side() -> None:
+    """SQL aliases on a bare ref are IGNORED by the server, so the rename happens here."""
     compiled = compile_sql(
-        nodes.Filter(
-            nodes.Aggregate(SCAN, columns(STATE), columns(F.sum(PRICE).alias("total"))),
-            (F.col("total") > 1).expr,
+        nodes.Project(SCAN, columns(F.col(STATE).alias("state"), F.col(AGE).alias("age")))
+    )
+
+    assert " AS " not in compiled.query.user_edited_sql
+    assert compiled.aliases == {STATE: "state", AGE: "age"}
+    assert compiled.columns == ("state", "age")
+
+
+def test_a_measure_and_a_grain_are_bare_refs_too() -> None:
+    month = F.col(CREATED).grain("month").alias("month")
+    compiled = compile_sql(
+        nodes.Aggregate(SCAN, (month,), columns(F.measure(REVENUE).alias("revenue")))
+    )
+
+    assert " AS " not in compiled.query.user_edited_sql
+    assert compiled.aliases == {
+        "order_items.created_at[month]": "month",
+        REVENUE: "revenue",
+    }
+    assert compiled.columns == ("month", "revenue")
+
+
+def test_an_expression_item_gets_a_generated_alias_matched_by_suffix() -> None:
+    """The scope prefix the server prepends is unpredictable, so only the suffix is contracted."""
+    compiled = compile_sql(
+        nodes.Aggregate(
+            SCAN,
+            columns(STATE),
+            columns(F.count_distinct("users.id").alias("buyers"), F.sum(PRICE).alias("revenue")),
         )
     )
 
-    assert reference_of(compiled).fields == (STATE, PRICE)
+    assert "COUNT(DISTINCT ${users.id}) AS of_expr_1" in compiled.query.user_edited_sql
+    assert "SUM(${order_items.sale_price}) AS of_expr_2" in compiled.query.user_edited_sql
+    assert compiled.aliases == {"of_expr_1": "buyers", "of_expr_2": "revenue"}
+    assert compiled.columns == (STATE, "buyers", "revenue")
 
 
-def test_the_reference_is_unlimited_even_when_the_outer_select_is_not() -> None:
-    """The outer LIMIT caps the *answer*; capping the input would change it."""
+def test_generated_aliases_are_numbered_over_expression_items_in_select_order() -> None:
     compiled = compile_sql(
-        nodes.Limit(nodes.Aggregate(SCAN, columns(STATE), columns(F.count("users.id"))), 5)
+        nodes.Project(
+            SCAN,
+            columns(F.count("users.id").alias("n"), STATE, F.sum(PRICE).alias("total")),
+        )
     )
+    statement = compiled.query.user_edited_sql
 
-    assert reference_of(compiled).limit is None
-    assert compiled.query.effective_limit == 5
-    assert "LIMIT 5" in compiled.query.user_edited_sql
-
-
-def test_a_tier_one_expressible_filter_is_pushed_into_the_reference() -> None:
-    plan = nodes.Aggregate(
-        nodes.Filter(SCAN, (F.col("order_items.status") == "complete").expr),
-        columns(STATE),
-        columns(F.count("users.id")),
-    )
-    compiled = compile_sql(plan)
-
-    assert list(reference_of(compiled).filters) == ["order_items.status"]
-    assert "WHERE" not in compiled.query.user_edited_sql, "governed filters never become SQL"
+    assert statement.index("AS of_expr_1") < statement.index("${users.state}")
+    assert statement.index("${users.state}") < statement.index("AS of_expr_2")
+    assert compiled.columns == ("n", STATE, "total")
 
 
-def test_a_filter_tier_one_cannot_express_stays_in_the_outer_where() -> None:
-    predicate = ((F.col(STATE) == "California") | (F.col(AGE) > 60)).expr
-    compiled = compile_sql(nodes.Aggregate(nodes.Filter(SCAN, predicate), columns(STATE), ()))
+def test_every_generated_alias_carries_the_reserved_prefix() -> None:
+    compiled = compile_sql(aggregate(F.count("users.id").alias("n"), keys=columns(STATE)))
 
-    assert reference_of(compiled).filters == {}
-    assert "WHERE" in compiled.query.user_edited_sql
-    assert reference_of(compiled).fields == (STATE, AGE), "the reference widened for the WHERE"
+    for key in compiled.aliases:
+        assert key == STATE or key.startswith(EXPR_ALIAS_PREFIX)
 
 
-def test_the_two_kinds_of_filter_split_within_one_query() -> None:
-    plan = nodes.Aggregate(
-        nodes.Filter(
-            nodes.Filter(SCAN, (F.col("order_items.status") == "complete").expr),
-            ((F.col(STATE) == "California") | (F.col(AGE) > 60)).expr,
-        ),
-        columns(STATE),
-        columns(F.count("users.id")),
-    )
-    compiled = compile_sql(plan)
+def test_a_repeated_bare_ref_is_de_duplicated_at_emission() -> None:
+    """The server collapses duplicates and shifts positions, so the statement must not repeat."""
+    compiled = compile_sql(nodes.Project(SCAN, columns(STATE, STATE)))
 
-    assert list(reference_of(compiled).filters) == ["order_items.status"]
-    assert '"users.state" = \'California\' OR "users.age" > 60' in compiled.query.user_edited_sql
+    assert compiled.query.user_edited_sql.count("${users.state}") == 1
+    assert compiled.columns == (STATE,)
 
 
-def test_a_filter_on_a_group_key_above_the_aggregate_rides_the_where_half() -> None:
-    """``GROUP BY k HAVING k = x`` and ``WHERE k = x GROUP BY k`` are the same question."""
-    plan = nodes.Filter(
-        nodes.Aggregate(SCAN, columns(STATE), columns(F.count("users.id"))),
-        (F.col(STATE) == "California").expr,
-    )
-    compiled = compile_sql(plan)
-
-    assert list(reference_of(compiled).filters) == [STATE]
-    assert "HAVING" not in compiled.query.user_edited_sql
-
-
-def test_the_reference_query_is_a_governed_tier_one_query() -> None:
-    compiled = compile_sql(nodes.Aggregate(SCAN, columns(STATE), columns(F.count("users.id"))))
-    reference = reference_of(compiled)
-
-    assert reference.join_paths_from_topic_name == BENCH_TOPIC_NAME
-    assert reference.table == "order_items"
-    assert reference.user_edited_sql == ""
-    assert reference.to_reference_wire()["model_id"] == BENCH_MODEL_ID
+def test_one_field_under_two_output_names_is_refused_rather_than_half_answered() -> None:
+    """One distinct bare ref comes back as one column whatever the SQL says (§3.2)."""
+    assert try_sql(nodes.Project(SCAN, columns(STATE, F.col(STATE).alias("s")))) is None
 
 
 # --------------------------------------------------------------------------------------
@@ -374,29 +411,92 @@ def test_the_reference_query_is_a_governed_tier_one_query() -> None:
 # --------------------------------------------------------------------------------------
 
 
-def test_an_alias_becomes_the_select_alias_and_the_group_by_stays_the_expression() -> None:
-    plan = nodes.Aggregate(
-        SCAN, columns(F.col(STATE).alias("state")), columns(F.count("users.id").alias("n"))
+def test_group_by_and_order_by_are_positional() -> None:
+    """The only verified forms; over a formatted grain the position sorts by ``__raw`` (§3.1)."""
+    plan = nodes.Sort(
+        nodes.Aggregate(
+            SCAN,
+            columns(STATE, F.col(CREATED).grain("month")),
+            columns(F.count("users.id").alias("n")),
+        ),
+        (F.col("n").desc().to_sort_key(), F.col(STATE).to_sort_key()),
     )
     statement = sql(plan)
 
-    assert '"users.state" AS "state"' in statement
-    assert 'GROUP BY\n  "users.state"' in statement, "ANSI GROUP BY cannot see a SELECT alias"
+    assert "GROUP BY\n  1,\n  2" in statement
+    assert "ORDER BY\n  3 DESC,\n  1 ASC NULLS LAST" in statement
 
 
-def test_an_unaliased_column_is_not_aliased_to_itself() -> None:
-    assert 'AS "users.state"' not in sql(nodes.Aggregate(SCAN, columns(STATE), ()))
+def test_a_group_less_aggregate_emits_no_group_by() -> None:
+    assert "GROUP BY" not in sql(aggregate(F.sum(AGE)))
+
+
+def test_a_measure_only_select_is_a_grand_total() -> None:
+    """Without a GROUP BY a measure select is the grand total (CONTRACT_NOTES §3.6)."""
+    compiled = compile_sql(nodes.Project(SCAN, columns(F.measure(REVENUE).alias("revenue"))))
+
+    assert "GROUP BY" not in compiled.query.user_edited_sql
+    assert "${order_items.total_sale_price}" in compiled.query.user_edited_sql
+    assert compiled.measures == (REVENUE,)
+
+
+def test_a_mixed_aggregate_is_one_statement() -> None:
+    """The M3 decomposition is now the fallback, not the rule (docs/SQLTIER.md §4)."""
+    compiled = compile_sql(
+        nodes.Aggregate(
+            SCAN,
+            columns(STATE),
+            columns(F.measure(REVENUE).alias("revenue"), F.count_distinct("users.id").alias("b")),
+        )
+    )
+    statement = compiled.query.user_edited_sql
+
+    assert "${order_items.total_sale_price}" in statement
+    assert "COUNT(DISTINCT ${users.id}) AS of_expr_1" in statement
+    assert compiled.columns == (STATE, "revenue", "b")
+    assert compiled.group_keys == (STATE,)
+
+
+def test_measure_arithmetic_is_a_select_item() -> None:
+    """``${m} / COUNT(DISTINCT ${f})`` is expanded server-side (CONTRACT_NOTES §3.6, probe L3)."""
+    compiled = compile_sql(
+        nodes.Aggregate(
+            SCAN,
+            columns(STATE),
+            columns((F.measure(REVENUE) / F.count_distinct("users.id")).alias("per_buyer")),
+        )
+    )
+
+    assert (
+        "${order_items.total_sale_price} / COUNT(DISTINCT ${users.id}) AS of_expr_1"
+        in compiled.query.user_edited_sql
+    )
+    assert compiled.aliases == {"of_expr_1": "per_buyer"}
 
 
 def test_having_substitutes_the_full_aggregate_for_its_alias() -> None:
     plan = nodes.Filter(
-        nodes.Aggregate(SCAN, columns(STATE), columns(F.count_distinct("users.id").alias("b"))),
+        aggregate(F.count_distinct("users.id").alias("b"), keys=columns(STATE)),
         (F.col("b") > 25).expr,
     )
     statement = sql(plan)
 
-    assert 'HAVING\n  COUNT(DISTINCT "users.id") > 25' in statement
-    assert 'HAVING\n  "b"' not in statement
+    assert "HAVING\n  COUNT(DISTINCT ${users.id}) > 25" in statement
+    assert "HAVING\n  b" not in statement
+
+
+def test_having_over_a_governed_measure_expands_the_ref_inline() -> None:
+    """Verified live (probe L4): a ``${measure}`` ref in HAVING expands to its aggregate."""
+    plan = nodes.Filter(
+        nodes.Aggregate(
+            SCAN,
+            columns(STATE),
+            columns(F.measure(REVENUE).alias("revenue"), F.count("users.id").alias("n")),
+        ),
+        (F.col("revenue") > 1000).expr,
+    )
+
+    assert "HAVING\n  ${order_items.total_sale_price} > 1000" in sql(plan)
 
 
 def test_a_select_with_an_ad_hoc_aggregation_is_the_same_group_by() -> None:
@@ -404,31 +504,9 @@ def test_a_select_with_an_ad_hoc_aggregation_is_the_same_group_by() -> None:
     project = nodes.Project(SCAN, columns(F.count("users.id").alias("n"), STATE))
     statement = sql(project)
 
-    assert statement.index('AS "n"') < statement.index('"users.state"\nFROM')
+    assert statement.index("AS of_expr_1") < statement.index("${users.state}")
     assert compile_sql(project).columns == ("n", STATE)
-
-
-def test_a_group_less_aggregate_emits_no_group_by() -> None:
-    assert "GROUP BY" not in sql(nodes.Aggregate(SCAN, (), columns(F.sum(AGE))))
-
-
-def test_a_sort_targets_the_output_alias_and_puts_nulls_last() -> None:
-    plan = nodes.Sort(
-        nodes.Aggregate(SCAN, columns(STATE), columns(F.count("users.id").alias("n"))),
-        (F.col("n").desc().to_sort_key(), F.col(STATE).to_sort_key()),
-    )
-    statement = sql(plan)
-
-    assert 'ORDER BY\n  "n" DESC,\n  "users.state" ASC NULLS LAST' in statement
-
-
-def test_the_sort_summary_names_the_output_columns() -> None:
-    plan = nodes.Sort(
-        nodes.Aggregate(SCAN, columns(STATE), columns(F.count("users.id").alias("n"))),
-        (F.col("n").desc().to_sort_key(),),
-    )
-
-    assert compile_sql(plan).sorts == (("n", True),)
+    assert "GROUP BY\n  2" in statement
 
 
 def test_a_computed_column_becomes_a_select_expression() -> None:
@@ -437,27 +515,134 @@ def test_a_computed_column_becomes_a_select_expression() -> None:
         "unit",
         (F.col(PRICE) / F.col("order_items.quantity")).expr,
     )
-    statement = sql(plan)
+    compiled = compile_sql(plan)
 
-    assert '"order_items.sale_price" / "order_items.quantity" AS "unit"' in statement
-    assert compile_sql(plan).columns == (PRICE, "order_items.quantity", "unit")
+    assert (
+        "${order_items.sale_price} / ${order_items.quantity} AS of_expr_1"
+        in compiled.query.user_edited_sql
+    )
+    assert compiled.columns == (PRICE, "order_items.quantity", "unit")
+    assert compiled.aliases == {"of_expr_1": "unit"}
 
 
 def test_a_computed_column_replaces_the_one_it_shadows() -> None:
     plan = nodes.WithColumn(selected(STATE, AGE), AGE, (F.col(AGE) * 2).expr)
+    compiled = compile_sql(plan)
 
-    assert compile_sql(plan).columns == (STATE, AGE)
-    assert '"users.age" * 2 AS "users.age"' in sql(plan)
+    assert compiled.columns == (STATE, AGE)
+    assert "${users.age} * 2 AS of_expr_1" in compiled.query.user_edited_sql
+    assert compiled.aliases == {"of_expr_1": AGE}
 
 
 def test_a_derived_column_over_an_aggregate_output_substitutes_the_aggregate() -> None:
     plan = nodes.WithColumn(
-        nodes.Aggregate(SCAN, columns(STATE), columns(F.count("users.id").alias("n"))),
+        aggregate(F.count("users.id").alias("n"), keys=columns(STATE)),
         "doubled",
         (F.col("n") * 2).expr,
     )
 
-    assert 'COUNT("users.id") * 2 AS "doubled"' in sql(plan)
+    assert "COUNT(${users.id}) * 2 AS of_expr_2" in sql(plan)
+
+
+def test_a_non_aggregated_sort_over_an_unselected_column_renders_inline() -> None:
+    """The server wraps the statement in a subquery whose sort sidecars never leak (probe L5)."""
+    plan = nodes.Sort(selected(STATE), (F.col(AGE).desc().to_sort_key(),))
+
+    assert "ORDER BY\n  ${users.age} DESC" in sql(plan)
+
+
+def test_the_sort_summary_names_the_output_columns() -> None:
+    plan = nodes.Sort(
+        aggregate(F.count("users.id").alias("n"), keys=columns(STATE)),
+        (F.col("n").desc().to_sort_key(),),
+    )
+
+    assert compile_sql(plan).sorts == (("n", True),)
+
+
+# --------------------------------------------------------------------------------------
+# WHERE discipline (docs/SQLTIER.md §3.3)
+# --------------------------------------------------------------------------------------
+
+
+def test_every_row_predicate_is_a_where_conjunct_now() -> None:
+    """v1 pushed the tier-1-expressible ones into a reference core; there is no core left."""
+    plan = nodes.Aggregate(
+        nodes.Filter(
+            nodes.Filter(SCAN, (F.col("order_items.status") == "complete").expr),
+            ((F.col(STATE) == "California") | (F.col(AGE) > 60)).expr,
+        ),
+        columns(STATE),
+        columns(F.count("users.id")),
+    )
+    statement = sql(plan)
+
+    assert "${order_items.status} = 'complete'" in statement
+    assert "${users.state} = 'California' OR ${users.age} > 60" in statement
+
+
+def test_a_compound_range_emits_as_one_parenthesized_conjunct() -> None:
+    """Same-column compound ranges survive the parser intact (probe L1) — so they are emitted."""
+    plan = nodes.Filter(selected("order_items.id", AGE), F.col(AGE).between(18, 21).expr)
+    statement = sql(plan)
+
+    assert "(\n    ${users.age} >= 18 AND ${users.age} <= 21\n  )" in statement
+
+
+def test_a_date_range_keeps_its_half_open_upper_bound() -> None:
+    plan = nodes.Filter(
+        selected("order_items.id", CREATED),
+        F.col(CREATED).between(date(2025, 7, 1), date(2026, 7, 1)).expr,
+    )
+    statement = sql(plan)
+
+    assert "${order_items.created_at} >= CAST('2025-07-01' AS DATE)" in statement
+    assert "${order_items.created_at} < CAST('2026-07-01' AS DATE)" in statement
+
+
+def test_a_grain_ref_never_reaches_the_where() -> None:
+    """The one live-observed predicate loss: a grain ref beside the bare field (§3.3)."""
+    month = F.col(CREATED).grain("month")
+    plan = nodes.Filter(selected("order_items.id", STATE), (month >= date(2026, 3, 1)).expr)
+
+    assert try_sql(plan) is None
+
+
+@pytest.mark.parametrize("spelling", ["order_items.created_at[month]"])
+def test_the_bracketed_spelling_of_a_grain_is_refused_in_where_too(spelling: str) -> None:
+    plan = nodes.Filter(selected("order_items.id", STATE), (F.col(spelling) >= 1).expr)
+
+    assert try_sql(plan) is None
+
+
+def test_a_grain_is_still_a_legal_select_item_and_group_key() -> None:
+    month = F.col(CREATED).grain("month").alias("month")
+    statement = sql(nodes.Aggregate(SCAN, (month,), columns(F.count("users.id").alias("n"))))
+
+    assert "${order_items.created_at[month]}" in statement
+    assert "GROUP BY\n  1" in statement
+
+
+def test_a_governed_measure_is_refused_in_the_where() -> None:
+    plan = nodes.Aggregate(
+        nodes.Filter(SCAN, (F.measure(REVENUE) > 10).expr),
+        columns(STATE),
+        columns(F.count("users.id")),
+    )
+
+    assert try_sql(plan) is None
+
+
+def test_a_filter_on_a_group_key_above_the_aggregate_rides_the_where_half() -> None:
+    """``GROUP BY k HAVING k = x`` and ``WHERE k = x GROUP BY k`` are the same question."""
+    plan = nodes.Filter(
+        aggregate(F.count("users.id"), keys=columns(STATE)),
+        (F.col(STATE) == "California").expr,
+    )
+    statement = sql(plan)
+
+    assert "WHERE\n  ${users.state} = 'California'" in statement
+    assert "HAVING" not in statement
 
 
 # --------------------------------------------------------------------------------------
@@ -471,12 +656,6 @@ def test_a_raw_sql_scan_is_never_re_derived() -> None:
 
 def test_a_stored_query_scan_is_never_re_derived() -> None:
     assert try_sql(nodes.Project(STORED_SCAN, columns(STATE))) is None
-
-
-def test_a_governed_measure_keeps_the_aggregate_out_of_tier_two() -> None:
-    plan = nodes.Aggregate(SCAN, columns(STATE), columns(F.measure(REVENUE), F.count("users.id")))
-
-    assert try_sql(plan) is None
 
 
 def test_a_udf_keeps_the_plan_out_of_tier_two() -> None:
@@ -514,14 +693,14 @@ def test_an_operation_above_a_limit_stays_tier_three() -> None:
 @pytest.mark.parametrize("literal", ["30 days ago", "last quarter", "today", "2 complete days ago"])
 def test_a_relative_date_literal_is_refused_rather_than_written_into_sql(literal: str) -> None:
     """Only Omni evaluates that grammar; a warehouse would read it as a string (§1)."""
-    predicate = ((F.col("order_items.created_at") >= literal) | (F.col(AGE) > 60)).expr
+    predicate = ((F.col(CREATED) >= literal) | (F.col(AGE) > 60)).expr
 
     assert try_sql(nodes.Filter(selected(STATE, AGE), predicate)) is None
 
 
 def test_a_relative_date_literal_is_refused_next_to_equals_too() -> None:
     """The grammar is the grammar whichever operator it sits beside — ``==`` was exempt."""
-    predicate = ((F.col("order_items.created_at") == "today") | (F.col(AGE) > 60)).expr
+    predicate = ((F.col(CREATED) == "today") | (F.col(AGE) > 60)).expr
 
     assert try_sql(nodes.Filter(selected(STATE, AGE), predicate)) is None
 
@@ -539,28 +718,15 @@ def test_a_relative_date_literal_is_refused_next_to_equals_too() -> None:
 def test_a_string_against_a_timestamp_grain_is_refused_rather_than_compared_as_text(
     build: Any,
 ) -> None:
-    """A grain pins the type, so the string is a DATE literal — tier 1 compiles it as one.
-
-    Rendering it as SQL text sends ``'2026-03'`` to the warehouse as a string: a conversion error
-    on DuckDB/Snowflake, and for ``between()`` a *different row set* on a coercing dialect, since
-    tier 1's date BETWEEN is half-open while the SQL rendering would be inclusive.
-    """
-    month = F.col("order_items.created_at").grain("month")
+    """A grain pins the type, so the string is a DATE literal — tier 1 compiles it as one."""
+    month = F.col(CREATED).grain("month")
     predicate = (build(month) | (F.col(AGE) > 60)).expr
 
     assert try_sql(nodes.Filter(selected(STATE, AGE), predicate)) is None
 
 
-def test_a_grained_field_against_a_real_date_still_compiles() -> None:
-    """Only the *string* form is ambiguous; a date literal renders as a CAST like any other."""
-    month = F.col("order_items.created_at").grain("month")
-    predicate = ((month >= date(2026, 3, 1)) | (F.col(AGE) > 60)).expr
-
-    assert try_sql(nodes.Filter(selected(STATE, AGE), predicate)) is not None
-
-
 def test_an_absolute_date_literal_is_not_mistaken_for_a_relative_one() -> None:
-    predicate = ((F.col("order_items.created_at") >= date(2026, 1, 1)) | (F.col(AGE) > 60)).expr
+    predicate = ((F.col(CREATED) >= date(2026, 1, 1)) | (F.col(AGE) > 60)).expr
 
     assert try_sql(nodes.Filter(selected(STATE, AGE), predicate)) is not None
 
@@ -582,13 +748,9 @@ def test_a_having_with_nothing_to_group_is_refused() -> None:
 
 
 def test_a_filter_above_an_aggregate_on_a_consumed_column_is_refused() -> None:
-    """Not tier 2's to reinterpret: moving it below the GROUP BY answers a different question.
-
-    The splitter reports it by name instead (``users.age is not available after group_by``), and
-    it can only do that if tier 2 declines rather than quietly rewriting it as a WHERE.
-    """
+    """Not tier 2's to reinterpret: moving it below the GROUP BY answers a different question."""
     plan = nodes.Filter(
-        nodes.Aggregate(SCAN, columns(STATE), columns(F.count("users.id").alias("n"))),
+        aggregate(F.count("users.id").alias("n"), keys=columns(STATE)),
         (F.col(AGE) * 2 > 1).expr,
     )
 
@@ -596,19 +758,13 @@ def test_a_filter_above_an_aggregate_on_a_consumed_column_is_refused() -> None:
 
 
 def test_a_having_that_also_names_a_consumed_column_is_refused() -> None:
-    """An aggregate somewhere in the predicate does not license the rest of it.
+    """An aggregate somewhere in the predicate does not license the rest of it."""
+    agg = aggregate(F.count("users.id").alias("n"), keys=columns(STATE))
 
-    ``(n > 10) OR (users.age = 30)`` is a single conjunct, so without this guard ``users.age``
-    rode into the HAVING naming a column that is neither grouped nor aggregated — a binder error
-    on DuckDB/Postgres/Snowflake and an arbitrary-row answer on a permissive dialect.  Declining
-    is always correct (docs/SQLTIER.md §5); the splitter then reports it by name.
-    """
-    aggregate = nodes.Aggregate(SCAN, columns(STATE), columns(F.count("users.id").alias("n")))
-
-    assert try_sql(nodes.Filter(aggregate, ((F.col("n") > 10) | (F.col(AGE) == 30)).expr)) is None
-    assert try_sql(nodes.Filter(aggregate, (F.col("n") > F.col(AGE)).expr)) is None
+    assert try_sql(nodes.Filter(agg, ((F.col("n") > 10) | (F.col(AGE) == 30)).expr)) is None
+    assert try_sql(nodes.Filter(agg, (F.col("n") > F.col(AGE)).expr)) is None
     # The legitimate shape — a group key beside the aggregate — still compiles.
-    legal = nodes.Filter(aggregate, ((F.col("n") > 10) | (F.col(STATE) == "California")).expr)
+    legal = nodes.Filter(agg, ((F.col("n") > 10) | (F.col(STATE) == "California")).expr)
     compiled = try_sql(legal)
     assert compiled is not None
     assert "HAVING" in compiled.query.user_edited_sql
@@ -616,7 +772,7 @@ def test_a_having_that_also_names_a_consumed_column_is_refused() -> None:
 
 def test_a_derived_column_above_an_aggregate_over_a_consumed_column_is_refused() -> None:
     plan = nodes.WithColumn(
-        nodes.Aggregate(SCAN, columns(STATE), columns(F.count("users.id").alias("n"))),
+        aggregate(F.count("users.id").alias("n"), keys=columns(STATE)),
         "doubled",
         (F.col(AGE) * 2).expr,
     )
@@ -627,7 +783,7 @@ def test_a_derived_column_above_an_aggregate_over_a_consumed_column_is_refused()
 def test_replacing_a_group_key_with_a_derived_column_is_refused() -> None:
     """The GROUP BY would name a column the SELECT no longer produces."""
     plan = nodes.WithColumn(
-        nodes.Aggregate(SCAN, columns(AGE), columns(F.count("users.id").alias("n"))),
+        aggregate(F.count("users.id").alias("n"), keys=columns(AGE)),
         AGE,
         (F.col(AGE) * 2).expr,
     )
@@ -647,48 +803,54 @@ def test_the_same_filter_over_a_group_key_is_accepted() -> None:
 
 def test_sorting_an_aggregate_by_a_column_it_does_not_select_is_refused() -> None:
     plan = nodes.Sort(
-        nodes.Aggregate(SCAN, columns(STATE), columns(F.count("users.id"))),
+        aggregate(F.count("users.id"), keys=columns(STATE)),
         (F.col(AGE).to_sort_key(),),
     )
 
     assert try_sql(plan) is None
 
 
+def test_a_bare_field_beside_an_aggregate_is_refused_rather_than_left_ungrouped() -> None:
+    """``users.age * 2`` beside a COUNT is neither grouped nor aggregated — a binder error."""
+    plan = nodes.Aggregate(SCAN, columns(STATE), columns((F.col(AGE) * 2).alias("x")))
+
+    assert try_sql(plan) is None
+
+
 # --------------------------------------------------------------------------------------
-# The carrier and the dialect knob
+# The carrier
 # --------------------------------------------------------------------------------------
 
 
 def test_a_tier_two_compilation_fills_the_semantic_carrier() -> None:
     """``RemoteStep`` reads only these attributes, which is why tier 2 needs no new class."""
-    compiled = compile_sql(
-        nodes.Aggregate(SCAN, columns(STATE), columns(F.count("users.id").alias("n")))
-    )
+    compiled = compile_sql(aggregate(F.count("users.id").alias("n"), keys=columns(STATE)))
 
     assert compiled.tier == 2
     assert compiled.role == "sql"
     assert compiled.is_sql is True
     assert compiled.opaque is False, "omniframes wrote this SQL; it was not handed it"
-    assert compiled.aliases == {}
+    assert compiled.aliases == {"of_expr_1": "n"}
     assert compiled.columns == (STATE, "n")
     assert compiled.group_keys == (STATE,)
-    assert compiled.measures == ()
     assert compiled.measure_filters == ()
     assert compiled.scan is SCAN.source
 
 
-def test_the_default_dialect_is_ansi_ish_and_the_knob_switches_it() -> None:
-    plan = nodes.Aggregate(SCAN, columns(STATE), columns(F.count("users.id").alias("n")))
-
-    assert '"users.state"' in sql(plan)
-    assert "`users.state`" in sql(plan, sql_dialect="bigquery")
-
-
 def test_the_statement_is_pretty_printed_so_the_golden_files_stay_readable() -> None:
-    assert "\n" in sql(nodes.Aggregate(SCAN, columns(STATE), columns(F.count("users.id"))))
+    assert "\n" in sql(aggregate(F.count("users.id"), keys=columns(STATE)))
 
 
 def test_compiling_the_same_plan_twice_gives_byte_identical_sql() -> None:
     plan = nodes.Aggregate(SCAN, columns(STATE, AGE), columns(F.sum(PRICE), F.count("users.id")))
 
     assert sql(plan) == sql(plan), "determinism is what makes the golden files reviewable"
+
+
+def _placeholder_free(statement: str) -> str:
+    """``${view.field}`` back to a plain identifier, so sqlglot can re-parse the text.
+
+    OmniSQL is not SQL until the server substitutes it, and the injection tests want to read the
+    statement's *structure*: one SELECT, one string literal, no second statement.
+    """
+    return re.sub(r"\$\{([^}]*)\}", lambda m: '"' + m.group(1) + '"', statement)

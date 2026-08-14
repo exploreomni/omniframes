@@ -76,13 +76,13 @@ maximizing the remote portion. `explain()` always shows where the line fell.
     measures *is* the group-by, filters become typed wire filters, and a filter on a measure is a
     genuine server-side `HAVING`.
 
--   **Tier 2 — SQL job**
+-   **Tier 2 — OmniSQL job**
 
     ---
 
-    Warehouse-executed SQL over **embedded governed sub-queries**. Picks up ad-hoc aggregations,
-    cross-field `OR`, computed columns and `HAVING` on ad-hoc aggregates — the rows never leave
-    the warehouse.
+    One statement written against the **model itself** (`FROM ${topic}`, `${view.field}`,
+    `${view.measure}`), planned as a governed job. Picks up ad-hoc aggregations, cross-field
+    `OR`, computed columns and `HAVING` — the rows never leave the warehouse.
 
 -   **Tier 3 — local execution**
 
@@ -93,38 +93,31 @@ maximizing the remote portion. `explain()` always shows where the line fell.
 
 </div>
 
-A single frame can use all three at once. This mixed aggregation — one governed measure, one
-ad-hoc `COUNT(DISTINCT …)` — decomposes into a tier-1 query, a tier-2 SQL job, and a local join
-on the group key:
+A frame compiles to the highest tier that can express it, and the split is always on the screen.
+This mixed aggregation — one governed measure, one ad-hoc `COUNT(DISTINCT …)` — is a single
+statement: the measure ref expands to its governed SQL server-side, beside the ad-hoc aggregate.
 
 ```text
 == Physical plan ==
-Remote step 1 [tier 1 · semantic → POST /api/v1/query/run]
-  topic: order_items   model: ecommerce
-  fields: [users.state, order_items.total_sale_price]
-  group by: [users.state]
-  measures: [order_items.total_sale_price]
-  sort: (none)   limit: 50000   version: 9
-  aliases: order_items.total_sale_price -> revenue
-Remote step 2 [tier 2 · sql → POST /api/v1/query/run]
+Remote [tier 2 · sql → POST /api/v1/query/run]
   topic: order_items   model: ecommerce
   sql:
     SELECT
-      "users.state",
-      COUNT(DISTINCT "users.id") AS "buyers"
-    FROM ref_1
+      ${users.state},
+      ${order_items.total_sale_price},
+      COUNT(DISTINCT ${users.id}) AS of_expr_1
+    FROM ${order_items}
     GROUP BY
-      "users.state"
+      1
     LIMIT 50000
-  references:
-    ref_1 [semantic]: fields [users.state, users.id]  (unlimited)
-Local [arrow compute]
-  align-join: step 1 ⨝ step 2 on [users.state]
-  project: [users.state, revenue, buyers]
+Local [pandas]
+  (none — fully pushed down)
 ```
 
-The governed measure never leaves tier 1 — its definition lives in the model and omniframes
-never emulates one. Everything else moved as far down as it could go.
+The governed measure is never emulated here — its definition lives in the model, and the
+statement asks Omni for it by name. Put a UDF above that frame and `explain()` grows a
+`Local [arrow compute]` section naming every operator that runs in this process, and the remote
+query underneath shrinks to exactly what could still be pushed down.
 
 ## Design commitments
 

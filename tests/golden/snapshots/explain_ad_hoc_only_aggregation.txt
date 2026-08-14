@@ -3,13 +3,11 @@ Remote [tier 2 · sql → POST /api/v1/query/run]
   topic: order_items   model: bench_ecommerce
   sql:
     SELECT
-      "products.category",
-      AVG("order_items.sale_price") AS "avg(order_items.sale_price)"
-    FROM ref_1
+      ${products.category},
+      AVG(${order_items.sale_price}) AS of_expr_1
+    FROM ${order_items}
     GROUP BY
-      "products.category"
+      1
     LIMIT 50000
-  references:
-    ref_1 [semantic]: fields [products.category, order_items.sale_price]  (unlimited)
 Local [pandas]
   (none — fully pushed down)

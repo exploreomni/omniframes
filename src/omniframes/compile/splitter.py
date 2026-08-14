@@ -3,9 +3,9 @@
 The whole algorithm is one invariant, applied top-down (docs/HYBRID.md §2, docs/SQLTIER.md §4):
 
     **At every node, try the tiers in order over the entire subtree: the governed query
-    (tier 1), then a SQL job over a governed reference core (tier 2).**  If either compiles,
-    that subtree *is* a remote step and the recursion stops there.  Only when both refuse does
-    the node itself become a local operator over the split of its children.
+    (tier 1), then one OmniSQL statement (tier 2).**  If either compiles, that subtree *is* a
+    remote step and the recursion stops there.  Only when both refuse does the node itself
+    become a local operator over the split of its children.
 
 Because the attempt happens at every level, the remote frontier is automatically maximal — no
 separate analysis pass, and no way for the two to disagree.  A tier-2 refusal is never a user
@@ -21,12 +21,15 @@ what makes the result predictable:
 * **A ``Limit`` pins the frontier** (§2.3).  Operations *below* a limit ride the limited remote
   query; operations *above* one run locally over its result.  Both directions are honest about
   what the limit means, which is why M1 refused the shape rather than guessing.
-* **Mixed aggregation decomposes** (§2.1).  Governed measures always execute remotely; the
-  ad-hoc half becomes a tier-2 ``GROUP BY`` when tier 2 can express it, and otherwise falls back
-  to M3's unlimited raw scan plus a local aggregate.  Either way the two halves are re-assembled
-  on the group keys by an :class:`~omniframes.compile.local.AlignJoin`, which stays local on
-  purpose: matching NULL keys to each other needs ``IS NOT DISTINCT FROM``, which is not portable
-  across warehouse dialects, and both sides are already aggregated (docs/SQLTIER.md, DECISION 1).
+* **Mixed aggregation collapses, and only decomposes as a fallback** (docs/SQLTIER.md §4).  A
+  governed measure is a legal select item on the OmniSQL path and mixes freely with ad-hoc
+  aggregates in one statement, so ``agg(F.measure(...), F.count_distinct(...))`` is ONE tier-2
+  job whenever tier 2 can write it.  When it cannot, the M3 decomposition answers instead: a
+  governed tier-1 query for the measures, a tier-2 ``GROUP BY`` (or M3's unlimited raw scan plus
+  a local aggregate) for the ad-hoc half, and an :class:`~omniframes.compile.local.AlignJoin`
+  re-assembling the two on the group keys.  That join stays local on purpose: matching NULL keys
+  to each other needs ``IS NOT DISTINCT FROM``, which is not portable across warehouse dialects,
+  and both sides are already aggregated (docs/HYBRID.md §2.1).
 """
 
 from __future__ import annotations
@@ -109,9 +112,6 @@ class SplitOptions:
     #: lane's headline check runs the same plan both ways (docs/SQLTIER.md §5/§7); there is
     #: deliberately no public builder knob for it, because a user has no reason to want one.
     disable_sql: bool = False
-    #: Warehouse dialect for the generated tier-2 SQL; ``None`` is sqlglot's ANSI-ish default
-    #: (docs/SQLTIER.md §3).  A compile knob, not an envelope field.
-    sql_dialect: str | None = None
 
 
 def split(plan: nodes.PlanNode, *, options: SplitOptions | None = None) -> ExecutionPlan:
@@ -240,7 +240,7 @@ class _Splitter:
         return self._local(node, required)
 
     def sql(self, node: nodes.PlanNode) -> _Frame | None:
-        """One tier-2 attempt: a SQL job over a governed reference core, or ``None``."""
+        """One tier-2 attempt: the subtree as a single OmniSQL statement, or ``None``."""
         if self.options.disable_sql:
             return None
         compilation = try_sql(node, options=self.options)
@@ -318,6 +318,17 @@ class _Splitter:
         )
         child = self.split(node.child, required | needed)
 
+        # A field selected more than once arrives as ONE column whatever the query said (tier 1
+        # by its `fields` list, tier 2 by the OmniSQL parser's bare-ref dedup — docs/SQLTIER.md
+        # §3.2), and a rename map keyed by the source name cannot say "this copy, not that one".
+        # Every copy of such a field is therefore materialized here, by name.
+        sources = [
+            _resolve(column.expr, child.renames)
+            for column in node.columns
+            if isinstance(column.expr, FieldRef | MeasureRef)
+        ]
+        copied = {name for name in sources if sources.count(name) > 1}
+
         frame = child
         names: list[str] = []
         renames: dict[str, str] = {}
@@ -325,9 +336,17 @@ class _Splitter:
             output = column.alias_name or column_key(column.expr)
             if isinstance(column.expr, FieldRef | MeasureRef):
                 source = _resolve(column.expr, child.renames)
-                names.append(source)
-                if source != output:
-                    renames[source] = output
+                if source not in copied:
+                    names.append(source)
+                    if source != output:
+                        renames[source] = output
+                    continue
+                if output != source:
+                    frame = frame.then(
+                        LocalWithColumn(output, FieldRef(source)),
+                        frame.columns if output in frame.columns else (*frame.columns, output),
+                    )
+                names.append(output)
             else:
                 frame = frame.then(
                     LocalWithColumn(output, _rebind(column.expr, child.renames)),
@@ -372,6 +391,16 @@ class _Splitter:
                     "group by dimensions (optionally at a grain)"
                 )
         key_names = tuple(key.alias_name or column_key(key.expr) for key in keys)
+        produced = {key: name for key, name in outputs if key != name}
+
+        # A governed measure is a legal select item on the OmniSQL path and mixes freely with
+        # ad-hoc aggregates in one statement (CONTRACT_NOTES §3.6), so the whole node — keys,
+        # measures and ad-hoc aggregates together — is tried as ONE tier-2 job first.  When it
+        # compiles there is nothing to decompose: no measure step, no align-join, and no raw
+        # scan for `decomposition_row_cap` to cap (docs/SQLTIER.md §4).
+        whole = self.sql(node)
+        if whole is not None:
+            return _Frame(whole.step, whole.columns, produced)
 
         # The governed half goes first so that `explain()` numbers the steps the way the
         # decomposition reads: step 1 computes the measures, step 2 scans the rows behind the
@@ -388,7 +417,6 @@ class _Splitter:
             remote = self.remote(governed)
 
         agg_names = tuple(column.alias_name or column_key(column.expr) for column in adhoc)
-        produced = {key: name for key, name in outputs if key != name}
         computed = self._adhoc_half(node.child, keys, adhoc, key_names, agg_names, produced)
 
         if remote is None:
@@ -408,12 +436,12 @@ class _Splitter:
         agg_names: tuple[str, ...],
         produced: Mapping[str, str],
     ) -> _Frame:
-        """The ad-hoc aggregates: one tier-2 ``GROUP BY`` when expressible, else M3's decomposition.
+        """The ad-hoc half alone: one tier-2 ``GROUP BY`` when expressible, else M3's raw scan.
 
-        Only the *scan* cost ever mattered here (docs/HYBRID.md §2.1), and a warehouse-side
-        GROUP BY removes it entirely.  The ``AlignJoin`` above deliberately stays local: a
-        NULL-safe join needs ``IS NOT DISTINCT FROM``, which is not portable across warehouse
-        dialects, and both sides are already aggregated (docs/SQLTIER.md, DECISION 1).
+        Reached only after the whole node refused tier 2, so the measures are running as their
+        own governed query and this half has to be produced beside them.  Even here it is worth
+        one more tier-2 attempt: only the *scan* cost ever mattered (docs/HYBRID.md §2.1), and a
+        warehouse-side GROUP BY removes it entirely even when the measures could not ride along.
         """
         sql = self.sql(nodes.Aggregate(child, tuple(keys), tuple(adhoc)))
         if sql is not None:

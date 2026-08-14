@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING, Any, Final
 import pyarrow as pa
 
 from omniframes.column import AdHocAgg, Column, Expr, FieldRef, MeasureRef
-from omniframes.compile.executor import execute
+from omniframes.compile.executor import execute, remote_errors
 from omniframes.compile.explain import explain_text
 from omniframes.compile.querymodel import DEFAULT_FETCH_LIMIT, UNSET, Unset
 from omniframes.compile.semantic import ExecutionPlan, RemoteStep, alias_map, display_name
@@ -50,7 +50,12 @@ from omniframes.functions import col as _col
 from omniframes.io.writers import DataFrameWriter
 from omniframes.plan import nodes
 from omniframes.transport.arrow import schema_from_summary
-from omniframes.transport.normalize import GRAND_TOTAL_VALUE, NormalizedResult, normalize
+from omniframes.transport.normalize import (
+    GRAND_TOTAL_VALUE,
+    NormalizedResult,
+    normalize,
+    resolve_aliases,
+)
 from omniframes.types import OmniDataType, OmniField, OmniSchema
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -432,7 +437,8 @@ class DataFrame:
                 "the Arrow schema of the result."
             )
         step = execution.remote
-        result = self._session.plan(step.envelope)
+        with remote_errors(step):
+            result = self._session.plan(step.envelope)
         schema = _rename_schema(schema_from_summary(result.summary.get("fields")), step.alias_map)
         if self._totals:
             schema = OmniSchema((*schema.fields, _ROW_TYPE_FIELD))
@@ -480,7 +486,6 @@ class DataFrame:
                     envelope=self._session.envelope_options(),
                     totals=self._totals,
                     decomposition_row_cap=self._session.decomposition_row_cap,
-                    sql_dialect=self._session.sql_dialect,
                 ),
             )
         return self._execution
@@ -490,7 +495,8 @@ class DataFrame:
         if execution.root is not None:
             return execute(execution, self._run_remote, warn=warn, stacklevel=4)
         step = execution.remote
-        result = self._session.run(step.envelope)
+        with remote_errors(step):
+            result = self._session.run(step.envelope)
         normalized = normalize(
             result.table,
             result.summary.get("fields"),
@@ -593,10 +599,11 @@ def _name(column: Column) -> str:
 def _single_remote(execution: ExecutionPlan) -> RemoteStep:
     """The one governed query ``omni_url()`` can open, or a :class:`CompileError` saying why not.
 
-    Two separate constraints, reported separately because the fix differs: a DAG has no single
-    query to be a workbook *of*, and a tier-2 job carries ``staticQueryReferences``, which the
-    server rejects outright when ``workbookUrl`` is set (CONTRACT_NOTES §2.1) — so this refusal
-    happens here rather than as a 400 nobody can act on.
+    Three separate constraints, reported separately because the fix differs: a DAG has no single
+    query to be a workbook *of*; a query carrying ``staticQueryReferences`` is rejected outright
+    when ``workbookUrl`` is set (CONTRACT_NOTES §2.1), so that refusal happens here rather than
+    as a 400 nobody can act on; and a workbook explores model *fields*, which a step whose
+    payload is a SQL statement — tier 2 or ``read.sql`` — has none of.
     """
     if execution.root is not None or len(execution.steps) != 1:
         raise CompileError(
@@ -607,8 +614,8 @@ def _single_remote(execution: ExecutionPlan) -> RemoteStep:
     step = execution.steps[0]
     if step.query.static_query_references:
         raise CompileError(
-            "omni_url() is not available for this frame: it compiles to a tier-2 SQL job, and "
-            "the query API rejects workbookUrl together with staticQueryReferences "
+            "omni_url() is not available for this frame: its query carries query references, "
+            "and the query API rejects workbookUrl together with staticQueryReferences "
             "(CONTRACT_NOTES §2.1). Only a query Omni's model can express on its own has a "
             "workbook to open."
         )
@@ -767,9 +774,18 @@ def _warn_if_truncated(rows: int, applied_limit: int | None) -> None:
 
 
 def _rename_schema(schema: OmniSchema, aliases: Mapping[str, str]) -> OmniSchema:
+    """Apply the step's renames to a planned schema, by the same rules the result columns get.
+
+    ``summary.fields`` carries the server's names, so a tier-2 expression item is described
+    under the scoped ``<view>.of_expr_<n>`` the client cannot predict — matched by suffix here
+    exactly as in :func:`~omniframes.transport.normalize.normalize` (docs/SQLTIER.md §3.2).
+    """
     if not aliases:
         return schema
-    return OmniSchema(tuple(replace(f, name=aliases.get(f.name, f.name)) for f in schema.fields))
+    renamed = resolve_aliases(schema.names, aliases)
+    return OmniSchema(
+        tuple(replace(f, name=name) for f, name in zip(schema.fields, renamed, strict=True))
+    )
 
 
 def _cell(value: object) -> str:

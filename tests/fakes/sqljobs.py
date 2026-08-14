@@ -14,10 +14,10 @@ run in both lanes has to be schema-qualified by the caller, not by the fake.
 
 Three server behaviors are reproduced literally because they are the ones that bite clients:
 
-* **``userEditedSQL`` alone is IGNORED.**  Without ``rewriteSql: false`` (or ``parsed: false`` /
-  ``dbtMode: true``) the server drops the SQL on the floor and plans the query object instead —
-  a silent, plausible, *wrong* answer.  The fake does the same, so a client that forgets the
-  marker fails offline the way it would fail live.
+* **``userEditedSQL`` alone is a different job kind.**  Without ``rewriteSql: false`` (or
+  ``parsed: false`` / ``dbtMode: true``) the text is not run verbatim and not ignored either: it
+  is parsed as **OmniSQL** and planned as a governed model job (CONTRACT_NOTES §3.6), which is
+  :mod:`tests.fakes.omnisql`.  The marker is the whole selector between the two paths.
 * **``sqlSortsEnabled``** gates ``sorts`` and ``column_totals``: truthy applies them on top of
   the SQL result, falsy strips them **silently** (the server forces them to ``[]``).
 * **Measure-keyed ``filters`` entries are silently SKIPPED** — the view Omni wraps around the
@@ -91,11 +91,12 @@ _REFERENCE_REFUSED: Final = (
 
 
 def is_raw_sql_job(query: Mapping[str, Any]) -> bool:
-    """Whether this query runs the caller's SQL (§3.4) rather than the semantic query object.
+    """Whether this query runs the caller's SQL **verbatim** (§3.4).
 
     ``userEditedSQL`` on its own is **not** enough — that is the whole point.  One of the three
-    "do not rewrite this" markers has to sit next to it; without one the server ignores the SQL
-    and plans the query object, and so does the fake.
+    "do not rewrite this" markers has to sit next to it; without one the text takes the parsed
+    OmniSQL path instead (:func:`tests.fakes.omnisql.is_omnisql_job`), which is a governed model
+    job rather than a warehouse passthrough.
     """
     sql = query.get("userEditedSQL")
     if not isinstance(sql, str) or not sql.strip():
@@ -158,10 +159,24 @@ class SqlJob:
     skipped_filters: tuple[str, ...] = ()
     #: Whether ``sqlSortsEnabled`` was on *and* ``sorts`` were non-empty.
     sorts_applied: bool = False
+    #: ``summary.fields`` when the path computed them itself — the OmniSQL resolver binds result
+    #: columns back to model fields (:mod:`tests.fakes.omnisql`).  ``None`` on the verbatim path,
+    #: where there is no model to bind to and they are synthesized from the Arrow schema.
+    summary_fields: Mapping[str, Any] | None = None
+    #: ``summary.omni_sql`` — the OmniSQL text on the parsed path, empty on the verbatim one
+    #: (hand-written SQL has no Omni-flavored form).
+    omni_sql: str = ""
 
     @property
     def reference_keys(self) -> tuple[str, ...]:
         return tuple(reference.key for reference in self.references)
+
+    @property
+    def result_fields(self) -> Mapping[str, Any]:
+        """``summary.fields`` for this job, however this path arrived at them."""
+        if self.summary_fields is not None:
+            return self.summary_fields
+        return synthesize_fields(self.schema)
 
 
 # --------------------------------------------------------------------------------------

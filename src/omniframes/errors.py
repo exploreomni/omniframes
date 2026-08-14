@@ -63,7 +63,13 @@ class ModelPermissionError(TransportError):
 
 
 class QueryError(OmniframesError):
-    """A submitted job reached a terminal error state (in-band job error line)."""
+    """A submitted job reached a terminal error state (in-band job error line).
+
+    ``statement`` carries the OmniSQL text the server rejected, for the one failure that is
+    omniframes' own fault rather than the user's: a tier-2 statement the model no longer binds
+    (docs/SQLTIER.md §8).  It stays ``None`` for every other job error, including a raw-SQL job,
+    whose SQL the user wrote and already has.
+    """
 
     def __init__(
         self,
@@ -71,10 +77,12 @@ class QueryError(OmniframesError):
         *,
         error_type: str | None = None,
         job_id: str | None = None,
+        statement: str | None = None,
     ) -> None:
         super().__init__(message)
         self.error_type = error_type
         self.job_id = job_id
+        self.statement = statement
 
 
 class QueryTimeoutError(OmniframesError):

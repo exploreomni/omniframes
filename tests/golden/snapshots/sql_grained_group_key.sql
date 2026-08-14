@@ -1,7 +1,7 @@
 SELECT
-  "order_items.created_at[month]" AS "month",
-  COUNT(DISTINCT "users.id") AS "buyers"
-FROM ref_1
+  ${order_items.created_at[month]},
+  COUNT(DISTINCT ${users.id}) AS of_expr_1
+FROM ${order_items}
 GROUP BY
-  "order_items.created_at[month]"
+  1
 LIMIT 50000

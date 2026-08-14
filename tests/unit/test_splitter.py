@@ -212,6 +212,27 @@ def test_a_computed_column_in_select_is_projected_locally_in_the_written_order()
     assert execution.columns == ("double", "users.state")
 
 
+def test_a_field_selected_bare_and_aliased_is_copied_locally() -> None:
+    """One column arrives however many times a field is selected (docs/SQLTIER.md §3.2).
+
+    Neither tier can produce the second copy — tier 1 sends `fields` once and the OmniSQL parser
+    de-duplicates a repeated bare ref — so the projection makes it, rather than renaming both
+    copies to the alias and losing the bare one.
+    """
+    execution = split(selected("users.state", F.col("users.state").alias("s")))
+
+    assert fields(execution) == ["users.state"], "the wire still fetches the field once"
+    assert execution.columns == ("users.state", "s")
+    assert kinds(execution) == [LocalWithColumn, LocalProject]
+
+
+def test_the_alias_may_be_written_before_the_bare_field() -> None:
+    execution = split(selected(F.col("users.state").alias("s"), "users.state"))
+
+    assert execution.columns == ("s", "users.state")
+    assert kinds(execution) == [LocalWithColumn, LocalProject]
+
+
 def test_a_field_that_cannot_be_widened_in_is_an_error_naming_it() -> None:
     aggregate = nodes.Aggregate(SCAN, columns("users.state"), columns(F.measure(REVENUE)))
     plan = nodes.Filter(aggregate, (F.col("users.age") * 2 > 1).expr)
@@ -287,7 +308,7 @@ def test_widening_lands_below_the_limit_not_above_it() -> None:
 
 
 # --------------------------------------------------------------------------------------
-# Mixed-aggregation decomposition (§2.1)
+# Mixed aggregation: one tier-2 statement (SQLTIER §4), decomposing only when tier 2 refuses
 # --------------------------------------------------------------------------------------
 
 
@@ -297,6 +318,72 @@ def mixed() -> nodes.Aggregate:
         columns("users.state"),
         columns(F.measure(REVENUE).alias("revenue"), F.count_distinct("users.id").alias("buyers")),
     )
+
+
+def refused_mixed() -> nodes.Aggregate:
+    """The same aggregate over a filter tier 2 cannot write.
+
+    Omni's relative-date grammar only means something server-side, so a `last month` predicate
+    has no OmniSQL rendering and the whole statement refuses (docs/SQLTIER.md §1) — while tier 1
+    carries it happily, which is exactly the shape the decomposition still exists for.
+    """
+    return nodes.Aggregate(
+        nodes.Filter(SCAN, (F.col("order_items.created_at") == "last month").expr),
+        columns("users.state"),
+        columns(F.measure(REVENUE).alias("revenue"), F.count_distinct("users.id").alias("buyers")),
+    )
+
+
+def test_a_mixed_aggregate_is_one_tier_two_statement() -> None:
+    """The measure and the ad-hoc aggregate ride the same SELECT; nothing is decomposed."""
+    execution = split(mixed())
+    sql = execution.steps[0].envelope["query"]["userEditedSQL"]
+
+    assert execution.root is None, "no align-join, no local aggregate, no second query"
+    assert [(step.label, step.tier) for step in execution.steps] == [("sql", 2)]
+    assert "${order_items.total_sale_price}" in sql, "the measure expands server-side"
+    assert "COUNT(DISTINCT ${users.id})" in sql
+    assert execution.columns == ("users.state", "revenue", "buyers")
+
+
+def test_the_row_cap_has_nothing_to_cap_when_the_mixed_aggregate_collapses() -> None:
+    """`decomposition_row_cap` caps the decomposition's raw scan, and there is no raw scan."""
+    execution = split(mixed(), options=SplitOptions(decomposition_row_cap=1000))
+
+    assert len(execution.steps) == 1
+    assert limit(execution) == DEFAULT_FETCH_LIMIT, "the statement's own limit, not the cap"
+
+
+def test_a_mixed_aggregate_tier_two_refuses_still_decomposes() -> None:
+    """The M3 decomposition is the fallback, not the dead code path (docs/SQLTIER.md §4)."""
+    execution = split(refused_mixed())
+
+    assert [step.label for step in execution.steps] == ["semantic", "raw scan"]
+    assert kinds(execution) == [LocalAggregate, AlignJoin, LocalProject]
+    assert execution.columns == ("users.state", "revenue", "buyers")
+    assert list(execution.steps[0].envelope["query"]["filters"]) == ["order_items.created_at"], (
+        "the predicate tier 2 could not write is exactly the one tier 1 pushes"
+    )
+
+
+def test_a_measure_only_aggregate_is_still_tier_one() -> None:
+    """Tier order is untouched: tier 2's reach grew, tier 1 still wins what it can express."""
+    execution = split(nodes.Aggregate(SCAN, columns("users.state"), columns(F.measure(REVENUE))))
+
+    assert execution.root is None
+    assert [(step.label, step.tier) for step in execution.steps] == [("semantic", 1)]
+
+
+def test_a_measure_only_aggregate_over_local_work_is_refused_by_name() -> None:
+    """Governed measures never run locally, so an input no query can express is an error."""
+    plan = nodes.Aggregate(
+        nodes.MapPandas(selected("users.state"), lambda frame: frame),
+        columns("users.state"),
+        columns(F.measure(REVENUE)),
+    )
+
+    with pytest.raises(CompileError, match="governed measures always execute remotely"):
+        split(plan)
 
 
 def test_a_mixed_aggregate_decomposes_into_measures_then_raw_scan() -> None:
@@ -332,7 +419,7 @@ def test_the_align_join_keys_on_the_user_facing_group_key_names() -> None:
         columns(F.col("users.state").alias("state")),
         columns(F.measure(REVENUE), F.count_distinct("users.id")),
     )
-    execution = split(aggregate)
+    execution = local_split(aggregate)
     join = next(op for op in ops(execution) if isinstance(op, AlignJoin))
 
     assert join.on == ("state",), "both halves carry the same alias, so the keys line up by name"
@@ -379,43 +466,69 @@ def test_a_global_ad_hoc_aggregate_groups_by_nothing() -> None:
     assert execution.columns == ("sum(users.age)",)
 
 
-def test_everything_above_a_decomposed_aggregate_runs_locally() -> None:
-    plan = nodes.Limit(
+def stacked() -> nodes.PlanNode:
+    """A HAVING, a sort over the measure and a limit, all written above the mixed aggregate."""
+    return nodes.Limit(
         nodes.Sort(
             nodes.Filter(mixed(), (F.col("buyers") > 10).expr),
             (F.col("revenue").desc().to_sort_key(),),
         ),
         5,
     )
-    execution = split(plan)
+
+
+def test_everything_above_a_collapsed_mixed_aggregate_rides_the_same_statement() -> None:
+    execution = split(stacked())
+    query = execution.steps[0].envelope["query"]
+
+    assert execution.root is None
+    assert "HAVING\n  COUNT(DISTINCT ${users.id}) > 10" in query["userEditedSQL"]
+    assert "ORDER BY\n  2 DESC" in query["userEditedSQL"], "positional, over the measure item"
+    assert query["limit"] == 5
+
+
+def test_everything_above_a_decomposed_aggregate_runs_locally() -> None:
+    execution = local_split(stacked())
 
     assert kinds(execution) == [
+        LocalAggregate,
         AlignJoin,
         LocalFilter,
         LocalSort,
         LocalLimit,
         LocalProject,
-    ], "the ad-hoc half is a tier-2 step now; everything above the align-join is still local"
+    ], "with tier 2 off nothing above the align-join can ride the wire"
     assert all(step.envelope["query"]["sorts"] == [] for step in execution.steps)
 
 
-def test_a_filter_on_an_ad_hoc_aggregate_column_is_a_local_having() -> None:
+def test_a_filter_on_an_ad_hoc_aggregate_column_is_a_having() -> None:
     """Spelled as a column reference, which is what it is once the aggregate has run."""
     plan = nodes.Filter(mixed(), (F.count_distinct("users.id") > 10).expr)
-    execution = split(plan)
 
-    assert kinds(execution) == [AlignJoin, LocalFilter, LocalProject]
+    assert kinds(split(plan)) == [], "tier 2 writes it as a HAVING on the one statement"
+    assert kinds(local_split(plan)) == [LocalAggregate, AlignJoin, LocalFilter, LocalProject]
 
 
 def test_a_measure_filter_above_a_decomposition_reads_the_joined_column() -> None:
     """The measure column exists once step 1 ran, alias and all — so the filter is local."""
     plan = nodes.Filter(mixed(), (F.measure(REVENUE) > 50000).expr)
-    execution = split(plan)
+    execution = local_split(plan)
     local = next(op for op in ops(execution) if isinstance(op, LocalFilter))
 
-    assert kinds(execution) == [AlignJoin, LocalFilter, LocalProject]
+    assert kinds(execution) == [LocalAggregate, AlignJoin, LocalFilter, LocalProject]
     assert all(step.envelope["query"]["filters"] == {} for step in execution.steps)
     assert "revenue > 50000" in local.detail(), "rewritten to the alias the result carries"
+
+
+def test_a_measure_filter_above_a_collapsed_aggregate_is_a_having_over_the_measure_ref() -> None:
+    """``${measure}`` expands inline in a HAVING, so tier 2 keeps the whole thing (§3.6, L4)."""
+    execution = split(nodes.Filter(mixed(), (F.measure(REVENUE) > 50000).expr))
+
+    assert execution.root is None
+    assert (
+        "HAVING\n  ${order_items.total_sale_price} > 50000"
+        in (execution.steps[0].envelope["query"]["userEditedSQL"])
+    )
 
 
 def test_a_filter_on_an_ad_hoc_aggregate_that_nothing_computed_still_routes_to_tier_two() -> None:
@@ -425,7 +538,7 @@ def test_a_filter_on_an_ad_hoc_aggregate_that_nothing_computed_still_routes_to_t
         split(plan)
 
 
-def test_select_with_an_ad_hoc_aggregation_decomposes_like_the_group_by() -> None:
+def test_select_with_an_ad_hoc_aggregation_compiles_like_the_group_by() -> None:
     """Selection IS the group-by, so the two spellings must produce the same plan."""
     project = nodes.Project(
         SCAN,
@@ -559,12 +672,12 @@ def test_session_options_still_ride_every_envelope_of_a_split_plan() -> None:
     from omniframes.compile.querymodel import CachePolicy
     from omniframes.compile.semantic import EnvelopeOptions
 
-    execution = split(
-        mixed(),
-        options=SplitOptions(envelope=EnvelopeOptions(cache=CachePolicy.SKIP_CACHE)),
-    )
+    options = EnvelopeOptions(cache=CachePolicy.SKIP_CACHE)
+    collapsed = split(mixed(), options=SplitOptions(envelope=options))
+    decomposed = local_split(mixed(), envelope=options)
 
-    assert [step.envelope["cache"] for step in execution.steps] == ["SkipCache", "SkipCache"]
+    assert [step.envelope["cache"] for step in collapsed.steps] == ["SkipCache"]
+    assert [step.envelope["cache"] for step in decomposed.steps] == ["SkipCache", "SkipCache"]
 
 
 def test_a_local_step_needs_an_input() -> None:

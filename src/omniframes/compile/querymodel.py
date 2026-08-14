@@ -11,6 +11,7 @@ section references in the docstrings point at it:
 * §3.2 — time grains → :data:`GRAINS` / :func:`is_valid_grain`
 * §3.4 — raw-SQL jobs → :meth:`Query.for_sql`
 * §3.5 — ``staticQueryReferences`` → :attr:`Query.static_query_references`
+* §3.6 — the parsed-OmniSQL path (tier 2) → :meth:`Query.for_omnisql`
 
 Every type here is frozen and does exactly two things: hold a validated value and render
 itself with ``to_wire()`` into a JSON-ready ``dict`` using the exact key spelling the server
@@ -636,6 +637,12 @@ class Query:
     with the core collections. Truly optional keys (``join_paths_from_topic_name``,
     ``rewriteSql``, ``sqlSortsEnabled``, ``staticQueryReferences``) are omitted while unset.
 
+    ``userEditedSQL`` has two mutually exclusive readings, and the server picks between them
+    from the ``rewriteSql`` key alone (CONTRACT_NOTES §3.5): ``false`` runs the text verbatim
+    on the warehouse (:meth:`for_sql`), while an **absent** key parses it as OmniSQL and plans
+    a governed model job (:meth:`for_omnisql`, tier 2).  :attr:`omnisql` records which one was
+    intended so :meth:`validate` can refuse the third, unintended reading — see §3.6.
+
     ``limit`` is a trichotomy:
 
     * :data:`UNSET` (default) → :data:`DEFAULT_FETCH_LIMIT` goes on the wire;
@@ -665,6 +672,11 @@ class Query:
     rewrite_sql: bool | None = None
     sql_sorts_enabled: bool | None = None
     static_query_references: Mapping[str, Query] = field(default_factory=dict)
+    #: NOT a wire key: ``userEditedSQL`` is compiled OmniSQL, to be parsed against the model
+    #: (``rewriteSql`` absent — CONTRACT_NOTES §3.6).  The wire cannot express the distinction
+    #: between "no rewriteSql because OmniSQL" and "no rewriteSql because nobody set it", so it
+    #: is carried here and checked by :meth:`validate`.
+    omnisql: bool = False
     default_group_by: bool = True
     version: int = QUERY_VERSION
 
@@ -692,8 +704,9 @@ class Query:
     ) -> Query:
         """Build a raw-SQL job (§3.4).
 
-        ``rewriteSql`` is forced to ``False`` — with the default ``true`` the server IGNORES
-        ``userEditedSQL`` and runs the query as an ordinary model job. ``sqlSortsEnabled``
+        ``rewriteSql`` is forced to ``False`` — with the default ``true`` the server parses
+        ``userEditedSQL`` as OmniSQL and plans a governed model job instead of running the
+        text verbatim (CONTRACT_NOTES §3.5). ``sqlSortsEnabled``
         controls whether ``sorts``/``calculations``/``column_totals`` are applied on top of
         the SQL result; when false the server strips them.
         """
@@ -703,6 +716,36 @@ class Query:
             rewrite_sql=False,
             sql_sorts_enabled=sql_sorts_enabled,
             **kwargs,
+        )
+
+    @classmethod
+    def for_omnisql(
+        cls,
+        model_id: str,
+        sql: str,
+        *,
+        limit: int | Unset | None = UNSET,
+        offset: int = 0,
+    ) -> Query:
+        """Build a tier-2 OmniSQL job — one statement the server parses against the model (§3.6).
+
+        ``rewriteSql`` stays **absent** (not ``False``): that is what selects the parsed path,
+        where ``${view.field}`` / ``${topic}`` refs resolve, measures expand to their governed
+        SQL and row-level policies apply.  No ``staticQueryReferences``, no ``sqlSortsEnabled``
+        — the statement is the whole plan, and the signature has no seam for either.
+
+        ``limit``/``offset`` mirror what the statement's own ``LIMIT``/``OFFSET`` say, but they
+        are **client bookkeeping only**: the server ignores the query object's limit on this
+        path, so the always-explicit-limit invariant lives in the SQL text (docs/SQLTIER.md §2).
+        Mirroring them keeps ``effective_limit`` — and with it the truncation warning — honest.
+        """
+        return cls(
+            model_id=model_id,
+            user_edited_sql=sql,
+            rewrite_sql=None,
+            omnisql=True,
+            limit=limit,
+            offset=offset,
         )
 
     # -- limit trichotomy --------------------------------------------------------------
@@ -803,11 +846,7 @@ class Query:
                 f"pivot fields must also appear in query.fields; missing: {missing_pivots}"
             )
 
-        if is_sql_job and self.rewrite_sql is not False:
-            raise CompileError(
-                "userEditedSQL requires rewriteSql=False, otherwise the server ignores the SQL "
-                "and runs the query as a model job (use Query.for_sql)"
-            )
+        self._validate_sql_path(is_sql_job)
 
         for name, flt in self.filters.items():
             if not name:
@@ -829,6 +868,51 @@ class Query:
             if not key:
                 raise CompileError("staticQueryReferences keys must be non-empty")
             reference.validate()
+
+    def _validate_sql_path(self, is_sql_job: bool) -> None:
+        """The XOR between the two ``userEditedSQL`` readings (CONTRACT_NOTES §3.5/§3.6).
+
+        Exactly one of them must be chosen explicitly: ``rewriteSql: false`` (verbatim text,
+        :meth:`for_sql`) or the :attr:`omnisql` flag with ``rewriteSql`` absent (parsed OmniSQL,
+        :meth:`for_omnisql`).  Neither is the silent failure: the server takes the absent key
+        as "parse it", so text meant for the warehouse comes back as a governed model job — or
+        fails to bind — with nothing on the wire saying so.
+        """
+        if not is_sql_job:
+            if self.omnisql:
+                raise CompileError(
+                    "the omnisql flag marks userEditedSQL as compiled OmniSQL, but this query "
+                    "carries no SQL"
+                )
+            return
+
+        if not self.omnisql:
+            if self.rewrite_sql is not False:
+                raise CompileError(
+                    "userEditedSQL requires rewriteSql=False (verbatim SQL, Query.for_sql) or "
+                    "the omnisql flag with rewriteSql unset (compiled OmniSQL, "
+                    "Query.for_omnisql); with neither, the server parses the text as OmniSQL "
+                    "and plans a governed model job"
+                )
+            return
+
+        if self.rewrite_sql is not None:
+            raise CompileError(
+                "an OmniSQL query must leave rewriteSql unset: the absent key is what selects "
+                f"the parsed path, and rewriteSql={self.rewrite_sql!r} sends the statement to "
+                "the warehouse verbatim, ${...} refs and all (use Query.for_sql for verbatim "
+                "SQL)"
+            )
+        if self.sql_sorts_enabled is not None:
+            raise CompileError(
+                "sqlSortsEnabled belongs to verbatim SQL jobs; an OmniSQL statement carries its "
+                "own ORDER BY (CONTRACT_NOTES §3.6)"
+            )
+        if self.static_query_references:
+            raise CompileError(
+                "an OmniSQL statement cannot reference staticQueryReferences: a refKey is not a "
+                "table, and the ${...} refs bind against the model instead (CONTRACT_NOTES §3.5)"
+            )
 
     def _validate_query_filter_references(self) -> None:
         known = set(self.static_query_references)

@@ -1,9 +1,9 @@
 SELECT
-  "users.state",
-  COUNT(DISTINCT "users.id") AS "buyers"
-FROM ref_1
+  ${users.state},
+  COUNT(DISTINCT ${users.id}) AS of_expr_1
+FROM ${order_items}
 GROUP BY
-  "users.state"
+  1
 HAVING
-  COUNT(DISTINCT "users.id") > 25
+  COUNT(DISTINCT ${users.id}) > 25
 LIMIT 50000

@@ -110,19 +110,14 @@ def test_cache_accepts_the_real_policy_values_only(handler: FakeOmniAPI) -> None
         OmniSession.builder.cache("normal")
 
 
-def test_sql_dialect_names_are_resolved_where_the_typo_was_written() -> None:
-    """A misspelled dialect used to surface as a raw ``ValueError`` from ``collect()``.
+def test_the_builder_has_no_sql_dialect_knob(handler: FakeOmniAPI) -> None:
+    """Removed with the v1 tier-2 mechanism (docs/SQLTIER.md §6).
 
-    Every exception omniframes raises derives from ``OmniframesError`` (docs/api.md), and
-    ``cache()`` already sets the precedent of resolving the name at the builder call.  Falling
-    through to tier 3 would be the wrong repair: it would silently drop an explicit request.
+    The server parses an OmniSQL statement and re-renders it per warehouse, so the dialect the
+    client emits in is not observable downstream — there is nothing left for the knob to fix.
     """
-    builder = OmniSession.builder.host("acme.omni.co").api_key(DEFAULT_TOKEN)
-
-    with pytest.raises(CompileError, match="snowflake"):
-        builder.sql_dialect("snowflke")
-    assert builder.sql_dialect("snowflake") is builder
-    assert builder.sql_dialect(None) is builder
+    assert not hasattr(OmniSession.builder, "sql_dialect")
+    assert not hasattr(make_session(handler), "sql_dialect")
 
 
 def test_session_options_are_exposed_and_reach_the_envelope(handler: FakeOmniAPI) -> None:

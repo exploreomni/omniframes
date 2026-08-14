@@ -24,9 +24,11 @@ endpoints, `POST /api/v1/query/run`, `GET /api/v1/query/wait`, the saved-query e
   normalize.
 - **Failure modes are configurable**: `feature_flag_off`, `permissions`, `redact_sql`,
   `rate_limited_after`, `slow_job_polls`, `ai_credits_exhausted`.
-- **Silent server behaviors are reproduced literally.** `userEditedSQL` without
-  `rewriteSql: false` makes the fake run the *query object* and drop the SQL, exactly as the
-  server does — so a client that forgets the marker fails offline instead of lying live.
+- **Silent server behaviors are reproduced literally.** The `rewriteSql` key alone picks between
+  the two `userEditedSQL` paths, exactly as it does live: `false` runs the text verbatim on the
+  warehouse, an **absent** key parses it as OmniSQL and resolves `${topic}` / `${view.field}`
+  against the bench model. A client that puts the wrong marker on a statement fails offline
+  instead of lying live.
 - **Gaps are refused loudly**, never approximated. The fake implements what the current
   milestone exercises and grows with it; everything else is a `PLAN` job error or a 400.
 
@@ -52,7 +54,8 @@ orders = session.read.topic("bench_ecommerce", "order_items")
 
 `handler.requests` records every request (headers deliberately excluded — the bearer token must
 never reach a log), which is how the test suite asserts wire invariants such as "every envelope
-carries an explicit limit" and "`rewriteSql: false` sits next to every `userEditedSQL`".
+carries an explicit limit" and "a generated OmniSQL statement carries no `rewriteSql` key at
+all, and its `LIMIT` is in the text".
 
 ### The bench dataset — the data
 

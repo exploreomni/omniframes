@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterator
+from datetime import date
 from typing import Any
 
 import httpx
@@ -97,6 +98,19 @@ def tiers(frame: DataFrame) -> tuple[int, int]:
     return with_sql.steps[-1].tier, without.steps[-1].tier
 
 
+def labels(frame: DataFrame) -> list[str]:
+    """What each remote step of the tier-2-enabled split is — ``sql`` when the plan collapsed."""
+    execution = split(
+        frame.logical_plan, options=SplitOptions(envelope=frame.session.envelope_options())
+    )
+    return [step.label for step in execution.steps]
+
+
+def query_runs(handler: FakeOmniAPI) -> int:
+    """How many jobs the fake org has been asked to run so far."""
+    return handler.paths.count("POST /api/v1/query/run")
+
+
 # --------------------------------------------------------------------------------------
 # The premise: the two runs really are two different tiers
 # --------------------------------------------------------------------------------------
@@ -172,18 +186,67 @@ def test_a_grained_group_key_agrees(orders: DataFrame) -> None:
 
 
 # --------------------------------------------------------------------------------------
-# Mixed aggregation: the governed half stays tier 1 in both runs
+# Mixed aggregation: one OmniSQL statement with tier 2 on, the M3 decomposition without it
 # --------------------------------------------------------------------------------------
 
 
-def test_a_mixed_aggregate_agrees_across_the_two_tiers(orders: DataFrame) -> None:
-    frame = orders.group_by(STATE).agg(
+def mixed(orders: DataFrame) -> DataFrame:
+    return orders.group_by(STATE).agg(
         F.measure(REVENUE).alias("revenue"), F.count_distinct(BUYER).alias("buyers")
     )
-    table = agree(frame)
+
+
+def test_a_mixed_aggregate_agrees_across_the_two_tiers(orders: DataFrame) -> None:
+    table = agree(mixed(orders))
 
     assert table.column_names == [STATE, "revenue", "buyers"]
     assert table.num_rows == 21, "the NULL-state group is one row on both sides of the align-join"
+
+
+def test_a_mixed_aggregate_is_one_request_pushed_and_two_decomposed(
+    orders: DataFrame, handler: FakeOmniAPI
+) -> None:
+    """The headline of the redesign: the measure and the ad-hoc aggregate share one statement.
+
+    Counting *requests* is the check that matters — the tier-2 statement is only worth writing
+    if it replaces the decomposition's governed query plus its unlimited raw scan, and the two
+    answers still have to be the same answer (docs/SQLTIER.md §4/§9).
+    """
+    frame = mixed(orders)
+
+    before = query_runs(handler)
+    pushed = collect(frame, disable_sql=False)
+    collapsed = query_runs(handler) - before
+    local = collect(frame, disable_sql=True)
+    decomposed = query_runs(handler) - before - collapsed
+
+    assert (collapsed, decomposed) == (1, 2), (
+        "one OmniSQL job, against the governed measure query plus the raw scan behind it"
+    )
+    assert labels(frame) == ["sql"], "the measure and the ad-hoc aggregate share one statement"
+    assert_frames_agree(pushed, local)
+
+
+def test_a_mixed_aggregate_tier_two_refuses_falls_back_and_still_agrees(
+    orders: DataFrame, handler: FakeOmniAPI
+) -> None:
+    """The M3 decomposition is still the answer when the collapse is not available.
+
+    A grain reference in a ``WHERE`` is the one shape the OmniSQL parser merges with predicate
+    loss, so tier 2 refuses the whole statement (docs/SQLTIER.md §3.3) — while tier 1 carries
+    the grain filter natively, which is exactly what the decomposition is for.
+    """
+    grained = F.col("order_items.created_at").grain("month") >= date(2024, 1, 1)
+    frame = mixed(orders.filter(grained))
+
+    before = query_runs(handler)
+    pushed = collect(frame, disable_sql=False)
+    fell_back = query_runs(handler) - before
+
+    assert fell_back == 2, "tier 2 declined, so the measures and the raw scan run separately"
+    assert labels(frame) == ["semantic", "raw scan"], "decomposed with tier 2 still enabled"
+    assert_frames_agree(pushed, collect(frame, disable_sql=True))
+    assert pushed.num_rows > 0, "a fixture that filtered everything away would prove nothing"
 
 
 def test_a_filter_below_a_mixed_aggregate_narrows_both_halves_the_same_way(

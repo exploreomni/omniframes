@@ -1,21 +1,30 @@
-"""Result normalization against checked-in wire bodies (CONTRACT_NOTES §2.7)."""
+"""Result normalization against checked-in wire bodies (CONTRACT_NOTES §2.7, SQLTIER §5/§3.2)."""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 import pyarrow as pa
 import pytest
 
+from omniframes.compile.sqlgen import EXPR_ALIAS_PREFIX
 from omniframes.errors import CompileError
 from omniframes.transport.arrow import decode_result
 from omniframes.transport.ndjson import parse_response
 from omniframes.transport.normalize import (
+    GRAIN_RAW_SUFFIX,
     TOTAL_INDICATOR_COLUMNS,
+    collapse_grain_names,
     is_reserved_column,
     normalize,
+    resolve_aliases,
 )
 from tests.wire import read_fixture
+
+MONTH = "order_items.created_at[month]"
+MONTH_RAW = f"{MONTH}{GRAIN_RAW_SUFFIX}"
+MONTHS = [datetime(2026, m, 1, tzinfo=UTC) for m in (1, 2, 3)]
 
 RESERVED_IN_TOTALS_FIXTURE = (
     "total_sale_price__omni_summ",
@@ -273,6 +282,153 @@ def test_alias_can_swap_names_without_colliding():
 
     assert result.data.column_names == ["b", "a"]
     assert result.data.column("b").to_pylist() == [1]
+
+
+def test_expression_aliases_match_by_suffix_under_an_unpredictable_scope_prefix():
+    # The fixture scopes `of_expr_1` to `products` and `of_expr_2` to `inventory_items` — neither
+    # is a view the expression mentions, which is exactly the point (docs/SQLTIER.md §3.2).
+    table = fixture_table("omnisql_expressions.ndjson")
+
+    result = normalize(
+        table,
+        fixture_summary_fields("omnisql_expressions.ndjson"),
+        aliases={MONTH: "month", "of_expr_1": "buyers", "of_expr_2": "revenue_per_buyer"},
+    )
+
+    assert result.data.column_names == ["month", "users.state", "buyers", "revenue_per_buyer"]
+    assert result.data.column("buyers").to_pylist() == [12, 7, 3]
+    assert result.data.column("revenue_per_buyer").to_pylist() == [102.875, 127.175, 14.0]
+
+
+def test_an_unaliased_expression_column_keeps_its_scoped_wire_name():
+    table = fixture_table("omnisql_expressions.ndjson")
+
+    result = normalize(table)
+
+    assert result.data.column_names == [
+        MONTH,
+        "users.state",
+        "products.of_expr_1",
+        "inventory_items.of_expr_2",
+    ]
+
+
+def test_a_generated_alias_that_matches_no_column_is_ignored():
+    table = pa.table({"users.state": pa.array(["CA"], pa.string())})
+
+    result = normalize(table, aliases={"of_expr_9": "gone"})
+
+    assert result.data.column_names == ["users.state"]
+
+
+def test_an_ambiguous_generated_alias_is_refused():
+    table = pa.table(
+        {
+            "users.of_expr_1": pa.array([1], pa.int64()),
+            "products.of_expr_1": pa.array([2], pa.int64()),
+        }
+    )
+
+    with pytest.raises(CompileError, match="matches 2 result columns"):
+        normalize(table, aliases={"of_expr_1": "buyers"})
+
+
+def test_suffix_matching_never_touches_a_bare_wire_name():
+    # A bare ref is renamed by equality only: `state` must not suffix-match `users.state`.
+    table = pa.table({"users.state": pa.array(["CA"], pa.string())})
+
+    result = normalize(table, aliases={"state": "s"})
+
+    assert result.data.column_names == ["users.state"]
+
+
+def test_the_generated_alias_shape_matches_what_the_compiler_emits():
+    """The transport does not import the compiler, so the two spellings are pinned here."""
+    assert resolve_aliases(
+        (f"users.{EXPR_ALIAS_PREFIX}1",), {f"{EXPR_ALIAS_PREFIX}1": "buyers"}
+    ) == ("buyers",)
+
+
+# --------------------------------------------------------------------------------------------
+# Formatted grain pairs (CONTRACT_NOTES §2.7, docs/SQLTIER.md §5)
+# --------------------------------------------------------------------------------------------
+
+
+def test_a_grain_pair_collapses_to_the_raw_timestamp():
+    table = fixture_table("grain_pair.ndjson")
+    assert table.column_names == [MONTH_RAW, "order_items.total_sale_price", MONTH]
+
+    result = normalize(table, fixture_summary_fields("grain_pair.ndjson"))
+
+    # The `__raw` half keeps the item's position and loses the suffix; the formatted string,
+    # appended last on the wire, is gone.
+    assert result.data.column_names == [MONTH, "order_items.total_sale_price"]
+    assert result.data.column(MONTH).to_pylist() == MONTHS
+    assert result.data.column(MONTH).type == pa.timestamp("us", tz="UTC")
+
+
+def test_a_grain_pair_collapses_on_the_omnisql_path_too():
+    table = fixture_table("omnisql_expressions.ndjson")
+
+    result = normalize(table, fixture_summary_fields("omnisql_expressions.ndjson"))
+
+    assert MONTH_RAW not in result.data.column_names
+    assert result.data.column(MONTH).to_pylist() == [MONTHS[0], MONTHS[1], MONTHS[0]]
+
+
+def test_an_alias_over_a_grain_names_the_collapsed_column():
+    table = fixture_table("grain_pair.ndjson")
+
+    result = normalize(table, aliases={MONTH: "month"})
+
+    assert result.data.column_names == ["month", "order_items.total_sale_price"]
+    assert result.data.column("month").to_pylist() == MONTHS
+
+
+def test_the_collapse_applies_to_totals_rows_as_well():
+    table = pa.table(
+        {
+            MONTH_RAW: pa.array([MONTHS[0], None], pa.timestamp("us", tz="UTC")),
+            "order_items.total_sale_price": pa.array([10.0, 30.0], pa.float64()),
+            MONTH: pa.array(["2026-01", None], pa.string()),
+            "$omni_column_total_indicator": pa.array([None, "::total::"], pa.string()),
+        }
+    )
+
+    result = normalize(table, keep_totals=True)
+
+    assert result.data.column_names == [MONTH, "order_items.total_sale_price"]
+    assert result.totals is not None
+    assert result.totals.column_names == result.data.column_names
+    assert result.total_row_types == ("::total::",)
+
+
+def test_a_lone_raw_column_is_left_alone():
+    table = pa.table({MONTH_RAW: pa.array(MONTHS, pa.timestamp("us", tz="UTC"))})
+
+    result = normalize(table)
+
+    assert result.data.column_names == [MONTH_RAW]
+
+
+def test_a_user_column_that_merely_ends_in_raw_passes_through():
+    # No `[grain]` bracket, so this is an ordinary pair of raw-SQL columns, not a §2.7 sidecar.
+    table = pa.table(
+        {
+            "revenue__raw": pa.array([1.0], pa.float64()),
+            "revenue": pa.array(["$1.00"], pa.string()),
+        }
+    )
+
+    result = normalize(table)
+
+    assert result.data.column_names == ["revenue__raw", "revenue"]
+
+
+def test_collapse_grain_names_is_a_no_op_without_a_pair():
+    names = ("users.state", MONTH, "order_items.total_sale_price")
+
+    assert collapse_grain_names(names) == (names, names)
 
 
 def test_dictionary_encoded_indicator_columns_are_understood():

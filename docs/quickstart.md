@@ -108,15 +108,12 @@ first thing to run when a query 403s.
 Other builder knobs — all optional, all covered in the [API reference](api.md):
 `.base_url(...)` / `.base_url_from_env()`, `.branch(uuid)` to query a model branch,
 `.timezone("America/Los_Angeles")`, `.cache("SkipCache")`, `.user_id(membership_id)` to
-impersonate, `.sql_dialect("snowflake")`, `.decomposition_row_cap(n)`, and `.transport(...)` for
-injecting a fake in tests.
+impersonate, `.decomposition_row_cap(n)`, and `.transport(...)` for injecting a fake in tests.
 
-`.sql_dialect(...)` is worth one extra sentence: the tier-2 SQL omniframes writes is deliberately
-boring and needs no dialect, but nothing in the API tells a client which warehouse it is talking
-to. Without a dialect, a filter value containing a **backslash** cannot be rendered safely (the
-escaping rules differ between Postgres/DuckDB and Snowflake/BigQuery/Redshift/Spark/MySQL), so
-such a predicate is evaluated locally instead of pushed into SQL. Naming the warehouse pushes it
-down again.
+There is deliberately no warehouse-dialect knob. The tier-2 statement omniframes writes is
+OmniSQL, which Omni parses against the model and re-renders in the warehouse's own dialect —
+quoting, `LIMIT`, `NULLS LAST` and the `LIKE … ESCAPE` character are all decided server-side, so
+there is nothing about the connection a client needs to know.
 
 ## 4. Look around
 

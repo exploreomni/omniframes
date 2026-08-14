@@ -122,9 +122,11 @@ alias resolve through the map before compilation. Selecting one field **both bar
     `query` then only *describes* the payload (fields, limit) for `explain()`.
   - `opaque` — the *server* decides this step's payload (`SqlScan` / `SavedQueryScan`). An opaque
     step is a wall in both directions: nothing pushes into it, nothing above it compiles.
-  - `is_sql` — omniframes *wrote* this step's SQL (a tier-2 job). The exact complement of
-    `opaque`: both put `userEditedSQL` on the wire, but only this one has a reference core and
-    compiler-chosen output columns, which is why `explain()` renders them differently.
+  - `is_sql` — omniframes *wrote* this step's SQL (a tier-2 OmniSQL job). The exact complement
+    of `opaque`: both put `userEditedSQL` on the wire, but only this one carries `${…}` model
+    refs and compiler-chosen output columns, which is why `explain()` renders them differently.
+    The two are also told apart *on the wire* by the `rewriteSql` key: `false` for the verbatim
+    payload, **absent** for the parsed OmniSQL one (CONTRACT_NOTES §3.5/§3.6).
   - `role` — what the step is, for `explain()` and the truncation warning: `"semantic"`,
     `"sql"`, `"raw SQL job"`, `"saved query"` or `"generated query"`.
 - `RemoteStep.applied_limit` — the limit this step actually sends (`None` = unlimited), read off
@@ -137,9 +139,18 @@ alias resolve through the map before compilation. Selecting one field **both bar
   the absent key into `None` would print `limit: unlimited (null)` over a 1000-row truncation and
   suppress the warning; `explain()` renders it as `1000 (server default — the stored query
   carries no limit)` so the two cases never read alike.
-- `RemoteStep.__post_init__` refuses, by construction, to carry `userEditedSQL` without
-  `rewriteSql: false` (CONTRACT_NOTES §3.4's silent failure). Every remote step passes through
-  it, compiled or verbatim, so no code path can reach the transport without the marker.
+- `RemoteStep.__post_init__` refuses, by construction, to carry `userEditedSQL` under the wrong
+  reading of `rewriteSql` — the key the server picks the path from, and the one failure it does
+  not report (CONTRACT_NOTES §3.4/§3.6). It mirrors the compilation's non-wire `omnisql` flag:
+  a compiled OmniSQL statement must have the key **absent**, anything else must carry
+  `rewriteSql: false`. Every remote step passes through it, compiled or verbatim, so neither
+  path can reach the transport under the other's marker.
+- `QueryError.statement` — the OmniSQL text the server refused, set only when the executor
+  re-reads a `Could not substitute Omni SQL` job error as omniframes' own emission bug or as
+  model drift (docs/SQLTIER.md §8). `compile/executor.remote_errors(step)` is the context
+  manager that does it, and it wraps every request a compiled step makes: the DAG walk inside
+  `execute()`, and `dataframe`'s single-step `collect`/`schema` shortcut. A raw-SQL job's errors
+  pass through untouched — that SQL is the user's own.
 - `TransportError.status: int | None` — the HTTP status the failure came from, `None` for a
   request that never got an answer. It is the **only** HTTP detail that crosses the transport
   seam, and it does so as an attribute rather than as text: `session.py` branches on it to tell

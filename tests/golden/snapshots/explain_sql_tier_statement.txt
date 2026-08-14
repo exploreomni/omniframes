@@ -4,12 +4,12 @@ Remote [tier 2 · sql → POST /api/v1/query/run]
   sql:
     SELECT
       ${users.state},
-      ${users.age}
+      COUNT(DISTINCT ${users.id}) AS of_expr_1,
+      SUM(${order_items.sale_price}) AS of_expr_2
     FROM ${order_items}
-    WHERE
-      ${order_items.status} = 'complete'
-      AND (
-        ${users.state} = 'California' OR ${users.age} > 60
-    … (+2 more lines)
+    GROUP BY
+      1
+    HAVING
+    … (+4 more lines)
 Local [pandas]
   (none — fully pushed down)

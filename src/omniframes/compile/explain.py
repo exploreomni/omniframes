@@ -31,19 +31,18 @@ is numbered in execution order, and every local operator names the inputs it rea
     Remote step 2 [tier 2 · sql → POST /api/v1/query/run]
       topic: order_items   model: bench_ecommerce
       sql:
-        SELECT "users.state", COUNT(DISTINCT "users.id") AS "buyers"
+        SELECT ${users.state}, COUNT(DISTINCT ${users.id}) AS of_expr_1
         ...
         … (+3 more lines)
-      references:
-        ref_1 [semantic]: fields [users.state, users.id]  (unlimited)
     Local [arrow compute]
       align-join: step 1 ⨝ step 2 on [users.state]
       sort: buyers desc
       project: [users.state, revenue, buyers]
 
-A tier-2 step is rendered as the statement omniframes wrote plus a one-line summary of each
-governed reference it reads (docs/SQLTIER.md §4) — the SQL elided after eight lines, because a
-DAG of them still has to be readable.  Single-remote tier-1 plans keep the M1/M2 rendering byte
+A tier-2 step is rendered as the OmniSQL statement omniframes wrote (docs/SQLTIER.md §4), elided
+after eight lines because a DAG of them still has to be readable.  The ``${…}`` refs make it
+self-documenting: the joins, the measure definitions and the access grants all come from the
+model the statement is parsed against.  Single-remote tier-1 plans keep the M1/M2 rendering byte
 for byte — a plan that did not change must not read as if it had.
 """
 
@@ -66,7 +65,7 @@ from omniframes.compile.querymodel import (
     StringFilterKind,
 )
 from omniframes.compile.semantic import ExecutionPlan, LocalStep, RemoteStep, Step
-from omniframes.compile.sqlgen import reference_summary, sql_lines
+from omniframes.compile.sqlgen import sql_lines
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from omniframes.plan.nodes import PlanNode
@@ -153,8 +152,9 @@ def _opaque_step(step: RemoteStep, number: int | None) -> list[str]:
     """A payload omniframes did not write: raw SQL, or a stored query sent verbatim.
 
     Rendered off the **envelope**, not off a typed query, because for these steps the bytes are
-    the truth — including ``rewriteSql: false``, whose absence would make the server quietly
-    ignore the SQL (CONTRACT_NOTES §3.4) and which therefore belongs where a reader can see it.
+    the truth — including ``rewriteSql: false``, whose absence would make the server parse the
+    SQL as OmniSQL rather than run it verbatim (CONTRACT_NOTES §3.5), and which therefore
+    belongs where a reader can see it.
     """
     query = step.envelope.get("query")
     payload: Mapping[str, object] = query if isinstance(query, Mapping) else {}
@@ -216,21 +216,15 @@ def _stored_sorts(value: object) -> str:
 
 
 def _sql_step(step: RemoteStep, number: int | None) -> list[str]:
-    """A tier-2 job: the statement omniframes wrote, plus the governed cores it reads.
+    """A tier-2 job: the one OmniSQL statement omniframes wrote (docs/SQLTIER.md §4).
 
     The SQL is elided after :data:`~omniframes.compile.sqlgen.SQL_EXPLAIN_LINES` lines — long
     enough to see the shape of the computation, short enough that a DAG of them still reads.
-    Every reference is a tier-1 query, so it is summarized exactly like one.
+    There is nothing else to show: the statement *is* the plan, and its ``${…}`` refs say which
+    model it binds against.
     """
-    query = step.query
     lines = [_heading(step, number), f"  {step.source_label}", "  sql:"]
-    lines.extend(f"    {line}" for line in sql_lines(query.user_edited_sql))
-    if query.static_query_references:
-        lines.append("  references:")
-        lines.extend(
-            f"    {key} [semantic]: {reference_summary(reference)}"
-            for key, reference in query.static_query_references.items()
-        )
+    lines.extend(f"    {line}" for line in sql_lines(step.query.user_edited_sql))
     return lines
 
 

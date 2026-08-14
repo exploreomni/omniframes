@@ -16,6 +16,7 @@ from omniframes.compile.querymodel import (
     GRAINS,
     UNSET,
     CachePolicy,
+    Query,
 )
 from omniframes.compile.semantic import (
     NUMBER_GRAINS,
@@ -24,7 +25,9 @@ from omniframes.compile.semantic import (
     CannotCompile,
     EnvelopeOptions,
     RemoteStep,
+    SemanticCompilation,
     alias_map,
+    build_envelope,
     compile_filters,
     compile_plan,
     compile_semantic,
@@ -939,7 +942,7 @@ STORED = {
 
 
 def test_a_sql_scan_always_carries_the_do_not_rewrite_marker() -> None:
-    """Without ``rewriteSql: false`` the server IGNORES the SQL (CONTRACT_NOTES §3.4)."""
+    """Without ``rewriteSql: false`` the server parses the SQL as OmniSQL (CONTRACT_NOTES §3.5)."""
     query = compile_plan(SQL_SCAN).envelope["query"]
 
     assert query["userEditedSQL"] == SQL
@@ -952,8 +955,62 @@ def test_a_remote_step_refuses_to_carry_sql_without_the_marker() -> None:
     compilation = compile_semantic(SQL_SCAN)
     envelope = {"query": {**compilation.query.to_wire(), "rewriteSql": True}}
 
-    with pytest.raises(CompileError, match="silently ignore the SQL"):
+    with pytest.raises(CompileError, match="parse the text as OmniSQL"):
         RemoteStep(envelope, compilation)
+
+
+def test_a_remote_step_refuses_verbatim_sql_with_the_marker_stripped() -> None:
+    """The other direction: an absent key is what selects the parsed path (CONTRACT_NOTES §3.6)."""
+    compilation = compile_semantic(SQL_SCAN)
+    stripped = {
+        key: value for key, value in compilation.query.to_wire().items() if key != "rewriteSql"
+    }
+
+    with pytest.raises(CompileError, match="parse the text as OmniSQL"):
+        RemoteStep({"query": stripped}, compilation)
+
+
+# ---------------------------------------------------------------------------------------
+# Compiled OmniSQL steps (docs/SQLTIER.md §2, CONTRACT_NOTES §3.6)
+# ---------------------------------------------------------------------------------------
+
+OMNISQL = "SELECT ${users.state}\nFROM ${order_items}\nLIMIT 50000"
+
+
+def omnisql_compilation() -> SemanticCompilation:
+    """What tier 2 hands the executor: one statement, over the topic omniframes compiled from."""
+    return SemanticCompilation(
+        query=Query.for_omnisql(MODEL_ID, OMNISQL),
+        scan=SCAN.source,
+        aliases={},
+        columns=("users.state",),
+        tier=2,
+    )
+
+
+def test_a_compiled_omnisql_step_leaves_rewrite_sql_off_the_wire() -> None:
+    compilation = omnisql_compilation()
+    step = RemoteStep(build_envelope(compilation, None), compilation, tier=2, label="sql")
+    query = step.envelope["query"]
+
+    assert query["userEditedSQL"] == OMNISQL
+    assert "rewriteSql" not in query
+    assert "staticQueryReferences" not in query
+    assert "sqlSortsEnabled" not in query
+    assert query["limit"] == DEFAULT_FETCH_LIMIT, "the envelope mirrors the statement's LIMIT"
+    assert step.applied_limit == DEFAULT_FETCH_LIMIT
+    assert compilation.is_sql is True
+    assert compilation.role == "sql"
+
+
+@pytest.mark.parametrize("rewrite_sql", [True, False])
+def test_a_remote_step_refuses_omnisql_carrying_a_rewrite_sql_key(rewrite_sql: bool) -> None:
+    """``rewriteSql: false`` would ship ``${...}`` refs to the warehouse verbatim."""
+    compilation = omnisql_compilation()
+    envelope = {"query": {**compilation.query.to_wire(), "rewriteSql": rewrite_sql}}
+
+    with pytest.raises(CompileError, match="compiled as OmniSQL but carries a rewriteSql key"):
+        RemoteStep(envelope, compilation, tier=2, label="sql")
 
 
 def test_a_sql_job_is_tier_two_and_names_itself() -> None:

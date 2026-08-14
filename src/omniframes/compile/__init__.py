@@ -18,7 +18,7 @@ another tier rather than splitting it.
 
 from __future__ import annotations
 
-from omniframes.compile.executor import execute
+from omniframes.compile.executor import execute, remote_errors
 from omniframes.compile.explain import describe_filter, describe_filters, explain_text
 from omniframes.compile.local import (
     AlignJoin,
@@ -93,6 +93,7 @@ __all__ = [
     "explain_text",
     "predicate_to_filters",
     "promote_type",
+    "remote_errors",
     "render_expr",
     "run_local_op",
     "split",

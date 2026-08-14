@@ -147,8 +147,8 @@ def sql_scan_with_local_ops() -> DataFrame:
     return scan.select("state", "revenue").filter(F.col("state") == "California").limit(5)
 
 
-def sql_tier_with_references() -> DataFrame:
-    """A tier-2 step in full: the statement omniframes wrote, elided, over its governed core.
+def sql_tier_statement() -> DataFrame:
+    """A tier-2 step in full: the one OmniSQL statement omniframes wrote, elided.
 
     Long enough to reach the eight-line budget, so the ``… (+K more lines)`` tail is pinned too.
     """
@@ -163,7 +163,7 @@ def sql_tier_with_references() -> DataFrame:
 
 
 def sql_tier_outer_where() -> DataFrame:
-    """A cross-field OR: no wire filter exists for it, so the reference carries no filters."""
+    """A cross-field OR: no wire filter expresses it, so every predicate rides the WHERE (§3.3)."""
     return (
         topic()
         .filter(F.col("order_items.status") == "complete")
@@ -195,7 +195,7 @@ CASES: dict[str, Callable[[], DataFrame]] = {
     "computed_column": computed_column,
     "limit_pins_the_frontier": limit_pins_the_frontier,
     "map_pandas_with_hint": map_pandas_with_hint,
-    "sql_tier_with_references": sql_tier_with_references,
+    "sql_tier_statement": sql_tier_statement,
     "sql_tier_outer_where": sql_tier_outer_where,
     "cross_frame_join": cross_frame_join,
     "sql_scan_with_local_ops": sql_scan_with_local_ops,

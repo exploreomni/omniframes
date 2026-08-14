@@ -40,14 +40,19 @@ from tests.fakes import (
     BENCH_TOPIC_NAME,
     DEFAULT_TOKEN,
     DOCUMENT_WITHOUT_DASHBOARD,
+    GRAIN_FORMATS,
     NDJSON_CONTENT_TYPE,
     NO_QUERY_GENERATED,
+    RAW_SUFFIX,
+    REJECTION,
     RUN_QUERY_REFUSAL,
     TOTAL_INDICATOR_COLUMN,
     WORKBOOK_URL_HEADER,
     FakeOmniAPI,
     SavedQuery,
     bench_query,
+    no_such_field,
+    no_such_view,
 )
 
 BASE_URL = "https://bench.example.omni.co"
@@ -1084,6 +1089,12 @@ def test_plan_only_reports_the_measure_schema(client: httpx.Client) -> None:
 MONTH = "order_items.created_at[month]"
 MONTH_NUM = "order_items.created_at[month_num]"
 
+#: ``month`` is the bench model's one FORMATTED grain, so selecting it yields the CONTRACT_NOTES
+#: §2.7 PAIR: the ``DATE_TRUNC`` timestamp under ``…[month]__raw`` at the item's own position,
+#: and the ``YYYY-MM`` string under ``…[month]``, appended after every other column.  Reconciling
+#: the two is the *client's* job (docs/SQLTIER.md §5); the wire carries both.
+MONTH_RAW = f"{MONTH}{RAW_SUFFIX}"
+
 
 def test_monthly_revenue_via_a_grain_and_a_bare_field_filter(
     client: httpx.Client, known_answers: dict[str, Any]
@@ -1100,9 +1111,10 @@ def test_monthly_revenue_via_a_grain_and_a_bare_field_filter(
     )
     assert len(returned) == len(expected) == 12
     for row, answer in zip(returned, expected, strict=True):
-        month = row[MONTH]
+        month = row[MONTH_RAW]
         assert month == utc(answer["month"])
         assert month.tzinfo is not None, "timestamps come back tz-aware UTC"
+        assert row[MONTH] == answer["month"][:7], "…and the formatted half of the §2.7 pair"
         assert str(row[TOTAL_SALE_PRICE]) == answer["total_sale_price"]
         assert row[ORDER_ITEMS_COUNT] == answer["order_items_count"]
 
@@ -1126,7 +1138,7 @@ def test_revenue_by_category_and_month(client: httpx.Client, known_answers: dict
     returned = decode_result(job.result).to_pylist()
     assert len(returned) == len(expected) == 132
     for row in returned:
-        answer = expected[(row["products.category"], row[MONTH])]
+        answer = expected[(row["products.category"], row[MONTH_RAW])]
         assert str(row[TOTAL_SALE_PRICE]) == answer["total_sale_price"]
         assert row[ORDER_ITEMS_COUNT] == answer["order_items_count"]
 
@@ -1142,7 +1154,7 @@ def test_distinct_buyers_by_month(client: httpx.Client, known_answers: dict[str,
     )
     assert len(returned) == len(expected) == 24
     for row, answer in zip(returned, expected, strict=True):
-        assert row[MONTH] == utc(answer["month"])
+        assert row[MONTH_RAW] == utc(answer["month"])
         assert row[USERS_COUNT] == answer["distinct_buyers"]
 
 
@@ -1198,8 +1210,14 @@ def test_numeric_grain_filters_on_the_bracketed_name(
 def test_every_grain_projects_its_own_type(
     client: httpx.Client, grain: str, data_type: str, check: Any
 ) -> None:
-    """One row of the anchor day (2026-06-30) seen through each grain."""
+    """One row of the anchor day (2026-06-30) seen through each grain.
+
+    An unformatted grain is one column carrying its own type; a FORMATTED grain (``month``) is
+    the §2.7 pair, and the typed value lives in the ``__raw`` half.
+    """
     name = f"order_items.created_at[{grain}]"
+    formatted = grain in GRAIN_FORMATS
+    value_column = f"{name}{RAW_SUFFIX}" if formatted else name
     job = single_job(
         run(
             client,
@@ -1217,25 +1235,29 @@ def test_every_grain_projects_its_own_type(
     )
     assert job.summary is not None
     assert job.summary["missing_fields"] == []
-    assert list(job.summary["fields"]) == [name], "the summary key is the exact requested name"
-    assert job.summary["fields"][name]["data_type"] == data_type
-    assert job.summary["fields"][name]["field_name"] == f"created_at[{grain}]"
+    expected_columns = [value_column, name] if formatted else [name]
+    assert list(job.summary["fields"]) == expected_columns
+    assert job.summary["fields"][value_column]["data_type"] == data_type
+    assert job.summary["fields"][value_column]["field_name"] == (
+        f"created_at[{grain}]{RAW_SUFFIX}" if formatted else f"created_at[{grain}]"
+    )
     assert job.result is not None
     table = decode_result(job.result)
-    assert table.schema.names == [name]
-    assert check(table.to_pylist()[0][name])
+    assert table.schema.names == expected_columns
+    assert check(table.to_pylist()[0][value_column])
 
 
 def test_grain_names_are_case_insensitive_but_the_key_is_as_requested(
     client: httpx.Client,
 ) -> None:
     requested = "order_items.created_at[MONTH]"
+    expected = [f"{requested}{RAW_SUFFIX}", ORDER_ITEMS_COUNT, requested]
     job = single_job(run(client, fields=[requested, ORDER_ITEMS_COUNT]))
     assert job.summary is not None
     assert job.summary["missing_fields"] == []
-    assert list(job.summary["fields"]) == [requested, ORDER_ITEMS_COUNT]
+    assert list(job.summary["fields"]) == expected
     assert job.result is not None
-    assert decode_result(job.result).schema.names == [requested, ORDER_ITEMS_COUNT]
+    assert decode_result(job.result).schema.names == expected
 
 
 def test_a_grain_keeps_a_date_column_date_shaped(client: httpx.Client) -> None:
@@ -1541,7 +1563,7 @@ def test_a_dimension_filter_and_a_measure_filter_land_on_opposite_sides(
     returned = decode_result(job.result).to_pylist()
     assert len(returned) == len(expected)
     for row, answer in zip(returned, expected, strict=True):
-        assert row[MONTH] == utc(answer["month"])
+        assert row[MONTH_RAW] == utc(answer["month"])
         assert str(row[TOTAL_SALE_PRICE]) == answer["total_sale_price"]
 
 
@@ -1799,21 +1821,23 @@ def test_every_no_rewrite_marker_selects_the_sql_path(client: httpx.Client, mark
     assert decode_result(job.result).to_pylist() == [{"answer": 42}]
 
 
-def test_user_edited_sql_without_a_marker_is_silently_ignored(client: httpx.Client) -> None:
-    """The §3.4 trap, reproduced literally: no marker ⇒ the SQL is dropped, the model job runs.
+def test_user_edited_sql_without_a_marker_takes_the_parsed_omnisql_path(
+    client: httpx.Client,
+) -> None:
+    """No marker ⇒ the text is OmniSQL, not warehouse SQL and not something to ignore (§3.5).
 
-    This is the behavior a client has to be protected against — the answer that comes back is
-    perfectly well-formed and has nothing to do with the SQL that was sent.
+    ``REVENUE_SQL`` names warehouse tables and writes its own LEFT JOIN, which is exactly what
+    the parsed path has no meaning for — the joins come from the topic.  It therefore fails here
+    rather than quietly running as if the marker were present (which is what it does with one).
     """
     job = single_job(run(client, fields=["users.state"], userEditedSQL=REVENUE_SQL, limit=3))
-    assert job.status is JobStatus.COMPLETE
-    assert job.raw["query"]["userEditedSQL"] == REVENUE_SQL, "the SQL was sent…"
-    assert job.summary is not None
-    assert list(job.summary["fields"]) == ["users.state"], "…and ignored"
-    assert job.result is not None
-    table = decode_result(job.result)
-    assert table.schema.names == ["users.state"]
-    assert table.num_rows == 3
+    assert job.status is JobStatus.ERROR
+    assert job.error_type == "PLAN"
+    assert REJECTION in (job.error_message or "")
+    assert "explicit JOIN" in (job.error_message or "")
+    assert single_job(sql_run(client, REVENUE_SQL)).status is JobStatus.COMPLETE, (
+        "the very same SQL runs fine on the verbatim path — the marker is the whole difference"
+    )
 
 
 def test_raw_sql_summary_fields_are_synthetic_dimensions(client: httpx.Client) -> None:
@@ -2315,6 +2339,453 @@ def test_a_reference_view_does_not_outlive_its_job(client: httpx.Client) -> None
 
 
 # --------------------------------------------------------------------------------------
+# Parsed OmniSQL jobs (CONTRACT_NOTES §3.6, docs/SQLTIER.md §7)
+# --------------------------------------------------------------------------------------
+
+#: The tier-2 statement shape docs/SQLTIER.md §1 emits: governed measure and ad-hoc aggregate
+#: side by side over a topic FROM ref, positional GROUP BY, LIMIT in the TEXT.
+MIXED_AGG_SQL = (
+    "SELECT ${users.state},\n"
+    "       ${order_items.total_sale_price},\n"
+    "       COUNT(DISTINCT ${users.id}) AS of_expr_1\n"
+    "FROM ${order_items}\n"
+    "GROUP BY 1\n"
+    "LIMIT 50000"
+)
+
+
+def omnisql_run(client: httpx.Client, sql: str, **overrides: Any) -> httpx.Response:
+    """Run ``sql`` as a **parsed-OmniSQL** job: ``userEditedSQL`` with no marker beside it (§3.6).
+
+    ``fields`` goes out empty, the way docs/SQLTIER.md §2 sends it — on this path the statement
+    is the whole plan, so there is nothing for the query object to say.
+    """
+    overrides.setdefault("fields", [])
+    return run(client, userEditedSQL=sql, **overrides)
+
+
+def job_error(response: httpx.Response) -> str:
+    """The in-band error message of a job that was expected to fail."""
+    job = single_job(response)
+    assert job.status is JobStatus.ERROR, job.summary
+    assert job.error_type == "PLAN"
+    return job.error_message or ""
+
+
+def display_sql(response: httpx.Response) -> str:
+    job = single_job(response)
+    assert job.status is JobStatus.COMPLETE, job.error_message
+    assert job.summary is not None
+    return str(job.summary["display_sql"])
+
+
+def test_omnisql_binds_refs_and_answers_the_mixed_aggregate(
+    client: httpx.Client, known_answers: dict[str, Any]
+) -> None:
+    """One statement, one job: a governed measure and an ad-hoc aggregate in the same SELECT.
+
+    This is the shape docs/SQLTIER.md §4 collapses the M3 decomposition into, so it has to agree
+    with the known answers to the digit.
+    """
+    expected = {
+        row["state"]: row for row in answer_rows(known_answers, "revenue_and_buyers_by_state")
+    }
+    returned = rows(omnisql_run(client, MIXED_AGG_SQL))
+
+    assert len(returned) == len(expected) == 21
+    for row in returned:
+        answer = expected[row["users.state"]]
+        assert str(row[TOTAL_SALE_PRICE]) == answer["total_sale_price"]
+        assert row["users.of_expr_1"] == answer["distinct_buyers"]
+
+
+def test_the_join_graph_comes_from_the_topic_pruned_to_the_referenced_views(
+    client: httpx.Client,
+) -> None:
+    """§3.6: joins are the topic's relationships, pruned — the statement never writes its own."""
+    users_only = display_sql(omnisql_run(client, MIXED_AGG_SQL))
+    assert 'LEFT JOIN "users"' in users_only
+    assert "products" not in users_only, "an unreferenced view is not joined"
+
+    products_only = display_sql(
+        omnisql_run(
+            client,
+            "SELECT ${products.category}, ${order_items.count} FROM ${order_items} GROUP BY 1",
+        )
+    )
+    assert 'LEFT JOIN "products"' in products_only
+    assert "users" not in products_only
+
+    neither = display_sql(omnisql_run(client, "SELECT ${order_items.count} FROM ${order_items}"))
+    assert "JOIN" not in neither, "a statement inside the base view joins nothing"
+
+
+def test_a_measure_only_statement_is_a_grand_total(
+    client: httpx.Client, known_answers: dict[str, Any]
+) -> None:
+    """§3.6: ``${measure}`` refs without a GROUP BY expand to one grand-total row."""
+    expected = one_answer(known_answers, "grand_totals")
+    returned = rows(
+        omnisql_run(
+            client,
+            f"SELECT ${{{TOTAL_SALE_PRICE}}}, ${{{ORDER_ITEMS_COUNT}}}, ${{{TOTAL_QUANTITY}}}\n"
+            "FROM ${order_items}",
+        )
+    )
+    assert len(returned) == 1
+    assert str(returned[0][TOTAL_SALE_PRICE]) == expected["total_sale_price"]
+    assert returned[0][ORDER_ITEMS_COUNT] == expected["order_items_count"]
+    assert returned[0][TOTAL_QUANTITY] == expected["total_quantity"]
+
+
+def test_measure_arithmetic_expands_both_halves(
+    client: httpx.Client, known_answers: dict[str, Any]
+) -> None:
+    """Probe L3: a ``${measure}`` divided by an ad-hoc aggregate, in one expression item."""
+    expected = one_answer(known_answers, "grand_totals")
+    returned = rows(
+        omnisql_run(
+            client,
+            f"SELECT ${{{TOTAL_SALE_PRICE}}} / NULLIF(COUNT(DISTINCT ${{users.id}}), 0) "
+            "AS of_expr_1\nFROM ${order_items}",
+        )
+    )
+    assert len(returned) == 1
+    revenue_per_buyer = float(
+        Decimal(expected["total_sale_price"]) / Decimal(expected["distinct_buyers"])
+    )
+    assert returned[0]["users.of_expr_1"] == pytest.approx(revenue_per_buyer)
+
+
+def test_having_over_an_ad_hoc_aggregate(
+    client: httpx.Client, known_answers: dict[str, Any]
+) -> None:
+    """Probe P5b: the ad-hoc aggregate is substituted inline into HAVING, and it filters."""
+    expected = {
+        row["state"]: row
+        for row in answer_rows(known_answers, "revenue_and_buyers_by_state")
+        if row["distinct_buyers"] > 25
+    }
+    assert 0 < len(expected) < 21
+    returned = rows(
+        omnisql_run(
+            client,
+            f"SELECT ${{users.state}}, ${{{TOTAL_SALE_PRICE}}}\n"
+            "FROM ${order_items}\n"
+            "GROUP BY 1\n"
+            "HAVING COUNT(DISTINCT ${users.id}) > 25",
+        )
+    )
+    assert len(returned) == len(expected)
+    for row in returned:
+        assert str(row[TOTAL_SALE_PRICE]) == expected[row["users.state"]]["total_sale_price"]
+
+
+def test_an_order_by_over_an_unselected_field_does_not_leak_a_column(
+    client: httpx.Client,
+) -> None:
+    """Probe L5: the server's ``omni_sort_expr_n`` sidecars never reach the result columns."""
+    job = single_job(
+        omnisql_run(
+            client,
+            "SELECT ${users.state} FROM ${order_items} ORDER BY ${users.age} DESC LIMIT 3",
+        )
+    )
+    assert job.status is JobStatus.COMPLETE, job.error_message
+    assert job.result is not None
+    assert decode_result(job.result).schema.names == ["users.state"]
+
+
+# --------------------------------------------------------------------------------------
+# The two naming regimes (CONTRACT_NOTES §3.6, docs/SQLTIER.md §3.2)
+# --------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("item", "column"),
+    [
+        pytest.param("${users.state} AS shouted", "users.state", id="dimension"),
+        pytest.param(f"${{{ORDER_ITEMS_COUNT}}} AS n", ORDER_ITEMS_COUNT, id="measure"),
+        pytest.param(f"${{{MONTH}}} AS m", MONTH_RAW, id="grain"),
+    ],
+)
+def test_a_bare_ref_ignores_its_sql_alias(client: httpx.Client, item: str, column: str) -> None:
+    """Regime (a): a bare ref surfaces under its canonical name — renames are the client's job."""
+    job = single_job(omnisql_run(client, f"SELECT {item} FROM ${{order_items}} LIMIT 1"))
+    assert job.status is JobStatus.COMPLETE, job.error_message
+    assert job.result is not None
+    names = decode_result(job.result).schema.names
+    assert column in names
+    assert not any(name.endswith(("shouted", ".n", ".m")) for name in names), (
+        "the SQL alias is dropped entirely, not merely re-prefixed"
+    )
+
+
+def test_an_expression_item_keeps_its_alias_under_an_unpredictable_scope_prefix(
+    client: httpx.Client,
+) -> None:
+    """Regime (b): the alias is honored, the prefix is not predictable — match by SUFFIX only.
+
+    The second item references no view at all and still lands under the same prefix as the first,
+    which is the point: there is no positional rule to learn (first-ref-wins is refuted live), so
+    the fake picks the prefix arbitrarily and only ``endswith`` survives the choice.
+    """
+    job = single_job(
+        omnisql_run(
+            client,
+            "SELECT UPPER(${users.state}) AS of_expr_1, COUNT(*) AS of_expr_2\n"
+            "FROM ${order_items}\nGROUP BY 1\nLIMIT 2",
+        )
+    )
+    assert job.status is JobStatus.COMPLETE, job.error_message
+    assert job.result is not None
+    names = decode_result(job.result).schema.names
+
+    assert [name.endswith(".of_expr_1") for name in names] == [True, False]
+    assert [name.endswith(".of_expr_2") for name in names] == [False, True]
+    assert "of_expr_1" not in names, "the bare alias is never the wire name"
+    prefixes = {name.rsplit(".", 1)[0] for name in names}
+    assert len(prefixes) == 1
+    assert prefixes <= {"order_items", "users", "products"}, "the prefix is some referenced view"
+
+
+def test_duplicate_expression_items_survive_with_their_aliases(client: httpx.Client) -> None:
+    """§3.6: only BARE refs are deduplicated; two identical expressions stay two columns."""
+    job = single_job(
+        omnisql_run(
+            client,
+            "SELECT COUNT(*) AS of_expr_1, COUNT(*) AS of_expr_2 FROM ${order_items}",
+        )
+    )
+    assert job.status is JobStatus.COMPLETE, job.error_message
+    assert job.result is not None
+    table = decode_result(job.result)
+    assert [name.rsplit(".", 1)[1] for name in table.schema.names] == ["of_expr_1", "of_expr_2"]
+    assert len(set(table.to_pylist()[0].values())) == 1, "same expression, same value"
+
+
+def test_a_formatted_grain_arrives_as_the_raw_pair(
+    client: httpx.Client, known_answers: dict[str, Any]
+) -> None:
+    """§2.7 on the OmniSQL path: ``X__raw`` at the item's position, formatted ``X`` appended."""
+    expected = answer_rows(known_answers, "distinct_buyers_by_month")
+    job = single_job(
+        omnisql_run(
+            client,
+            f"SELECT ${{{MONTH}}}, COUNT(DISTINCT ${{users.id}}) AS of_expr_1\n"
+            "FROM ${order_items}\nGROUP BY 1\nORDER BY 1",
+        )
+    )
+    assert job.status is JobStatus.COMPLETE, job.error_message
+    assert job.summary is not None
+    assert list(job.summary["fields"]) == [MONTH_RAW, "users.of_expr_1", MONTH]
+    assert job.summary["fields"][MONTH_RAW]["data_type"] == "TIMESTAMP"
+    assert job.summary["fields"][MONTH]["data_type"] == "STRING"
+    assert job.summary["fields"][MONTH]["format"] == GRAIN_FORMATS["month"].label
+
+    assert job.result is not None
+    returned = decode_result(job.result).to_pylist()
+    assert len(returned) == len(expected) == 24
+    for row, answer in zip(returned, expected, strict=True):
+        assert row[MONTH_RAW] == utc(answer["month"]), "positional ORDER BY sorts by __raw"
+        assert row[MONTH] == answer["month"][:7]
+        assert row["users.of_expr_1"] == answer["distinct_buyers"]
+
+
+# --------------------------------------------------------------------------------------
+# Substitution errors — the server's own text (docs/SQLTIER.md §8)
+# --------------------------------------------------------------------------------------
+
+
+def test_an_unknown_from_reference_is_the_servers_no_such_view(client: httpx.Client) -> None:
+    message = job_error(omnisql_run(client, "SELECT ${users.state} FROM ${nope}"))
+    assert message == 'Could not substitute Omni SQL: No such view "nope"'
+    assert message == no_such_view("nope")
+    assert not message.startswith(REJECTION), "a server error is not one of the fake's rejections"
+
+
+def test_an_unknown_field_reference_is_the_servers_no_such_field(client: httpx.Client) -> None:
+    message = job_error(omnisql_run(client, "SELECT ${users.nope} FROM ${order_items}"))
+    assert message == (
+        'Could not substitute Omni SQL: Field "users.nope" not found: No such field "users.nope"'
+    )
+    assert message == no_such_field("users.nope")
+
+
+def test_a_field_name_outside_the_model_charset_never_reaches_the_statement(
+    client: httpx.Client,
+) -> None:
+    """A hostile name is a missing field, not a splice point."""
+    hostile = 'users.state" FROM x --'
+    message = job_error(omnisql_run(client, f"SELECT ${{{hostile}}} FROM ${{order_items}}"))
+    assert message == no_such_field(hostile)
+
+
+# --------------------------------------------------------------------------------------
+# Loud rejections: shapes the server silently rewrites (docs/SQLTIER.md §7)
+# --------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("statement", "fragment"),
+    [
+        pytest.param(
+            "SELECT DISTINCT ${users.state} FROM ${order_items}",
+            "SELECT DISTINCT is silently STRIPPED",
+            id="distinct",
+        ),
+        pytest.param(
+            "SELECT ${users.state}, ${users.state} FROM ${order_items} GROUP BY 1, 2",
+            "'users.state' is selected twice as a bare ref",
+            id="duplicate-bare-item",
+        ),
+        pytest.param(
+            "SELECT ${users.state} FROM ${order_items}\n"
+            "WHERE ${order_items.created_at} >= '2026-01-01'\n"
+            "  AND ${order_items.created_at[month]} IS NOT NULL\n"
+            "GROUP BY 1",
+            "WHERE references both the bare 'order_items.created_at' and a grain variant",
+            id="bare-plus-grain-where",
+        ),
+        pytest.param(
+            "WITH x AS (SELECT 1) SELECT ${users.state} FROM ${order_items}",
+            "the server accepts CTEs and FLATTENS them",
+            id="cte",
+        ),
+        pytest.param(
+            "SELECT ${users.state} FROM ${order_items} JOIN users ON 1 = 1",
+            "joins come from the topic's relationships",
+            id="explicit-join",
+        ),
+        pytest.param(
+            "SELECT ${users.state} FROM ${order_items} oi",
+            "an alias on the ${topic} reference is not modeled",
+            id="aliased-from",
+        ),
+        pytest.param(
+            "SELECT ${users.state} FROM ${users}",
+            "would need a different root",
+            id="non-base-from",
+        ),
+    ],
+)
+def test_the_fake_is_loudly_stricter_than_the_server(
+    client: httpx.Client, statement: str, fragment: str
+) -> None:
+    """Each of these is a SILENT server rewrite, which is exactly what must not stay silent.
+
+    A silent rewrite offline is a divergence that only surfaces against a real org; failing here
+    turns an emission bug into a red test instead.
+    """
+    message = job_error(omnisql_run(client, statement))
+    assert message.startswith(REJECTION)
+    assert fragment in message
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        pytest.param("sorts", [{"column_name": "users.state"}], id="sorts"),
+        pytest.param("filters", {"users.state": {"type": "null"}}, id="filters"),
+        pytest.param("column_totals", aggregation("::total::"), id="column_totals"),
+        pytest.param("sqlSortsEnabled", True, id="sqlSortsEnabled"),
+        pytest.param(
+            "staticQueryReferences", {"ref_1": {"modelId": BENCH_MODEL_ID}}, id="references"
+        ),
+    ],
+)
+def test_semantic_baggage_on_a_parsed_path_job_is_refused(
+    client: httpx.Client, key: str, value: Any
+) -> None:
+    """The statement is the whole plan; a query object still carrying semantics is an emission bug.
+
+    ``pivots``/``calculations``/``fill_fields``/``row_totals`` are absent here only because the
+    fake refuses those one layer earlier, at the envelope (they are unmodeled on *every* path).
+    """
+    message = job_error(
+        omnisql_run(client, "SELECT ${users.state} FROM ${order_items} GROUP BY 1", **{key: value})
+    )
+    assert message.startswith(REJECTION)
+    assert f"carries {key}" in message
+
+
+# --------------------------------------------------------------------------------------
+# The two SQL paths are chosen by the marker alone (CONTRACT_NOTES §3.4 vs §3.6)
+# --------------------------------------------------------------------------------------
+
+
+def test_the_no_rewrite_marker_is_the_only_thing_separating_the_two_paths(
+    client: httpx.Client,
+) -> None:
+    """The same bytes: parsed and governed without a marker, shipped to the warehouse with one."""
+    assert single_job(omnisql_run(client, MIXED_AGG_SQL)).status is JobStatus.COMPLETE
+
+    verbatim = single_job(sql_run(client, MIXED_AGG_SQL))
+    assert verbatim.status is JobStatus.ERROR
+    assert verbatim.error_type == "QUERY", "the warehouse got ${…} tokens it cannot parse"
+
+
+def test_omni_sql_carries_the_statement_on_the_parsed_path_only(client: httpx.Client) -> None:
+    """``summary.omni_sql`` is the Omni-flavored form; hand-written SQL has none (§2.3)."""
+    parsed = single_job(omnisql_run(client, MIXED_AGG_SQL))
+    assert parsed.summary is not None
+    assert parsed.summary["omni_sql"] == MIXED_AGG_SQL
+    assert "${users.state}" in parsed.summary["omni_sql"]
+    assert "${" not in parsed.summary["display_sql"], "display_sql is the bound DuckDB statement"
+
+    verbatim = single_job(sql_run(client, "SELECT 1 AS x"))
+    assert verbatim.summary is not None
+    assert verbatim.summary["omni_sql"] == ""
+
+
+def test_plan_only_on_the_parsed_path_reports_the_schema_without_data(
+    client: httpx.Client,
+) -> None:
+    planned = single_job(omnisql_run(client, MIXED_AGG_SQL, planOnly=True))
+    assert planned.status is JobStatus.PLANNED
+    assert planned.result is None
+    assert planned.summary is not None
+    assert list(planned.summary["fields"]) == ["users.state", TOTAL_SALE_PRICE, "users.of_expr_1"]
+
+    executed = single_job(omnisql_run(client, MIXED_AGG_SQL))
+    assert executed.summary is not None
+    assert schema_from_summary(planned.summary["fields"]) == schema_from_summary(
+        executed.summary["fields"]
+    ), "planOnly is the schema authority, so it has to match what execution returns"
+
+
+def test_the_query_object_limit_is_ignored_and_the_text_owns_it(client: httpx.Client) -> None:
+    """§3.6: the query-object ``limit`` does nothing here — a statement without LIMIT is unlimited."""
+    grouped = "SELECT ${users.state} FROM ${order_items} GROUP BY 1"
+    assert len(rows(omnisql_run(client, grouped, limit=5))) == 21
+    assert len(rows(omnisql_run(client, f"{grouped}\nLIMIT 3", limit=1))) == 3
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param("${users.state}", id="reference"),
+        pytest.param("it's ${users.state}", id="quote-and-reference"),
+        pytest.param("'; DROP TABLE users; --", id="injection"),
+    ],
+)
+def test_a_reference_inside_a_string_literal_is_data_not_a_reference(
+    client: httpx.Client, value: str
+) -> None:
+    """The client renders filter VALUES as literals; the resolver must never bind one.
+
+    Values reach the statement ``''``-doubled, the way the emitter writes them, so what comes
+    back is the string itself — and ``users`` is still queryable afterwards.
+    """
+    literal = value.replace("'", "''")
+    returned = rows(
+        omnisql_run(client, f"SELECT '{literal}' AS of_expr_1 FROM ${{order_items}} LIMIT 1")
+    )
+    assert returned[0]["order_items.of_expr_1"] == value
+    assert rows(omnisql_run(client, "SELECT ${users.state} FROM ${order_items} LIMIT 1"))
+
+
+# --------------------------------------------------------------------------------------
 # GET /api/v1/documents/{identifier}/queries (CONTRACT_NOTES §4)
 # --------------------------------------------------------------------------------------
 
@@ -2398,7 +2869,9 @@ def test_a_generated_query_runs_through_query_run(
 
     returned = rows(client.post("/api/v1/query/run", json={"query": payload["query"]}))
     assert returned
-    assert set(returned[0]) == set(fields)
+    # A formatted grain arrives as the §2.7 pair, so the monthly prompt gains a __raw column.
+    expected = set(fields) | ({MONTH_RAW} if MONTH in fields else set())
+    assert set(returned[0]) == expected
 
 
 def test_the_prompt_map_is_deterministic(client: httpx.Client) -> None:

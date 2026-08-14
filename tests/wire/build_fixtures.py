@@ -45,6 +45,8 @@ JOB_TRAILING = "0f4d3c2b-0000-4000-8000-00000000a00c"
 JOB_EXECUTING = "0f4d3c2b-0000-4000-8000-00000000a00d"
 JOB_UNKNOWN_STATUS = "0f4d3c2b-0000-4000-8000-00000000a00e"
 JOB_REQUERY = "0f4d3c2b-0000-4000-8000-00000000a00f"
+JOB_GRAIN = "0f4d3c2b-0000-4000-8000-00000000a010"
+JOB_OMNISQL = "0f4d3c2b-0000-4000-8000-00000000a011"
 
 REDACTED_MESSAGE = (
     "Query failed. Error details are only visible to users with permission to view SQL."
@@ -122,6 +124,47 @@ def totals_table() -> pa.Table:
     )
 
 
+#: The one grain the fixture model formats, and the column names its pair produces (§2.7).
+MONTH = "order_items.created_at[month]"
+MONTH_RAW = f"{MONTH}__raw"
+MONTH_FORMAT = "YYYY-MM"
+
+MONTHS = [datetime(2026, m, 1, tzinfo=UTC) for m in (1, 2, 3)]
+
+
+def grain_pair_table() -> pa.Table:
+    """A tier-1 result over a **formatted** grain: the §2.7 pair around one measure.
+
+    ``…[month]__raw`` sits at the grain item's own select position and the formatted string is
+    appended after every other column — the layout normalization has to collapse.
+    """
+    return pa.table(
+        {
+            MONTH_RAW: pa.array(MONTHS, pa.timestamp("us", tz="UTC")),
+            "order_items.total_sale_price": pa.array([100.5, 250.0, 42.25], pa.float64()),
+            MONTH: pa.array(["2026-01", "2026-02", "2026-03"], pa.string()),
+        }
+    )
+
+
+def omnisql_table() -> pa.Table:
+    """A tier-2 OmniSQL result: bare refs under canonical names, expression items under a
+    ``<scope_view>.of_expr_<n>`` name whose prefix is deliberately unrelated to the expression
+    (docs/SQLTIER.md §3.2) — plus the same formatted-grain pair a tier-1 result has.
+    """
+    return pa.table(
+        {
+            MONTH_RAW: pa.array(MONTHS[:2] + MONTHS[:1], pa.timestamp("us", tz="UTC")),
+            "users.state": pa.array(["CA", "NY", None], pa.string()),
+            # COUNT(DISTINCT ${users.id}) — scoped to `products`, which no client could predict.
+            "products.of_expr_1": pa.array([12, 7, 3], pa.int64()),
+            # ${order_items.sale_price_sum} / COUNT(DISTINCT ${users.id}) — a third view again.
+            "inventory_items.of_expr_2": pa.array([102.875, 127.175, 14.0], pa.float64()),
+            MONTH: pa.array(["2026-01", "2026-02", "2026-01"], pa.string()),
+        }
+    )
+
+
 def empty_table() -> pa.Table:
     """A zero-row result with the happy schema (what a failed plan still ships)."""
     return happy_table().slice(0, 0)
@@ -148,6 +191,7 @@ def wire_field(
     aggregate_type: str | None = None,
     date_type: str | None = None,
     sql: str = "",
+    output_format: str | None = None,
 ) -> dict[str, Any]:
     view_name, _, field_name = name.partition(".")
     return {
@@ -158,7 +202,7 @@ def wire_field(
         "is_dimension": is_dimension,
         "is_calc": False,
         "label": (field_name or name).replace("_", " ").title(),
-        "format": None,
+        "format": output_format,
         "date_type": date_type,
         "aggregate_type": aggregate_type,
         "filter_only_field": False,
@@ -198,6 +242,41 @@ TOTALS_FIELDS: dict[str, Any] = {
     "TOTAL_SALE_PRICE": wire_field("TOTAL_SALE_PRICE", "NUMBER", is_dimension=False),
     "ORDER_COUNT": wire_field("ORDER_COUNT", "NUMBER", is_dimension=False),
 }
+
+#: The pair's two entries, in the order ``summary.fields`` carries them: the ``__raw`` half at
+#: the item's position, the formatted half last (CONTRACT_NOTES §2.7).
+GRAIN_FIELDS: dict[str, Any] = {
+    MONTH_RAW: wire_field(MONTH_RAW, "TIMESTAMP", date_type="timestamp"),
+    "order_items.total_sale_price": wire_field(
+        "order_items.total_sale_price",
+        "NUMBER",
+        is_dimension=False,
+        aggregate_type="sum",
+        sql='SUM("order_items"."sale_price")',
+    ),
+    MONTH: wire_field(MONTH, "STRING", date_type="timestamp", output_format=MONTH_FORMAT),
+}
+
+OMNISQL_FIELDS: dict[str, Any] = {
+    MONTH_RAW: wire_field(MONTH_RAW, "TIMESTAMP", date_type="timestamp"),
+    "users.state": wire_field("users.state", "STRING"),
+    "products.of_expr_1": wire_field("products.of_expr_1", "NUMBER", is_dimension=False),
+    "inventory_items.of_expr_2": wire_field(
+        "inventory_items.of_expr_2", "NUMBER", is_dimension=False
+    ),
+    MONTH: wire_field(MONTH, "STRING", date_type="timestamp", output_format=MONTH_FORMAT),
+}
+
+#: The tier-2 statement that produced :func:`omnisql_table` — ``${…}`` refs, no ``rewriteSql``.
+OMNISQL_STATEMENT = (
+    f"SELECT ${{{MONTH}}}, ${{users.state}},\n"
+    "    COUNT(DISTINCT ${users.id}) AS of_expr_1,\n"
+    "    ${order_items.sale_price_sum} / COUNT(DISTINCT ${users.id}) AS of_expr_2\n"
+    "FROM ${order_items_topic}\n"
+    "GROUP BY 1, 2\n"
+    "ORDER BY 3 DESC NULLS LAST\n"
+    "LIMIT 50000"
+)
 
 HAPPY_SQL = (
     'SELECT "users"."state", COUNT(*), SUM("order_items"."sale_price")\n'
@@ -545,6 +624,56 @@ def build_fixtures() -> dict[str, bytes]:
                 "requery_table_name": "omni_cube_1234",
                 "requery_fallback_sql": HAPPY_SQL,
                 "column_name_mapping": {"c0": "users.state"},
+            },
+            footer_line(),
+        ]
+    )
+
+    # 12. A formatted grain on the semantic path: the §2.7 `__raw` + formatted pair.
+    fixtures["grain_pair.ndjson"] = ndjson(
+        [
+            header_line({JOB_GRAIN: "cri-grain"}),
+            {
+                "job_id": JOB_GRAIN,
+                "status": "COMPLETE",
+                "client_result_id": "cri-grain",
+                "summary": summary(
+                    GRAIN_FIELDS,
+                    display_sql=(
+                        'SELECT DATE_TRUNC(\'MONTH\', "order_items"."created_at"), '
+                        'SUM("order_items"."sale_price")\nFROM "order_items" GROUP BY 1'
+                    ),
+                ),
+                "cache_metadata": {"cache_type": "MISS", "job_id": JOB_GRAIN},
+                "query": query(fields=[MONTH, "order_items.total_sale_price"]),
+                "result": arrow_b64(grain_pair_table()),
+                "stream_stats": {"server_stream": 21},
+            },
+            footer_line(),
+        ]
+    )
+
+    # 13. A tier-2 OmniSQL job: both naming regimes plus the same grain pair (docs/SQLTIER.md).
+    fixtures["omnisql_expressions.ndjson"] = ndjson(
+        [
+            header_line({JOB_OMNISQL: "cri-omnisql"}),
+            {
+                "job_id": JOB_OMNISQL,
+                "status": "COMPLETE",
+                "client_result_id": "cri-omnisql",
+                "summary": summary(
+                    OMNISQL_FIELDS,
+                    display_sql=(
+                        'SELECT DATE_TRUNC(\'MONTH\', "order_items"."created_at"), '
+                        '"users"."state", COUNT(DISTINCT "users"."id")\n'
+                        'FROM "order_items" LEFT JOIN "users" '
+                        'ON "users"."id" = "order_items"."user_id" GROUP BY 1, 2'
+                    ),
+                ),
+                "cache_metadata": {"cache_type": "MISS", "job_id": JOB_OMNISQL},
+                "query": query(fields=[], user_edited_sql=OMNISQL_STATEMENT),
+                "result": arrow_b64(omnisql_table()),
+                "stream_stats": {"server_stream": 33},
             },
             footer_line(),
         ]

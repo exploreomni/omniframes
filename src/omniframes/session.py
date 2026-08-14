@@ -31,8 +31,6 @@ from contextlib import contextmanager
 from types import TracebackType
 from typing import Any, Final
 
-import sqlglot
-
 from omniframes.catalog import Catalog
 from omniframes.compile.querymodel import QUERY_VERSION, CachePolicy
 from omniframes.compile.semantic import EnvelopeOptions
@@ -82,7 +80,6 @@ class SessionBuilder:
         "_branch",
         "_cache",
         "_decomposition_row_cap",
-        "_sql_dialect",
         "_timezone",
         "_transport",
         "_user_id",
@@ -97,7 +94,6 @@ class SessionBuilder:
         self._user_id: str | None = None
         self._transport: QueryTransport | None = None
         self._decomposition_row_cap: int | None = None
-        self._sql_dialect: str | None = None
 
     def __repr__(self) -> str:
         return f"SessionBuilder(base_url={self._base_url!r})"
@@ -189,33 +185,6 @@ class SessionBuilder:
         self._decomposition_row_cap = rows
         return self
 
-    def sql_dialect(self, dialect: str | None) -> SessionBuilder:
-        """Generate tier-2 SQL for a specific warehouse dialect (docs/SQLTIER.md §3).
-
-        The default is sqlglot's own ANSI-ish dialect, and the SQL omniframes writes is
-        deliberately boring — quoted identifiers, standard aggregates, ``LIKE``/``LOWER`` — so it
-        should need no dialect at all.  This is the escape hatch for the warehouse that disagrees:
-        pass a sqlglot dialect name (``"snowflake"``, ``"bigquery"``, ``"postgres"``, …).
-
-        The name is resolved **here**, so a typo is a :class:`~omniframes.errors.CompileError` at
-        the call that made it.  Left to ``statement.sql(dialect=...)`` it surfaced as a raw
-        ``ValueError`` out of the middle of ``collect()`` — not an
-        :class:`~omniframes.errors.OmniframesError` at all (docs/api.md), and nowhere near the
-        typo.  Falling through to tier 3 would be worse still: it would silently discard an
-        explicit request for a warehouse dialect.
-        """
-        if dialect is not None and (not isinstance(dialect, str) or not dialect.strip()):
-            raise CompileError(
-                f"sql_dialect() takes a sqlglot dialect name or None; got {dialect!r}"
-            )
-        if dialect is not None:
-            try:
-                sqlglot.Dialect.get_or_raise(dialect.strip())
-            except ValueError as exc:
-                raise CompileError(f"sql_dialect(): {exc}") from None
-        self._sql_dialect = None if dialect is None else dialect.strip()
-        return self
-
     def transport(self, transport: QueryTransport) -> SessionBuilder:
         """Use an existing transport instead of building an :class:`HttpTransport`.
 
@@ -255,7 +224,6 @@ class SessionBuilder:
             user_id=self._user_id,
             owns_transport=owns_transport,
             decomposition_row_cap=self._decomposition_row_cap,
-            sql_dialect=self._sql_dialect,
         )
 
     getOrCreate = get_or_create
@@ -278,7 +246,6 @@ class OmniSession:
         "_decomposition_row_cap",
         "_owns_transport",
         "_read",
-        "_sql_dialect",
         "_timezone",
         "_transport",
         "_user_id",
@@ -298,7 +265,6 @@ class OmniSession:
         user_id: str | None = None,
         owns_transport: bool = False,
         decomposition_row_cap: int | None = None,
-        sql_dialect: str | None = None,
     ) -> None:
         self._transport = transport
         self._branch = branch
@@ -307,7 +273,6 @@ class OmniSession:
         self._user_id = user_id
         self._owns_transport = owns_transport
         self._decomposition_row_cap = decomposition_row_cap
-        self._sql_dialect = sql_dialect
         self._whoami: dict[str, Any] | None = None
         self._catalog = Catalog(transport, preflight=self._preflight)
         self._read = DataFrameReader(self)
@@ -359,11 +324,6 @@ class OmniSession:
     def decomposition_row_cap(self) -> int | None:
         """The opt-in cap on a mixed aggregation's raw scan; ``None`` means unlimited."""
         return self._decomposition_row_cap
-
-    @property
-    def sql_dialect(self) -> str | None:
-        """The warehouse dialect tier-2 SQL is generated for; ``None`` is sqlglot's default."""
-        return self._sql_dialect
 
     @property
     def catalog(self) -> Catalog:
@@ -569,8 +529,8 @@ class DataFrameReader:
         """Run **your** SQL on the model's connection (needs ``QUERY_SQL``).
 
         The statement is sent as ``userEditedSQL`` with ``rewriteSql: false`` — the marker
-        without which the server silently ignores the SQL and runs an empty model query instead
-        (CONTRACT_NOTES §3.4).  Omniframes never sends one without the other; that is enforced
+        that makes the server run the text verbatim instead of parsing it as OmniSQL
+        (CONTRACT_NOTES §3.5).  Omniframes never sends one without the other; that is enforced
         when the step is built, not merely intended.
 
         The SQL is **opaque**: omniframes does not parse it and cannot push anything into it, so

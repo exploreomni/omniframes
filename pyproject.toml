@@ -50,6 +50,7 @@ dev = [
     "ipykernel>=6.29",
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=0.26",
+    "python-dotenv>=1.2.2",
 ]
 
 [build-system]

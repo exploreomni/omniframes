@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from typing import Any
 
 import httpx
+import pyarrow as pa
 import pytest
 from tests.fakes import (
     BENCH_MODEL_ID,
@@ -463,6 +464,56 @@ def test_schema_reports_alias_names(df: DataFrame) -> None:
     schema = df.select(F.col("users.state").alias("state")).schema
 
     assert schema.names == ("state",)
+
+
+# --------------------------------------------------------------------------------------
+# Formatted grains and generated aliases (docs/SQLTIER.md §5/§3.2)
+# --------------------------------------------------------------------------------------
+
+MONTH = "order_items.created_at[month]"
+
+
+def test_schema_collapses_a_formatted_grain_pair(df: DataFrame) -> None:
+    """The wire returns ``…[month]__raw`` + a formatted string; the frame has one TIMESTAMP."""
+    schema = df.select(F.col("order_items.created_at").grain("month")).schema
+
+    assert schema.names == (MONTH,)
+    assert schema[MONTH].data_type is OmniDataType.TIMESTAMP
+
+
+def test_a_formatted_grain_collects_as_the_raw_timestamp(df: DataFrame) -> None:
+    frame = df.select(F.col("order_items.created_at").grain("month")).limit(5)
+
+    with pytest.warns(TruncationWarning):
+        table = frame.collect()
+
+    assert table.column_names == list(frame.columns) == [MONTH]
+    assert table.schema.field(MONTH).type == pa.timestamp("us", tz="UTC")
+
+
+def test_schema_names_a_tier_2_expression_item(df: DataFrame, handler: FakeOmniAPI) -> None:
+    """``of_expr_<n>`` comes back under a scope prefix, so the schema matches it by suffix."""
+    frame = df.group_by("users.state").agg(F.count_distinct("users.id").alias("buyers"))
+
+    schema = frame.schema
+
+    assert schema.names == ("users.state", "buyers")
+    assert schema["buyers"].data_type is OmniDataType.NUMBER
+    (plan,) = [request for request in handler.requests if request.path.endswith("/query/run")]
+    assert "AS of_expr_1" in plan.body["query"]["userEditedSQL"]
+
+
+def test_a_tier_2_grain_and_expression_collect_under_their_user_facing_names(
+    df: DataFrame,
+) -> None:
+    frame = df.group_by(F.col("order_items.created_at").grain("month")).agg(
+        F.count_distinct("users.id").alias("buyers")
+    )
+
+    table = frame.collect()
+
+    assert table.column_names == list(frame.columns) == [MONTH, "buyers"]
+    assert table.schema.field(MONTH).type == pa.timestamp("us", tz="UTC")
 
 
 # --------------------------------------------------------------------------------------

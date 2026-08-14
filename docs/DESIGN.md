@@ -28,10 +28,15 @@ the remote portion:
 - **Tier 1 — semantic query.** Scan(topic/view) + projections (dims, grains, model measures) +
   compilable filters + sorts + limit/offset. Fully governed. Dimension+measure selection IS the
   group-by (Omni semantics); `group_by().agg()` is sugar compiled identically.
-- **Tier 2 — SQL job** (M5+). SQLGlot-built outer SQL over embedded semantic sub-queries passed
-  via `staticQueryReferences` (`userEditedSQL` + `rewriteSql: false` + `sqlSortsEnabled: true`).
-  Covers: ad-hoc aggregations over raw columns, post-aggregation filters (HAVING), computed
-  columns not expressible as typed filters. Until M5, these shapes fall to tier 3.
+- **Tier 2 — OmniSQL job** (M5+). ONE SQLGlot-built statement sent as `userEditedSQL` with the
+  `rewriteSql` key **absent**, which is what makes the server parse it as OmniSQL and plan it as
+  a governed model job: `${topic}` in FROM brings the topic's join graph, `${view.field}` and
+  `${view.measure}` resolve against the model (measures expand to their governed SQL), and
+  row-level policies apply. No `staticQueryReferences`, no reference core, no second query
+  object — the statement *is* the plan. Covers: ad-hoc aggregations over raw columns,
+  post-aggregation filters (HAVING), computed columns and filters no typed filter can express,
+  and governed measures mixed with ad-hoc aggregates in one `agg()`. Full design:
+  docs/SQLTIER.md (authoritative for M5); wire truth: CONTRACT_NOTES §3.5/§3.6.
 - **Tier 3 — local execution.** The splitter pushes maximal remote sub-plans; a small operator
   interpreter (project/filter/join/aggregate/sort/limit/UDF-apply) finishes locally. The local
   engine runs on **pyarrow.compute** (Kleene logic, null-keyed group-by, decimal arithmetic —
@@ -48,13 +53,16 @@ df.group_by("users.state").agg(
 )
 ```
 
-decomposes into (a) a tier-1 query for `users.state` + the measure, and (b) a raw
-`users.state` + `users.id` scan aggregated locally, joined on the group keys locally.
-Rules:
+Tier 2 takes this whole node as one statement — `${order_items.total_sale_price}` is a legal
+select item beside `COUNT(DISTINCT ${users.id})` — so the common case is a single request. When
+tier 2 declines the node (a shape OmniSQL has no rendering for), it decomposes into (a) a tier-1
+query for `users.state` + the measure and (b) a raw `users.state` + `users.id` scan aggregated
+locally, joined on the group keys locally. Rules:
 - Governed measures ALWAYS execute remotely. Their definitions are server-side; the local engine
   never emulates them.
 - Ad-hoc aggregations execute in tier 2 when available, else locally over a remote raw-row scan.
-- Mixed `agg()` = decompose into per-kind sub-plans + local join on group keys.
+- Mixed `agg()` = one tier-2 statement when it compiles; otherwise per-kind sub-plans + a local
+  join on the group keys.
 
 `explain()` renders the full split (every remote sub-plan with its tier and payload summary, and
 every local operator). No silent local fallback, ever.

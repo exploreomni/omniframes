@@ -118,30 +118,51 @@ def test_revenue_and_buyers_by_state_decomposes_and_still_matches_the_answer(
     assert sum(row["buyers"] for row in rows) == 497, "every buyer lands in exactly one group"
 
 
-def test_the_two_halves_are_a_governed_query_and_a_sql_job_over_an_unlimited_reference(
+def test_the_mixed_aggregation_does_not_decompose_at_all_any_more(
     orders: DataFrame, handler: FakeOmniAPI
 ) -> None:
-    """M5: the ad-hoc half is a warehouse GROUP BY, and its reference core is the unlimited one.
+    """SQLTIER v2 §4: a governed measure is a legal OmniSQL select item, so nothing splits.
 
-    The reference is what M3's raw scan used to be — same fields, same ``limit: null``, for the
-    same reason (a silently paged input to an aggregate is a wrong answer).  The difference is
-    that the rows never leave the warehouse.
+    M3 answered this shape with two queries and a local align-join; v2 collapses it into one
+    statement in which ``${order_items.total_sale_price}`` expands to its governed SQL
+    server-side and the ad-hoc aggregate rides along beside it.  There is no second request, no
+    raw scan, and therefore nothing for ``decomposition_row_cap`` to cap.
     """
     orders.group_by("users.state").agg(F.measure(REVENUE), F.count_distinct("users.id")).collect()
-    measures, sql = run_queries(handler)
+    sent = run_queries(handler)
+
+    assert len(sent) == 1, "one OmniSQL statement, not a governed half plus an ad-hoc half"
+    (sql,) = sent
+    assert "rewriteSql" not in sql, "an ABSENT key is what selects the parsed path"
+    assert "staticQueryReferences" not in sql
+    assert "sqlSortsEnabled" not in sql
+    assert sql["limit"] == 50_000, "the envelope mirrors the LIMIT in the text"
+    statement = sql["userEditedSQL"]
+    assert f"${{{REVENUE}}}" in statement, "the measure ref expands server-side"
+    assert "COUNT(DISTINCT ${users.id})" in statement
+    assert "FROM ${order_items}" in statement
+    assert "LIMIT 50000" in statement, "the query-object limit is ignored on this path"
+
+
+def test_the_m3_decomposition_survives_as_the_fallback(
+    orders: DataFrame, handler: FakeOmniAPI
+) -> None:
+    """What the same frame does when tier 2 declines: the two halves and the unlimited scan.
+
+    ``disable_sql`` is the test lane's way in (there is no public knob); the shape it produces
+    is the one every aggregate tier 2 cannot express still takes.  The raw scan is unlimited for
+    the M3 reason — a silently paged input to an aggregate is a wrong answer, not a short page.
+    """
+    frame = orders.group_by("users.state").agg(F.measure(REVENUE), F.count_distinct("users.id"))
+    frame._execution = split(frame.logical_plan, options=SplitOptions(disable_sql=True))
+    frame.collect()
+    measures, scan = run_queries(handler)
 
     assert measures["fields"] == ["users.state", REVENUE]
     assert measures["limit"] == 50_000
-    assert measures.get("userEditedSQL", "") == "", "the governed half stays a tier-1 query"
-
-    assert sql["rewriteSql"] is False, "without it the server silently ignores the SQL"
-    assert sql["sqlSortsEnabled"] is False
-    assert sql["limit"] == 50_000, "the wire limit is always explicit, SQL job or not"
-    reference = sql["staticQueryReferences"]["ref_1"]
-    assert reference["fields"] == ["users.state", "users.id"]
-    assert reference["limit"] is None, "a capped reference would silently produce a wrong count"
-    assert reference["model_id"] == reference["modelId"], "§3.5's extra snake_case key"
-    assert 'COUNT(DISTINCT "users.id")' in sql["userEditedSQL"]
+    assert scan["fields"] == ["users.state", "users.id"]
+    assert scan["limit"] is None, "a capped scan would silently produce a wrong count"
+    assert not any(query.get("userEditedSQL") for query in (measures, scan))
 
 
 def test_sorting_and_limiting_a_decomposed_aggregate_happens_locally(
@@ -487,11 +508,10 @@ def test_show_renders_a_split_plan(orders: DataFrame, capsys: pytest.CaptureFixt
 def test_explain_analyze_asks_the_server_about_every_step(
     orders: DataFrame, handler: FakeOmniAPI
 ) -> None:
-    text = (
-        orders.group_by("users.state")
-        .agg(F.measure(REVENUE), F.count_distinct("users.id"))
-        .explain(analyze=True)
-    )
+    """Two remote steps, two round trips — the decomposed shape, since tier 2 collapses it."""
+    frame = orders.group_by("users.state").agg(F.measure(REVENUE), F.count_distinct("users.id"))
+    frame._execution = split(frame.logical_plan, options=SplitOptions(disable_sql=True))
+    text = frame.explain(analyze=True)
     planned = [
         request for request in handler.requests if (request.body or {}).get("planOnly") is True
     ]

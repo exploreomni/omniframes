@@ -16,6 +16,7 @@ from typing import Any
 import pyarrow as pa
 
 from omniframes.errors import QueryError, TransportError
+from omniframes.transport.normalize import collapse_grain_names
 from omniframes.types import OmniField, OmniSchema
 
 __all__ = [
@@ -51,13 +52,21 @@ def schema_from_summary(fields: Mapping[str, Any] | None) -> OmniSchema:
     ``fields`` is ``Record<fieldName, Field>``; its JSON order is the server's field order and is
     preserved.  Entries that are not objects are kept as bare names with ``UNKNOWN`` type rather
     than dropped, so a schema never silently loses a column.
+
+    A formatted grain arrives as two entries — the ``__raw`` timestamp and the formatted string —
+    and is collapsed exactly as the result columns are (docs/SQLTIER.md §5), so the schema keeps
+    describing the frame the user gets: one ``field[grain]`` field, with the ``__raw`` half's
+    ``TIMESTAMP`` type and position.
     """
     if not fields:
         return OmniSchema(())
+    payloads = {str(name): payload for name, payload in fields.items()}
+    selected, names = collapse_grain_names(tuple(payloads))
     parsed: list[OmniField] = []
-    for name, payload in fields.items():
+    for wire, name in zip(selected, names, strict=True):
+        payload = payloads[wire]
         attributes = payload if isinstance(payload, Mapping) else {}
-        parsed.append(OmniField.from_wire(str(name), dict(attributes)))
+        parsed.append(OmniField.from_wire(name, dict(attributes)))
     return OmniSchema(tuple(parsed))
 
 

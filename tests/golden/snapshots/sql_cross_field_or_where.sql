@@ -1,10 +1,10 @@
 SELECT
-  "order_items.id",
-  "users.state",
-  "users.age"
-FROM ref_1
+  ${order_items.id},
+  ${users.state},
+  ${users.age}
+FROM ${order_items}
 WHERE
   (
-    "users.state" = 'California' OR "users.age" > 60
+    ${users.state} = 'California' OR ${users.age} > 60
   )
 LIMIT 50000

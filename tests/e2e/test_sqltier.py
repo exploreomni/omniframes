@@ -2,15 +2,14 @@
 
 Numeric expectations come from ``tests/data/bench/known_answers.json`` — never from a
 recomputation inside the test — so every assertion here also holds against the live org.  That is
-the point of running tier 2 through the fake at all: the SQL omniframes writes is executed for
-real (DuckDB, over the checked-in parquet), against a governed reference the fake materializes
-through its own semantic planner, and the answer has to match one nobody in this pipeline
-produced.
+the point of running tier 2 through the fake at all: the OmniSQL omniframes writes is resolved
+against the bench model and executed for real (DuckDB, over the checked-in parquet), and the
+answer has to match one nobody in this pipeline produced.
 
-The envelope assertions read ``handler.requests``, because the wire invariants of §2 — a
-``rewriteSql: false`` next to every ``userEditedSQL``, ``sqlSortsEnabled: false``, an explicit
-limit, and each reference's snake_case ``model_id`` — are the ones the server punishes silently
-rather than loudly.
+The envelope assertions read ``handler.requests``, because the wire invariants of §2 — an
+**absent** ``rewriteSql`` key, no ``staticQueryReferences`` and no ``sqlSortsEnabled``, and a
+``LIMIT`` in the statement text rather than only in the query object — are the ones the server
+punishes silently rather than loudly.
 """
 
 from __future__ import annotations
@@ -29,7 +28,8 @@ import pytest
 from omniframes import OmniSession
 from omniframes import functions as F
 from omniframes.dataframe import DataFrame
-from omniframes.errors import CompileError, OmniframesError
+from omniframes.errors import CompileError, OmniframesError, QueryError
+from omniframes.plan import nodes
 from omniframes.transport import HttpTransport
 from tests.fakes import (
     BENCH_MODEL_ID,
@@ -124,7 +124,11 @@ def test_revenue_by_state_as_an_ad_hoc_aggregate_matches_the_known_answers(
 def test_distinct_buyers_by_month_rides_one_sql_job(
     orders: DataFrame, handler: FakeOmniAPI, known_answers: dict[str, Any]
 ) -> None:
-    """A grained group key: the reference computes the month, the SQL groups by it."""
+    """A grained group key: a bare ``${field[month]}`` select item, grouped positionally.
+
+    The month arrives as the ``__raw`` half of the formatted pair the model produces (§5), so
+    the values compare as timestamps rather than as ``YYYY-MM`` strings.
+    """
     expected = answer_rows(known_answers, "distinct_buyers_by_month")
     month = F.col("order_items.created_at").grain("month").alias("month")
     rows = (
@@ -140,12 +144,10 @@ def test_distinct_buyers_by_month_rides_one_sql_job(
     for row, answer in zip(rows, expected, strict=True):
         assert row["month"] == datetime.fromisoformat(answer["month"])
         assert row["buyers"] == answer["distinct_buyers"]
-    assert query["rewriteSql"] is False
-    assert "staticQueryReferences" in query
-    assert query["staticQueryReferences"]["ref_1"]["fields"] == [
-        "order_items.created_at[month]",
-        BUYER,
-    ]
+    assert "rewriteSql" not in query, "an ABSENT key is what selects the parsed path"
+    assert "staticQueryReferences" not in query
+    assert "${order_items.created_at[month]}" in query["userEditedSQL"]
+    assert "GROUP BY\n  1" in query["userEditedSQL"], "positional — the only verified form"
 
 
 def test_average_sale_price_by_category_matches_the_known_answers(
@@ -199,7 +201,8 @@ def test_a_cross_field_or_runs_as_a_sql_where(orders: DataFrame, handler: FakeOm
 
     assert rows
     assert all(row[STATE] == "California" or (row[AGE] or 0) > 60 for row in rows)
-    assert query["staticQueryReferences"]["ref_1"]["filters"] == {}, "nothing was pushable"
+    assert "staticQueryReferences" not in query, "the statement is the whole plan"
+    assert query["filters"] == {}, "nothing rides the query object any more"
     assert "WHERE" in query["userEditedSQL"]
 
 
@@ -215,18 +218,25 @@ def test_a_computed_column_is_a_select_expression(orders: DataFrame, handler: Fa
     assert len(rows) == 50
     for row in rows:
         assert row["line_total"] == row[PRICE] * row["order_items.quantity"]
-    assert 'AS "line_total"' in sql_queries(handler)[-1]["userEditedSQL"]
+    # §3.2 regime (b): an expression item is emitted under a generated alias and renamed
+    # client-side by suffix match, because the server prefixes it with a scope it picks itself.
+    assert "AS of_expr_1" in sql_queries(handler)[-1]["userEditedSQL"]
 
 
 # --------------------------------------------------------------------------------------
-# The mixed aggregation: one governed query and one SQL job (docs/SQLTIER.md §1)
+# The mixed aggregation: one OmniSQL statement (docs/SQLTIER.md §4)
 # --------------------------------------------------------------------------------------
 
 
-def test_the_mixed_aggregation_is_exactly_two_requests_one_of_each_tier(
+def test_the_mixed_aggregation_is_exactly_one_request(
     orders: DataFrame, handler: FakeOmniAPI, known_answers: dict[str, Any]
 ) -> None:
-    """The governed measure stays tier 1; only the ad-hoc half is rewritten as SQL."""
+    """A governed measure is a legal select item, so the whole node rides one statement.
+
+    v1 sent two requests here (tier-1 measures + a tier-2 ad-hoc half) and joined them locally.
+    ``${order_items.total_sale_price}`` expands to its governed SQL inside the same statement
+    that computes ``COUNT(DISTINCT …)``, so there is no second query and no align-join.
+    """
     expected = {
         row["state"]: row for row in answer_rows(known_answers, "revenue_and_buyers_by_state")
     }
@@ -246,18 +256,18 @@ def test_the_mixed_aggregation_is_exactly_two_requests_one_of_each_tier(
         assert row["buyers"] == answer["distinct_buyers"]
     assert sum(row["buyers"] for row in rows) == 497, "every buyer lands in exactly one group"
 
-    assert len(sent) == 2, "one semantic query, one SQL job — and no raw scan"
-    governed, generated = sent
-    assert governed["fields"] == [STATE, REVENUE]
-    assert not governed.get("userEditedSQL")
-    assert generated["userEditedSQL"]
-    assert generated["rewriteSql"] is False
+    assert len(sent) == 1, "the measure and the ad-hoc aggregate share one statement"
+    (generated,) = sent
+    statement = generated["userEditedSQL"]
+    assert f"${{{REVENUE}}}" in statement
+    assert f"COUNT(DISTINCT ${{{BUYER}}})" in statement
+    assert "rewriteSql" not in generated
 
 
-def test_the_align_join_still_pairs_the_two_null_groups(
+def test_the_null_group_survives_the_governed_expansion(
     orders: DataFrame, known_answers: dict[str, Any]
 ) -> None:
-    """DECISION 1: the align-join stays local, so the NULL-state group still becomes one row."""
+    """One GROUP BY over one statement: the NULL-state group is one row, as it always was."""
     expected = {
         row["state"]: row for row in answer_rows(known_answers, "revenue_and_buyers_by_state")
     }
@@ -287,19 +297,19 @@ def test_every_sql_job_omniframes_sends_carries_the_invariants(
 
     assert len(queries) == 2
     for query in queries:
-        assert query["rewriteSql"] is False, "or the server silently runs the query object"
-        assert query["sqlSortsEnabled"] is False
+        assert "rewriteSql" not in query, "even `false` sends the ${…} refs to the warehouse"
+        assert "sqlSortsEnabled" not in query, "the statement carries its own sorts"
+        assert "staticQueryReferences" not in query, "the statement is the whole plan"
         assert query["sorts"] == []
-        assert isinstance(query["limit"], int), "the limit is always explicit"
-        assert f"LIMIT {query['limit']}" in query["userEditedSQL"]
+        assert query["modelId"] == BENCH_MODEL_ID
+        assert isinstance(query["limit"], int), "the envelope mirrors the text's LIMIT"
+        assert f"LIMIT {query['limit']}" in query["userEditedSQL"], (
+            "the query-object limit is IGNORED on this path, so the text must carry it"
+        )
         assert query["version"] == 9
-        references = query["staticQueryReferences"]
-        assert list(references) == ["ref_1"]
-        assert references["ref_1"]["model_id"] == BENCH_MODEL_ID, "§3.5's snake_case key"
-        assert references["ref_1"]["limit"] is None
 
 
-def test_explain_shows_tier_two_and_names_every_reference(orders: DataFrame) -> None:
+def test_explain_shows_tier_two_and_prints_the_statement(orders: DataFrame) -> None:
     text = (
         orders.group_by(STATE)
         .agg(F.count_distinct(BUYER).alias("buyers"))
@@ -310,21 +320,22 @@ def test_explain_shows_tier_two_and_names_every_reference(orders: DataFrame) -> 
     assert "Remote [tier 2 · sql → POST /api/v1/query/run]" in text
     assert "topic: order_items   model: bench_ecommerce" in text
     assert "  sql:" in text
-    assert "  references:" in text
-    assert f"    ref_1 [semantic]: fields [{STATE}, {BUYER}]  (unlimited)" in text
+    assert f"    SELECT\n      ${{{STATE}}}," in text
+    assert "references:" not in text, "the reference core went away with v1"
 
 
-def test_explain_of_the_mixed_dag_shows_both_tiers(orders: DataFrame) -> None:
+def test_explain_of_the_mixed_aggregation_shows_one_tier_two_step(orders: DataFrame) -> None:
     text = (
         orders.group_by(STATE)
         .agg(F.measure(REVENUE).alias("revenue"), F.count_distinct(BUYER).alias("buyers"))
         .explain()
     )
 
-    assert "Remote step 1 [tier 1 · semantic" in text
-    assert "Remote step 2 [tier 2 · sql" in text
-    assert "align-join: step 1 ⨝ step 2" in text
-    assert "raw scan" not in text, "tier 2 removed it"
+    assert "Remote [tier 2 · sql" in text
+    assert "Remote step" not in text, "one step, so nothing is numbered"
+    assert "align-join" not in text
+    assert "raw scan" not in text
+    assert f"      ${{{REVENUE}}}," in text, "the measure rides the statement"
 
 
 def test_a_long_statement_is_truncated_in_explain(orders: DataFrame) -> None:
@@ -388,6 +399,7 @@ def test_an_operation_over_a_raw_sql_scan_is_never_re_derived(
     assert len(rows) == 1
     assert len(sent) == 1
     assert "staticQueryReferences" not in sent[0], "the user's SQL went as written"
+    assert sent[0]["rewriteSql"] is False, "verbatim, not parsed as OmniSQL"
 
 
 def test_an_aggregate_above_a_user_limit_still_decomposes(
@@ -407,6 +419,60 @@ def test_an_aggregate_above_a_user_limit_still_decomposes(
     assert rows
     assert sql_queries(handler) == []
     assert run_queries(handler)[-1]["limit"] == 300
+
+
+# --------------------------------------------------------------------------------------
+# A statement the model does not bind (docs/SQLTIER.md §8)
+# --------------------------------------------------------------------------------------
+
+
+def test_a_field_the_model_cannot_bind_is_reported_as_omniframes_own_sql(
+    orders: DataFrame,
+) -> None:
+    """``Could not substitute Omni SQL`` on a tier-2 step is never the user's SQL to fix.
+
+    Nothing in the dataframe code that produced it mentions SQL, so the server's bare text reads
+    as a mystery.  The mapping says whose statement it is, what the model would not bind, and
+    where to read the statement — and keeps the server's own words at the end.
+    """
+    frame = orders.group_by("users.retired_column").agg(F.count_distinct(BUYER))
+
+    with pytest.raises(QueryError, match="tier-2 statement omniframes generated") as caught:
+        frame.collect()
+    error = caught.value
+    assert "no field 'users.retired_column'" in str(error)
+    assert "explain()" in str(error)
+    assert "Could not substitute Omni SQL" in str(error), "the server's own words survive"
+    assert error.statement is not None
+    assert "${users.retired_column}" in error.statement
+
+
+def test_a_topic_the_model_cannot_bind_names_the_view(session: OmniSession) -> None:
+    """The FROM arm of the same error.  Built off a scan node, because ``read.topic`` checks."""
+    frame = DataFrame(
+        session,
+        nodes.Scan(
+            nodes.TopicScan(
+                model_name=BENCH_MODEL_NAME,
+                model_id=BENCH_MODEL_ID,
+                topic="retired_topic",
+                base_view="order_items",
+            )
+        ),
+    )
+
+    with pytest.raises(QueryError, match="no view 'retired_topic'"):
+        frame.group_by(STATE).agg(F.count_distinct(BUYER)).collect()
+
+
+def test_a_raw_sql_scan_keeps_the_servers_own_error(session: OmniSession) -> None:
+    """§8: the SQL is the user's own, so nothing is re-attributed to omniframes."""
+    frame = session.read.sql(BENCH_MODEL_NAME, "SELECT * FROM no_such_table")
+
+    with pytest.raises(QueryError) as caught:
+        frame.collect()
+    assert "omniframes generated" not in str(caught.value)
+    assert caught.value.statement is None
 
 
 # --------------------------------------------------------------------------------------
@@ -435,17 +501,27 @@ def test_omni_url_returns_the_header_the_server_minted(
 def test_omni_url_refuses_a_tier_two_frame_before_sending_anything(
     orders: DataFrame, handler: FakeOmniAPI
 ) -> None:
-    """The wire 400s ``workbookUrl`` next to ``staticQueryReferences``; better said than found."""
+    """A workbook explores model fields, and a tier-2 job has a statement instead."""
     frame = orders.group_by(STATE).agg(F.count_distinct(BUYER))
     before = len(handler.requests)
 
-    with pytest.raises(CompileError, match="staticQueryReferences"):
+    with pytest.raises(CompileError, match="governed query"):
         frame.omni_url()
     assert len(handler.requests) == before, "refused client-side, before any request"
 
 
-def test_omni_url_refuses_a_split_plan(orders: DataFrame) -> None:
+def test_omni_url_refuses_the_mixed_aggregation_too(orders: DataFrame) -> None:
+    """It is one query again since §4's collapse — but a tier-2 one, so still no workbook."""
     frame = orders.group_by(STATE).agg(F.measure(REVENUE), F.count_distinct(BUYER))
+
+    with pytest.raises(CompileError, match="governed query"):
+        frame.omni_url()
+
+
+def test_omni_url_refuses_a_split_plan(orders: DataFrame) -> None:
+    frame = orders.select(STATE).with_column(
+        "loud", F.udf(lambda state: (state or "?").upper())(STATE)
+    )
 
     with pytest.raises(CompileError, match="compiles to several"):
         frame.omni_url()

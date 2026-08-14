@@ -38,10 +38,12 @@ LIVE_ENV = ("OMNI_BASE_URL", "OMNI_API_KEY", "OMNI_MODEL", "OMNI_TOPIC", "OMNI_B
 EXPECTED_FRAGMENTS = (
     "in-process FakeOmniAPI",  # the setup cell chose the offline backend
     "tier 1 · semantic",  # the governed query
-    "tier 2 · sql",  # the ad-hoc half of the mixed aggregation
+    "tier 2 · sql",  # the mixed aggregation, collapsed to one OmniSQL statement
     "tier 2 · raw SQL job",  # read.sql
     "Local [arrow compute]",  # the UDF fallback, named
-    "align-join",  # the mixed aggregation's local alignment
+    # No "align-join": docs/SQLTIER.md §4 collapses a mixed aggregation into a single tier-2
+    # statement, so the M3 decomposition no longer appears in the notebook.  It stays covered by
+    # tests/unit/test_splitter.py and tests/differential/test_tiers.py.
     "(none — fully pushed down)",  # at least one frame compiles to one query
     "rewriteSql: false",  # CONTRACT_NOTES §3.4's silent failure, avoided
     "having:",  # the measure filter reached the server

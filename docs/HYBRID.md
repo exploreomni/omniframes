@@ -323,6 +323,10 @@ Local [arrow compute]
 Every local line names its inputs; every remote step is numbered in `steps` order. `analyze=True`
 appends per-remote-step `display_sql` exactly as today, per step.
 
+Since M5 that decomposition is the **fallback**, not the default: tier 2 takes the whole mixed
+aggregate as one OmniSQL statement (docs/SQLTIER.md §4), and this shape appears only when it
+declines. The rules below are unchanged — they are what runs when it does.
+
 ### As-built (M4/M5) — the opaque step's rendering
 
 A step whose payload omniframes did not write — `SqlScan` (`read.sql`) or `SavedQueryScan`
@@ -344,8 +348,10 @@ Local [arrow compute]
   project: [state, revenue]
 ```
 
-`rewriteSql` is printed rather than assumed: its absence is the one server behavior that fails
-*silently* (CONTRACT_NOTES §3.4), so it belongs where a reader can see it. A stored query prints
+`rewriteSql` is printed rather than assumed: it is the key the server picks the path from, and
+taking the wrong one fails *silently* (CONTRACT_NOTES §3.4/§3.6), so it belongs where a reader
+can see it. `false` here means "run this text verbatim"; a tier-2 OmniSQL step leaves the key
+absent and prints its statement under `sql:` instead. A stored query prints
 its field list, its filter **keys** with `(stored — sent verbatim, not recompiled)`, and its
 own sorts instead of a SQL body — the point being that none of it was recompiled:
 
@@ -357,9 +363,9 @@ Remote [tier 1 · saved query → POST /api/v1/query/run]
   limit: 1000   version: 9
 ```
 
-This is distinct from the tier-2 `sql` rendering of §4 in SQLTIER.md, which shows a statement
-omniframes *wrote* plus its governed reference cores. `is_sql` and `opaque` are exact
-complements; `explain.py` branches on them in that order.
+This is distinct from the tier-2 `sql` rendering of §4 in SQLTIER.md, which shows the OmniSQL
+statement omniframes *wrote*, `${…}` refs and all. `is_sql` and `opaque` are exact complements;
+`explain.py` branches on them in that order.
 
 ## 8. Test obligations (each rule above names its test)
 

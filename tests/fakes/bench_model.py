@@ -31,6 +31,7 @@ __all__ = [
     "BENCH_TOPIC",
     "BENCH_TOPIC_NAME",
     "DEFAULT_PERMISSIONS",
+    "GRAIN_FORMATS",
     "OTHER_MODELS",
     "TABLE_NAMES",
     "FakeField",
@@ -38,6 +39,7 @@ __all__ = [
     "FakeRelationship",
     "FakeTopic",
     "FakeView",
+    "GrainFormat",
     "LiteralKind",
 ]
 
@@ -66,6 +68,27 @@ _DATE: Final = "date"
 #: ``DECIMAL(38,10)`` for exactness, so ``order_items.average_sale_price`` does the same —
 #: see docs/bench_omni_model.md ("offline-only rendering choices").
 AVERAGE_SCALE: Final = "DECIMAL(38, 10)"
+
+
+@dataclass(frozen=True)
+class GrainFormat:
+    """A display format the bench model puts on a time grain.
+
+    ``label`` is the Omni format string the API reports in ``summary.fields[*].format``;
+    ``strftime`` is how DuckDB renders it offline.
+    """
+
+    label: str
+    strftime: str
+
+
+#: Grains the bench model **formats**, canonical grain name → format.  A formatted grain comes
+#: back as a PAIR of result columns on every path — ``field[grain]__raw`` carrying the
+#: ``DATE_TRUNC`` value at the item's own position, and ``field[grain]`` carrying the formatted
+#: string, appended after every other column (CONTRACT_NOTES §2.7, live-observed on tier 1 AND
+#: the OmniSQL path).  ``month`` is the only formatted grain on purpose: the unformatted grains
+#: stay raw-only, so both shapes are exercised offline.
+GRAIN_FORMATS: Final[Mapping[str, GrainFormat]] = {"month": GrainFormat("YYYY-MM", "%Y-%m")}
 
 
 @dataclass(frozen=True)

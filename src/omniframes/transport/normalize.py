@@ -1,4 +1,4 @@
-"""Result normalization — CONTRACT_NOTES §2.7.
+"""Result normalization — CONTRACT_NOTES §2.7, docs/SQLTIER.md §5/§3.2.
 
 Every frame handed to a user goes through :func:`normalize` first:
 
@@ -9,15 +9,20 @@ Every frame handed to a user goes through :func:`normalize` first:
 * ``<field>__omni_summ`` **sidecars** (keyed by the *lowercased* field name) supply the totals
   values for raw-SQL ``column_totals`` queries, falling back to the base column; when
   ``_N``-suffixed duplicates exist only the first occurrence wins;
-* client-side **aliases** are applied last, as a plain rename (the wire has no aliasing).
+* a **formatted grain pair** (``field[grain]__raw`` + the formatted ``field[grain]``) collapses
+  to the ``__raw`` timestamp under the plain name — the same on the semantic and the OmniSQL
+  path, because both tiers emit the pair;
+* client-side **aliases** are applied last, as a plain rename (the wire has no aliasing), by
+  exact wire name for a bare ref and by ``.of_expr_<n>`` suffix for a tier-2 expression item,
+  whose scope prefix the server chooses and no client can predict.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, TypeAlias
+from typing import Any, Final, TypeAlias
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -26,12 +31,15 @@ from omniframes.errors import CompileError
 
 __all__ = [
     "COLUMN_SUBTOTAL_PREFIX",
+    "GRAIN_RAW_SUFFIX",
     "GRAND_TOTAL_VALUE",
     "RESERVED_COLUMN_PATTERNS",
     "TOTAL_INDICATOR_COLUMNS",
     "NormalizedResult",
+    "collapse_grain_names",
     "is_reserved_column",
     "normalize",
+    "resolve_aliases",
 ]
 
 #: Exact patterns from CONTRACT_NOTES §2.7.  The first two are prefixes, the last two suffixes
@@ -60,6 +68,24 @@ COLUMN_SUBTOTAL_PREFIX = "column_subtotal::"
 
 _SIDECAR_PATTERN = re.compile(r"^(?P<base>.+?)__omni_summ(?:_\d+)?$")
 
+#: Suffix of the ``DATE_TRUNC`` half of a formatted grain pair (CONTRACT_NOTES §2.7).
+GRAIN_RAW_SUFFIX: Final = "__raw"
+
+#: The ``__raw`` half of a grain pair, recognized *structurally*: only a bracketed grain item
+#: (``view.field[grain]__raw``) is one, so an ordinary column that merely ends in ``__raw`` — a
+#: raw-SQL result may well have one — is left alone.  ``__raw`` matches none of the reserved
+#: patterns above, which is why the pair has to be reconciled here rather than stripped.
+_GRAIN_RAW_PATTERN: Final = re.compile(
+    rf"^(?P<base>.+\[[A-Za-z0-9_]+\]){re.escape(GRAIN_RAW_SUFFIX)}$"
+)
+
+#: A tier-2 alias key: the generated name of an expression select item (docs/SQLTIER.md §3.2).
+#: The server honors the alias but prefixes it with a scope view no client can predict, so such
+#: a key is matched against the result columns by ``.<key>`` suffix instead of by equality.
+#: Kept in step with ``compile.sqlgen.EXPR_ALIAS_PREFIX`` — the transport layer never imports
+#: the compiler — and pinned against it by test.
+_EXPR_ALIAS_KEY: Final = re.compile(r"^of_expr_\d+$")
+
 # pyarrow's compute stubs describe results loosely (``Array`` vs ``ChunkedArray`` vs
 # ``ArrayLike``), so column/mask values flow untyped inside this module; every public signature
 # above is precise.
@@ -70,6 +96,58 @@ _Mask: TypeAlias = Any
 def is_reserved_column(name: str) -> bool:
     """Whether ``name`` is one of Omni's internal columns and must never reach the user."""
     return any(pattern.search(name) for pattern in RESERVED_COLUMN_PATTERNS)
+
+
+def collapse_grain_names(names: Sequence[str]) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Collapse the formatted-grain pairs in ``names`` (docs/SQLTIER.md §5).
+
+    A model that formats a grain returns ``field[grain]`` as TWO columns on both the semantic
+    and the OmniSQL path: ``field[grain]__raw`` — the ``DATE_TRUNC`` timestamp, at the item's
+    own select position — and the formatted string under ``field[grain]``, appended after every
+    other column (CONTRACT_NOTES §2.7).  ``__raw`` wins: the values are type-stable and sort,
+    group and join chronologically, which the display string only does by accident.
+
+    Returns:
+        the names to keep, in order, and what each is called afterwards.  The result is the
+        input unchanged when there is no pair to collapse.  Both halves must be present for a
+        collapse: a lone ``__raw`` column, and a ``__raw``-suffixed name that is not a grain
+        item, pass through untouched.
+    """
+    present = set(names)
+    collapsed: dict[str, str] = {}
+    for name in names:
+        match = _GRAIN_RAW_PATTERN.match(name)
+        if match is not None and match.group("base") in present:
+            collapsed[name] = match.group("base")
+    if not collapsed:
+        return tuple(names), tuple(names)
+    formatted = set(collapsed.values())
+    keep = tuple(name for name in names if name not in formatted)
+    return keep, tuple(collapsed.get(name, name) for name in keep)
+
+
+def resolve_aliases(columns: Sequence[str], aliases: Mapping[str, str]) -> tuple[str, ...]:
+    """Apply the client-side rename map to ``columns`` (docs/SQLTIER.md §3.2).
+
+    Alias keys come in two kinds, because the server names result columns in two regimes: a
+    **bare ref** arrives under its exact wire name, so its key matches by equality, while a
+    tier-2 **expression item** arrives as ``<scope_view>.of_expr_<n>`` with a prefix that is not
+    predictable, so its key matches the one column ending in ``.of_expr_<n>``.  Keys that match
+    nothing are ignored, exactly as a stale wire name is.
+
+    Raises:
+        CompileError: two output columns would end up with the same name, or a generated alias
+            is ambiguous (which its construction rules out).
+    """
+    if not aliases:
+        return tuple(columns)
+    renamed = list(columns)
+    for key, alias in aliases.items():
+        index = _alias_target(columns, key)
+        if index is not None:
+            renamed[index] = alias
+    _refuse_collisions(renamed)
+    return tuple(renamed)
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,8 +186,9 @@ def normalize(
             column names are the fallback, so this may be omitted.
         keep_totals: return the totals rows in :attr:`NormalizedResult.totals` (with sidecar
             values merged in) instead of discarding them.
-        aliases: wire-name → alias renames, applied last.  Unknown keys are ignored; a rename
-            that collides with another output column is a :class:`~omniframes.errors.CompileError`.
+        aliases: renames applied last — see :func:`resolve_aliases` for the two key regimes.
+            Unknown keys are ignored; a rename that collides with another output column is a
+            :class:`~omniframes.errors.CompileError`.
     """
     totals_mask = _totals_mask(table)
     row_types = _total_row_types(table)
@@ -137,15 +216,18 @@ def normalize(
 
     dropped = tuple(name for name in table.column_names if is_reserved_column(name))
     kept = [name for name in table.column_names if not is_reserved_column(name)]
-    data = data.select(kept)
+    # The grain collapse runs before the renames, since an alias names the plain `field[grain]`
+    # the pair collapses into, never its `__raw` half.
+    selected, columns = collapse_grain_names(kept)
+    data = data.select(list(selected))
     if totals is not None:
-        totals = totals.select(kept)
+        totals = totals.select(list(selected))
 
-    if aliases:
-        renamed = _apply_aliases(kept, aliases)
-        data = data.rename_columns(renamed)
+    renamed = resolve_aliases(columns, aliases or {})
+    if renamed != tuple(selected):
+        data = data.rename_columns(list(renamed))
         if totals is not None:
-            totals = totals.rename_columns(renamed)
+            totals = totals.rename_columns(list(renamed))
 
     return NormalizedResult(
         data=data,
@@ -250,11 +332,30 @@ def _merge_summ_sidecars(
     return table
 
 
-def _apply_aliases(columns: list[str], aliases: Mapping[str, str]) -> list[str]:
-    renamed = [aliases.get(name, name) for name in columns]
+def _alias_target(columns: Sequence[str], key: str) -> int | None:
+    """The column ``key`` renames: an exact wire name, else a generated ``of_expr_<n>`` suffix."""
+    if key in columns:
+        return columns.index(key)
+    if _EXPR_ALIAS_KEY.match(key) is None:
+        return None
+    suffix = f".{key}"
+    matches = [index for index, name in enumerate(columns) if name.endswith(suffix)]
+    if len(matches) == 1:
+        return matches[0]
+    if matches:
+        joined = ", ".join(columns[index] for index in matches)
+        raise CompileError(
+            f"the generated alias {key} matches {len(matches)} result columns ({joined}); "
+            "an expression item's alias is unique within one statement, so this result did not "
+            "come from the query that was sent."
+        )
+    return None
+
+
+def _refuse_collisions(names: Sequence[str]) -> None:
     seen: set[str] = set()
     collisions: list[str] = []
-    for name in renamed:
+    for name in names:
         if name in seen:
             collisions.append(name)
         seen.add(name)
@@ -264,4 +365,3 @@ def _apply_aliases(columns: list[str], aliases: Mapping[str, str]) -> list[str]:
             f"alias rename produces duplicate column name(s): {joined}. "
             "Aliases must be unique and must not shadow another selected field."
         )
-    return renamed

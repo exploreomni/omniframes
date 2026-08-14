@@ -194,7 +194,7 @@ enum has no separate DATE member (CONTRACT_NOTES §2.3). Filter literals for it 
 `products.introduced_on` (`date_type: date`) accept `field[grain]` suffixes (CONTRACT_NOTES
 §3.2). Grain names are matched case-insensitively; the `summary.fields` key and the result column
 name are the field name **exactly as requested**, bracket and all (`order_items.created_at[MONTH]`
-comes back as `order_items.created_at[MONTH]`).
+comes back as `order_items.created_at[MONTH]`) — with the one exception §4.2 describes.
 
 | grain | `data_type` | on a `date` column | rendered as |
 |---|---|---|---|
@@ -210,6 +210,42 @@ date has no time of day), lands in `summary.missing_fields` and the field is dro
 hard error (§3.2). The remaining grains of the §3.2 list (`millisecond`, `day_of_quarter`,
 `fiscal_year`, `fiscal_quarter`, `epoch`, `time_of_day`, and the duration grains) are not
 implemented offline and therefore read as missing fields — see the backlog below.
+
+### 4.2 `month` is FORMATTED — the `__raw` pair (CONTRACT_NOTES §2.7)
+
+The bench model puts a display format on exactly one grain:
+
+```yaml
+# views/order_items.view, views/users.view — on every timestamp/date dimension
+created_at:
+  timeframes:
+    month: { format: 'YYYY-MM' }
+```
+
+A **formatted** grain does not come back as one column. Live — on the semantic path and the
+OmniSQL path alike — selecting `order_items.created_at[month]` returns a PAIR:
+
+| result column | value | position |
+|---|---|---|
+| `order_items.created_at[month]__raw` | the `DATE_TRUNC` timestamp, `data_type: TIMESTAMP` | the item's own select position |
+| `order_items.created_at[month]` | the formatted string (`"2026-01"`), `data_type: STRING`, `format: YYYY-MM` | appended **after every other column** |
+
+`__raw` deliberately does not match the reserved-column regexes of §2.7, so a client has to
+reconcile the pair rather than strip it — omniframes keeps the `__raw` VALUES under the plain
+name and drops the formatted column (docs/SQLTIER.md §5, "`__raw` wins"), because a month grain
+is a timestamp whether or not the model formats it.
+
+Consequences inside the fake, all of them mirroring the live shape:
+
+- a `sorts[]` entry naming the grain orders by the `__raw` half — sorting `'2026-01'` strings is
+  only accidentally chronological, and stops being so the moment a format changes;
+- both halves are dimensions, so both join the GROUP BY; the formatted one is a function of the
+  raw one, so the group set is unchanged;
+- `summary.fields` carries both entries, in result order.
+
+**`month` is the only formatted grain on purpose.** Every other grain stays raw-only, so the
+one-column and the two-column shapes are both exercised offline. If the live model formats a
+different set, `GRAIN_FORMATS` in `tests/fakes/bench_model.py` and this subsection move together.
 
 **Grain-filter rule** (CONTRACT_NOTES §3.1), which the fake enforces by construction: a filter
 keyed on the **bare** field name compiles against the underlying column even when the projection
@@ -313,28 +349,35 @@ always groups by every dimension field. A `false` value has no validated meaning
 
 ---
 
-## 6. Tier 2: raw SQL, `__omni_summ` sidecars and query references
+## 6. The two SQL paths: verbatim SQL and parsed OmniSQL
 
-A **raw-SQL job** is `query.userEditedSQL` plus one of the "do not rewrite" markers
-(CONTRACT_NOTES §3.4). The fake runs that SQL against DuckDB over the same bench tables the
-semantic path queries, so `known_answers.json` is the oracle for a SQL job exactly as it is for a
-model job. The wire framing is unchanged: same NDJSON lines, same base64 Arrow `result`, same
-`summary` keys.
+`query.userEditedSQL` selects one of **two** jobs, and the "do not rewrite" marker beside it is
+the whole difference (CONTRACT_NOTES §3.4 vs §3.6):
 
-### 6.1 What turns SQL on — and the silent failure when it does not
+- **with** a marker — a **verbatim SQL job**: the text goes to the warehouse untouched. This is
+  `read.sql`, the user's own SQL. §6.1–§6.7 below.
+- **without** one — a **parsed-OmniSQL job**: the server parses the text, binds every `${…}`
+  reference against the model, and plans a governed model job. This is tier 2. §6.8.
+
+Either way the fake executes against DuckDB over the same bench tables the semantic path
+queries, so `known_answers.json` is the oracle for a SQL job exactly as it is for a model job,
+and the wire framing is unchanged: same NDJSON lines, same base64 Arrow `result`, same `summary`
+keys.
+
+### 6.1 Which path a statement takes
 
 | `query` keys | what runs |
 |---|---|
-| `userEditedSQL` + `rewriteSql: false` | the SQL |
-| `userEditedSQL` + `parsed: false` | the SQL |
-| `userEditedSQL` + `dbtMode: true` | the SQL |
-| `userEditedSQL` **alone** | **the semantic query object — the SQL is dropped** |
+| `userEditedSQL` + `rewriteSql: false` | the SQL, verbatim |
+| `userEditedSQL` + `parsed: false` | the SQL, verbatim |
+| `userEditedSQL` + `dbtMode: true` | the SQL, verbatim |
+| `userEditedSQL` **alone** | the text as **OmniSQL** — parsed, bound, planned as a model job (§6.8) |
 
-The last row is the one that matters. The server does not error, it plans `fields`/`filters`/
-`sorts` and returns a perfectly well-formed answer that has nothing to do with the SQL that was
-sent. The fake reproduces that literally (`tests.fakes.sqljobs.is_raw_sql_job`), so a client that
-forgets the marker fails offline the way it would fail live rather than passing offline and
-lying live.
+The last row is the one that matters. The SQL is neither run as written nor ignored: `${…}`
+references resolve against the model, the joins come from the topic, and what reaches the
+warehouse is governed SQL the client never wrote. The fake reproduces the split literally
+(`tests.fakes.sqljobs.is_raw_sql_job` / `tests.fakes.omnisql.is_omnisql_job`), so a statement
+that forgets — or wrongly adds — the marker fails offline the way it would fail live.
 
 ### 6.2 `summary.fields` on a SQL job
 
@@ -344,7 +387,7 @@ the view Omni wraps around `userEditedSQL` has an empty measures map (CONTRACT_N
 `data_type` comes from the Arrow type via the §2.3 enum, `missing_fields` is always `[]` (a SQL
 job has no field names to miss), and `display_sql` is the SQL that actually ran — which means a
 `sqlSortsEnabled` sort wrapper is visible in it. `omni_sql` is empty: a hand-written SQL job has
-no Omni-flavored form.
+no Omni-flavored form. (A parsed-OmniSQL job differs on both counts — §6.8.)
 
 ### 6.3 `sqlSortsEnabled` gates sorts **and** column totals
 
@@ -407,13 +450,14 @@ JOIN state_buyers b ON b."users.state" = r."users.state"
 A reference's **columns are the referenced query's field names verbatim**, dots included, so the
 outer SQL has to quote them.
 
-> **Offline assumption — LIVE-VALIDATE #1.** That a reference key is usable as a *bare table
-> identifier* in `userEditedSQL` is derived from the server source, not confirmed against a live
-> org (CONTRACT_NOTES §6, item 1). Everything in this subsection rests on it. The fake therefore
-> insists the key match `[A-Za-z_][A-Za-z0-9_]*` — refusing anything it would have to guess the
-> quoting for — and `scripts/live_smoke.py` closing #1 is what turns the assumption into a fact.
-> If the live syntax turns out to differ, this subsection and `tests.fakes.sqljobs` change
-> together, and every reference test moves with them.
+> **Offline-only mechanism — REFUTED live (CONTRACT_NOTES §6, closure #1).** A reference key is
+> **not** usable as a table identifier in `userEditedSQL`. Probed 2026-08-14: bare and
+> double-quoted spellings reach the warehouse verbatim (`relation "<key>" does not exist`) and
+> the `${key}` spelling fails substitution (`No such view "<key>"`). There is no refKey-as-table
+> mechanism on `/query/run`, so this subsection describes a *fake-only* convenience that has no
+> live twin, and nothing omniframes emits may depend on it — tier 2 composes through parsed
+> OmniSQL instead (§6.8). The temp-view materialization survives here only because it costs
+> nothing and keeps the reference plumbing (the envelope's 400s, per-job lifetime) under test.
 
 Two further constraints:
 
@@ -434,6 +478,79 @@ Alongside §5.3, three things the wire leaves open that the fake pins:
   entire SQL result.
 - **`used_query_references` is not emitted.** §3.5 says the server produces it for a SQL job but
   not where it lands on the line, and a key in the wrong place teaches a client the wrong shape.
+
+### 6.8 The parsed-OmniSQL path (CONTRACT_NOTES §3.6) — tier 2
+
+`userEditedSQL` with **`rewriteSql` absent** (not `false`). The statement IS the plan: there is
+no reference core, no second query object, and the query object's `fields`/`filters`/`sorts`
+have nothing to say. `tests/fakes/omnisql.py` is the resolver; docs/SQLTIER.md §7 is its spec.
+
+```sql
+SELECT ${users.state}, ${order_items.total_sale_price},
+       COUNT(DISTINCT ${users.id}) AS of_expr_1
+FROM ${order_items}
+GROUP BY 1
+LIMIT 50000
+```
+
+**Substitution.** `${…}` occurrences outside string literals are bound against the bench model:
+
+| reference | resolves to |
+|---|---|
+| `${order_items}` in FROM position | the topic's base view, plus the topic's LEFT JOINs **pruned to the views the statement actually references** (a statement inside `order_items` joins nothing) |
+| `${view.field}` | the qualified warehouse column |
+| `${view.field[grain]}` | the grain's `date_trunc`/`EXTRACT` expression, and the §4.2 `__raw` pair when the grain is formatted |
+| `${view.measure}` | the measure's aggregate expression, expanded inline — freely mixable with ad-hoc aggregates, and legal in `HAVING` and in arithmetic |
+
+Quoted text is data: a value that happens to contain `${users.state}` stays that string.
+
+**Result naming — two regimes, exactly as probed live.** This is the part a client cannot guess,
+so the fake reproduces both:
+
+- a **bare ref** select item (`${view.field}`, a bare grain ref, `${view.measure}`) surfaces
+  under its canonical `view.field` name. **The SQL alias is ignored** — renames are the client's
+  job, same as tier 1;
+- **every other select item** is an *expression item*: its SQL alias **is** honored and
+  duplicates survive, published as `<scope_view>.<alias>`. The live `scope_view` is not
+  predictable (first-ref-wins is refuted), so the fake picks the lexicographically greatest
+  referenced view — deterministic enough to assert on, **arbitrary on purpose**: a client that
+  learned the rule would be learning a lie, and only matching by alias *suffix* survives it.
+
+`summary.fields` binds bare-ref columns back to the model's own metadata (label, `date_type`,
+`aggregate_type`) and synthesizes expression columns as dimensions unless they aggregate;
+`display_sql` is the bound DuckDB statement, and `omni_sql` is the OmniSQL text as sent.
+
+**The query-object `limit` is inert here.** The statement owns its row count: no `LIMIT` clause
+means unlimited, whatever the envelope says (CONTRACT_NOTES §3.6). `LIMIT`/`OFFSET` live in the
+text.
+
+**Substitution errors carry the server's own wording**, so the client's tier-2 error mapping
+(docs/SQLTIER.md §8) is exercised offline:
+
+| shape | message |
+|---|---|
+| unknown FROM ref | `Could not substitute Omni SQL: No such view "<name>"` |
+| unknown field ref | `Could not substitute Omni SQL: Field "<name>" not found: No such field "<name>"` |
+
+A name outside `view.field[grain]`'s charset never reaches the statement — it is a missing
+field, not a splice point.
+
+**Stricter than the server, on purpose.** The server *silently rewrites* the shapes below, which
+offline would mean a plausible wrong answer that only breaks against a real org. Each is instead
+a loud `PLAN` error whose message starts with `FakeOmniAPI rejects this OmniSQL statement`, so an
+emission bug is a red test:
+
+| shape | why it must not be emitted |
+|---|---|
+| `SELECT DISTINCT` | silently STRIPPED — a pushed-down dedup comes back with duplicates; dedup stays local |
+| the same bare ref selected twice | silently DEDUPLICATED, which shifts every later positional `GROUP BY`/`ORDER BY`; dedup at emission |
+| a `WHERE` mixing a bare ref and a grain ref of ONE field | predicates MERGED WITH LOSS (the tighter bound disappears); keep grain refs out of `WHERE` |
+| `sorts`, `filters`, `column_totals`, `sqlSortsEnabled` or `staticQueryReferences` on the job | the statement is the whole plan; the server has nowhere to put them |
+
+Three more are refusals rather than server-behavior mirrors, and mark the edge of what the fake
+models: a CTE (the server accepts and *flattens* them — emit the flat statement), an explicit
+`JOIN` in the text (joins come from the topic), and a `FROM ${view}` naming something other than
+the topic's root (topic-vs-view precedence is CONTRACT_NOTES §6 item 11, unverified).
 
 ---
 
@@ -500,6 +617,7 @@ documented 403s (CONTRACT_NOTES §1):
 | joins | LEFT, many-to-one, from `order_items` | must match |
 | field names | `view.column` for every base column | must match |
 | measures | the six above | must match |
+| formatted grains | `month` only, `YYYY-MM` (§4.2) | must match — the `__raw` pair follows from it |
 | row counts | 500 / 200 / 10 000 | must match at scale 1 |
 
 A live test that fails while its offline twin passes means one of these rows drifted — check this
@@ -513,7 +631,8 @@ backlog below is the list of gaps still open.
 
 **Implemented today**
 
-- dimension `fields`, and `[grain]` suffixes on the date dimensions (§4.1);
+- dimension `fields`, and `[grain]` suffixes on the date dimensions (§4.1), including the
+  `__raw` + formatted PAIR a formatted grain projects on every path (§4.2);
 - the six governed measures, with dimension+measure selection as the group-by (§5);
 - `filters`: string / number / boolean / null / date (`BETWEEN`, `ON_OR_AFTER`, `BEFORE`) /
   composite AND-OR, including the grain-filter rule in both directions;
@@ -522,9 +641,13 @@ backlog below is the list of gaps still open.
 - `sorts` (dimensions, grains and measures), `limit`, `offset`, `planOnly`;
 - `column_totals` with the `$omni_column_total_indicator` row framing (§5.1);
 - `missing_fields` for unknown names and unusable grains;
-- **raw-SQL jobs** (§6): the three no-rewrite markers and the silent fall-through without one,
-  `sqlSortsEnabled` over `sorts` and `column_totals`, measure-filter skipping, synthesized
-  `summary.fields`, warehouse errors as `error_type: "QUERY"`, `planOnly`;
+- **verbatim SQL jobs** (§6.1–§6.7): the three no-rewrite markers, `sqlSortsEnabled` over
+  `sorts` and `column_totals`, measure-filter skipping, synthesized `summary.fields`, warehouse
+  errors as `error_type: "QUERY"`, `planOnly`;
+- **parsed-OmniSQL jobs** (§6.8): `${topic}` FROM refs with the topic's join graph pruned to the
+  referenced views, `${view.field}` / `${view.field[grain]}` / `${view.measure}` substitution,
+  both result-naming regimes, the server's substitution-error texts, and loud rejections of the
+  four shapes the server silently rewrites;
 - **`__omni_summ` sidecars** on a raw-SQL `column_totals` job (§6.5), in the shape the client's
   normalizer round-trips;
 - **`staticQueryReferences`** compiled through the semantic engine and registered as temp views
@@ -537,7 +660,8 @@ backlog below is the list of gaps still open.
 |---|---|---|
 | dimension-keyed `filters` on a raw-SQL job (Omni's mustache templating) | `PLAN` job error | pinning the templating syntax |
 | `"::total::"` and non-numeric columns in a raw-SQL `column_totals` | `PLAN` job error | — (a SQL job has no measures to grand-total) |
-| a reference key that is not a bare SQL identifier; a referenced query carrying SQL, its own references or totals | `PLAN` job error | LIVE-VALIDATE #1 (§6.6) |
+| a reference key that is not a bare SQL identifier; a referenced query carrying SQL, its own references or totals | `PLAN` job error | — (refKey-as-table is refuted live; §6.6) |
+| on the OmniSQL path: CTEs, an explicit `JOIN`, a `FROM ${view}` that is not the topic's root, a non-`SELECT` statement | `PLAN` job error, `FakeOmniAPI rejects…` | flattening/precedence pinned (CONTRACT_NOTES §6 item 11) |
 | `staticQueryReferences` on a non-SQL job (`type: "query"` filter arms, XLOOKUP calc operators) | `PLAN` job error | later milestone |
 | `type: "user_attribute"` filter arms | `PLAN` job error | user-attribute support |
 | `calculations` (including on the `sqlSortsEnabled` path) | 400 | out of scope for 0.1 (DESIGN.md §6) |
@@ -550,4 +674,4 @@ backlog below is the list of gaps still open.
 | `column_totals` next to a measure-keyed filter | `PLAN` job error | pinning what a total over a HAVING-restricted group set means |
 | grains outside §4.1 (`millisecond`, `day_of_quarter`, `fiscal_*`, `epoch`, `time_of_day`, durations) | `summary.missing_fields` | later milestone |
 | cross-field OR via `controls`, period-over-period, `join_via_map`, `column_limit`, `custom_summary_types` | ignored / unmodeled | out of scope for 0.1 |
-| `branchId`, `timezone`, `cache` (the enum is validated, the answer is always `cache_type: MISS`), the `X-Omni-Workbook-Url` response header, and `limit`/`offset` **on a raw-SQL job** | accepted and inert | later milestone |
+| `branchId`, `timezone`, `cache` (the enum is validated, the answer is always `cache_type: MISS`), the `X-Omni-Workbook-Url` response header, and `limit`/`offset` **on either SQL path** (the statement owns its row count) | accepted and inert | later milestone |

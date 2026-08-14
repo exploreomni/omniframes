@@ -143,12 +143,13 @@ Local [pandas]
   (none — fully pushed down)
 ```
 
-### Tier 2 — SQL over a governed reference
+### Tier 2 — one governed OmniSQL statement
 
 When tier 1 cannot express something — an ad-hoc aggregation, a cross-field `OR`, a computed
-column, a `HAVING` on an ad-hoc aggregate — omniframes writes SQL and sends it as one job whose
-`FROM` is a **governed sub-query** (`staticQueryReferences`). The rows never leave the
-warehouse; the governed reference still applies the model's joins and security.
+column, a `HAVING` on an ad-hoc aggregate — omniframes writes **OmniSQL**: ordinary SQL in which
+`${order_items}` is the topic and `${users.state}` is a model field. Omni parses it against the
+model, so the topic's joins, the measures' definitions and the row-level policies all apply, and
+the statement runs as one governed job. The rows never leave the warehouse.
 
 ```python
 tier_two = (
@@ -165,23 +166,25 @@ Remote [tier 2 · sql → POST /api/v1/query/run]
   topic: order_items   model: ecommerce
   sql:
     SELECT
-      "users.state",
-      COUNT(DISTINCT "users.id") AS "buyers"
-    FROM ref_1
+      ${users.state},
+      COUNT(DISTINCT ${users.id}) AS of_expr_1
+    FROM ${order_items}
     GROUP BY
-      "users.state"
+      1
     HAVING
-      COUNT(DISTINCT "users.id") > 25
+      COUNT(DISTINCT ${users.id}) > 25
     … (+1 more lines)
-  references:
-    ref_1 [semantic]: fields [users.state, users.id]  (unlimited)
 Local [pandas]
   (none — fully pushed down)
 ```
 
-The reference is deliberately **unlimited**: a silently paged input to an aggregate is a wrong
-answer, not a truncated page. It costs nothing here, because the aggregation happens in the
-warehouse — only the 21 result rows come back.
+Two details worth reading off that statement. `of_expr_1` is a generated alias, not your name:
+Omni names result columns itself and prefixes an expression's alias with a view it picks, so
+omniframes matches the column back by suffix and renames it to `buyers` before you see it. And
+the `LIMIT` lives in the text — on this path the query object's own `limit` is ignored, so the
+statement always carries one (the `… (+1 more lines)` above is it).
+
+Only the 21 result rows come back: the aggregation happened in the warehouse.
 
 ### Tier 3 — local, over the largest remote prefix
 
@@ -217,11 +220,11 @@ Note what the plan is telling you: the status filter went to the server, the Pyt
 not, and **50 000 rows** will be fetched to evaluate it. That is the honest cost of a UDF, and it
 is on the screen before you pay it.
 
-### All three at once
+### Mixing a governed measure with an ad-hoc one
 
-Mix a governed measure with an ad-hoc aggregation in one `agg()` and the plan decomposes: the
-governed half stays tier 1, the ad-hoc half becomes tier-2 SQL, and the two are aligned locally
-on the group key.
+`${order_items.total_sale_price}` is a legal select item beside `COUNT(DISTINCT …)` — the server
+expands the measure to its governed SQL inside the same statement — so an `agg()` that mixes the
+two kinds is still one request.
 
 ```python
 mixed = orders.group_by("users.state").agg(
@@ -233,33 +236,26 @@ print(mixed.explain())
 
 ```text
 == Physical plan ==
-Remote step 1 [tier 1 · semantic → POST /api/v1/query/run]
-  topic: order_items   model: ecommerce
-  fields: [users.state, order_items.total_sale_price]
-  group by: [users.state]
-  measures: [order_items.total_sale_price]
-  sort: (none)   limit: 50000   version: 9
-  aliases: order_items.total_sale_price -> revenue
-Remote step 2 [tier 2 · sql → POST /api/v1/query/run]
+Remote [tier 2 · sql → POST /api/v1/query/run]
   topic: order_items   model: ecommerce
   sql:
     SELECT
-      "users.state",
-      COUNT(DISTINCT "users.id") AS "buyers"
-    FROM ref_1
+      ${users.state},
+      ${order_items.total_sale_price},
+      COUNT(DISTINCT ${users.id}) AS of_expr_1
+    FROM ${order_items}
     GROUP BY
-      "users.state"
+      1
     LIMIT 50000
-  references:
-    ref_1 [semantic]: fields [users.state, users.id]  (unlimited)
-Local [arrow compute]
-  align-join: step 1 ⨝ step 2 on [users.state]
-  project: [users.state, revenue, buyers]
+Local [pandas]
+  (none — fully pushed down)
 ```
 
-That local align-join is **not** a SQL join: it pairs the two halves' NULL-state groups with each
-other, because they are the same group. A user-written `df.join(...)` has SQL semantics instead
-(§7).
+When tier 2 *cannot* write the statement — the shapes §3 lists as out of reach — the same frame
+falls back to a decomposition: a tier-1 query for the measures, a raw scan for the ad-hoc half,
+and a local **align-join** on the group keys. `explain()` names all three. That align-join is
+**not** a SQL join: it pairs the two halves' NULL-state groups with each other, because they are
+the same group. A user-written `df.join(...)` has SQL semantics instead (§7).
 
 ### Things that pin the frontier
 
@@ -330,6 +326,13 @@ aliased = (
 On the wire that query asks for `order_items.created_at[month]` and sorts by
 `order_items.created_at[month]`; the columns you get back are `month` and `revenue`. `explain()`
 shows the map on its own `aliases:` line.
+
+**A grain column is a timestamp, not a label.** When the model formats a grain, Omni returns it
+twice — the truncated timestamp and a formatted string (`"2026-03"`) — and omniframes keeps the
+timestamp. So a month grain has the same dtype whether or not somebody formatted it in the
+model, it sorts and joins chronologically, and it groups like a date. The consequence is that the
+column can read differently here than in the Omni UI, which shows the formatted string; format it
+yourself (`strftime`, `dt.to_period`) if you want the label.
 
 Two collisions fail **at build time**, where you wrote them, rather than at action time:
 

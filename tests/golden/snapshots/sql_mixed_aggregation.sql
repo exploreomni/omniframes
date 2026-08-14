@@ -1,7 +1,8 @@
 SELECT
-  "users.state",
-  COUNT(DISTINCT "users.id") AS "buyers"
-FROM ref_1
+  ${users.state},
+  ${order_items.total_sale_price},
+  COUNT(DISTINCT ${users.id}) AS of_expr_1
+FROM ${order_items}
 GROUP BY
-  "users.state"
+  1
 LIMIT 50000

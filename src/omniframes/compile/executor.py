@@ -1,9 +1,10 @@
 """Running an :class:`~omniframes.compile.semantic.ExecutionPlan` (docs/HYBRID.md §1).
 
-The executor knows two things: how to walk the DAG, and when a remote step came back full.
-It does **not** know what a session is — the caller passes a ``run_remote`` callable that turns
-one :class:`~omniframes.compile.semantic.RemoteStep` into a normalized Arrow table.  That makes
-the whole hybrid engine testable from a dictionary of canned tables, and it is the seam an
+The executor knows three things: how to walk the DAG, when a remote step came back full, and
+which job errors are omniframes' own SQL rather than the user's (:func:`remote_errors`).  It
+does **not** know what a session is — the caller passes a ``run_remote`` callable that turns one
+:class:`~omniframes.compile.semantic.RemoteStep` into a normalized Arrow table.  That makes the
+whole hybrid engine testable from a dictionary of canned tables, and it is the seam an
 in-product broker plugs into later.
 
 Each step is evaluated once and memoized by identity, so a step feeding two operators (or the
@@ -12,8 +13,11 @@ same query reached twice) runs once.
 
 from __future__ import annotations
 
+import re
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from typing import Final
 
 import pyarrow as pa
 
@@ -25,12 +29,21 @@ from omniframes.compile.semantic import (
     RemoteStep,
     Step,
 )
-from omniframes.errors import CompileError, TruncationWarning
+from omniframes.errors import CompileError, QueryError, TruncationWarning
 
-__all__ = ["execute"]
+__all__ = ["execute", "remote_errors"]
 
 #: Turns one remote step into the table it produced (normalized, aliases applied).
 RunRemote = Callable[[RemoteStep], pa.Table]
+
+#: The server's own prefix when an OmniSQL statement names something the model does not bind
+#: (CONTRACT_NOTES §3.6).  Matched verbatim: it is the only signal that separates "omniframes
+#: emitted a statement this model cannot bind" from every other job failure.
+_SUBSTITUTION_ERROR: Final = "Could not substitute Omni SQL"
+
+#: What the server says is missing, in either of its two spellings (CONTRACT_NOTES §3.6):
+#: ``No such view "x"`` for a FROM ref, ``No such field "v.f"`` for an expression ref.
+_MISSING: Final = re.compile(r'No such (view|field)\s+"([^"]*)"')
 
 
 def execute(
@@ -52,7 +65,8 @@ def execute(
     """
     root = execution.root
     if root is None:
-        return run_remote(execution.remote)
+        with remote_errors(execution.remote):
+            return run_remote(execution.remote)
 
     numbers = {id(step): index for index, step in enumerate(execution.steps, start=1)}
     results: dict[int, pa.Table] = {}
@@ -66,7 +80,8 @@ def execute(
         if cached is not None:
             return cached
         if isinstance(step, RemoteStep):
-            table = run_remote(step)
+            with remote_errors(step):
+                table = run_remote(step)
             message = _truncation(step, table, numbers.get(key, 0), warn=warn)
             if message is not None:
                 truncated.append(message)
@@ -84,6 +99,50 @@ def execute(
     for message in truncated:
         warnings.warn(message, TruncationWarning, stacklevel=stacklevel)
     return result
+
+
+@contextmanager
+def remote_errors(step: RemoteStep) -> Iterator[None]:
+    """Run one remote step's request, re-reading an OmniSQL binding failure as omniframes' own.
+
+    A ``Could not substitute Omni SQL`` job error on a tier-2 step is not a user error: the
+    statement was written here, from a plan built against this model, so the model drifted
+    between the plan and the run — or the emission is wrong (docs/SQLTIER.md §8).  The server's
+    text names what it could not bind and nothing else, which reads as a mystery next to
+    dataframe code that mentions no SQL at all; this says whose SQL it is, what is missing, and
+    where to read the statement.  Every other job error passes through untouched, ``read.sql``
+    included: that SQL is the user's own.
+    """
+    try:
+        yield
+    except QueryError as exc:
+        mapped = _omnisql_error(step, exc)
+        if mapped is None:
+            raise
+        raise mapped from exc
+
+
+def _omnisql_error(step: RemoteStep, exc: QueryError) -> QueryError | None:
+    statement = step.query.user_edited_sql
+    if not step.query.omnisql or not statement:
+        return None
+    text = str(exc)
+    if _SUBSTITUTION_ERROR not in text:
+        return None
+    match = _MISSING.search(text)
+    missing = (
+        f"the model has no {match.group(1)} {match.group(2)!r}"
+        if match is not None
+        else "the model rejected a reference in it"
+    )
+    return QueryError(
+        f"Omni rejected the tier-2 statement omniframes generated for this frame: {missing}. "
+        "The model changed under the query, or omniframes emitted a reference it should not "
+        f"have — explain() prints the statement. Server said: {text}",
+        error_type=exc.error_type,
+        job_id=exc.job_id,
+        statement=statement,
+    )
 
 
 def _run(step: LocalStep, inputs: tuple[pa.Table, ...]) -> pa.Table:

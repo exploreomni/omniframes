@@ -26,11 +26,13 @@ from tests.fakes.bench_model import (
     BENCH_TOPIC,
     BENCH_TOPIC_NAME,
     DEFAULT_PERMISSIONS,
+    GRAIN_FORMATS,
     FakeField,
     FakeModel,
     FakeRelationship,
     FakeTopic,
     FakeView,
+    GrainFormat,
 )
 from tests.fakes.documents import (
     BENCH_DOCUMENT_ID,
@@ -47,6 +49,7 @@ from tests.fakes.engine import (
     COLUMN_TOTAL_INDICATOR,
     GRAND_TOTAL_INDICATOR,
     GRAND_TOTAL_KEY,
+    RAW_SUFFIX,
     TIME_GRAINS,
     TOTAL_INDICATOR_COLUMN,
     BenchEngine,
@@ -56,6 +59,7 @@ from tests.fakes.engine import (
     PlannedQuery,
     ResolvedField,
     arrow_data_type,
+    grain_pair,
 )
 from tests.fakes.fake_omni import (
     DEFAULT_TOKEN,
@@ -64,6 +68,14 @@ from tests.fakes.fake_omni import (
     WORKBOOK_URL_HEADER,
     FakeOmniAPI,
     RecordedRequest,
+)
+from tests.fakes.omnisql import (
+    REJECTION,
+    SUBSTITUTION_ERROR,
+    is_omnisql_job,
+    no_such_field,
+    no_such_view,
+    scope_view,
 )
 from tests.fakes.sqljobs import (
     SUMM_SIDECAR_SUFFIX,
@@ -89,12 +101,16 @@ __all__ = [
     "DEFAULT_TOKEN",
     "DOCUMENT_WITHOUT_DASHBOARD",
     "GENERATED_QUERIES",
+    "GRAIN_FORMATS",
     "GRAND_TOTAL_INDICATOR",
     "GRAND_TOTAL_KEY",
     "NDJSON_CONTENT_TYPE",
     "NO_QUERY_GENERATED",
+    "RAW_SUFFIX",
     "REDACTED_ERROR_MESSAGE",
+    "REJECTION",
     "RUN_QUERY_REFUSAL",
+    "SUBSTITUTION_ERROR",
     "SUMM_SIDECAR_SUFFIX",
     "TIME_GRAINS",
     "TOTAL_INDICATOR_COLUMN",
@@ -109,6 +125,7 @@ __all__ = [
     "FakeView",
     "GeneratedQuery",
     "Grain",
+    "GrainFormat",
     "PlanFailure",
     "PlannedQuery",
     "QueryReference",
@@ -118,7 +135,12 @@ __all__ = [
     "SqlJob",
     "arrow_data_type",
     "bench_query",
+    "grain_pair",
+    "is_omnisql_job",
     "is_raw_sql_job",
+    "no_such_field",
+    "no_such_view",
+    "scope_view",
     "sidecar_name",
     "synthesize_fields",
 ]
