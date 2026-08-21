@@ -110,7 +110,9 @@ every local operator). No silent local fallback, ever.
 `plan_query(query) -> PlanResult`, plus catalog calls. Implementations:
 - `HttpTransport` (httpx): request signing, NDJSON accumulation loop with client-side deadline
   budget, wait-loop per CONTRACT_NOTES §2.2, error-envelope mapping (all three shapes), bounded
-  retries on connect errors, backoff on 429 (respect `X-Omni-Waf-Action`), explicit timeouts.
+  retries on connect errors, and WAF-aware 429 recovery: GETs have a cumulative wait budget
+  while POSTs remain attempt-bounded. `max_retries` governs GET network failures and POST 429s;
+  ambiguous POST network failures are never retried. Explicit timeouts.
 - Tests use the in-process **FakeOmniAPI** via `httpx.MockTransport` — full wire fidelity.
 - A future `BrokerTransport` (in-product notebooks) implements the same protocol; nothing above
   the transport may assume HTTP.

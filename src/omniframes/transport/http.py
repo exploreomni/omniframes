@@ -17,7 +17,8 @@ point at it.  The load-bearing behaviors:
   ``omniframes.errors`` hierarchy so nothing above the transport ever sees an httpx exception or
   a status code.
 * **Retries** — 429 comes from the AWS WAF (60 req/min shared by every client using the same
-  ``Authorization`` value) and gets bounded exponential backoff with jitter.  Connect/timeout
+  ``Authorization`` value). Idempotent GETs honor numeric ``Retry-After`` values within a
+  cumulative wait budget; POSTs retain bounded exponential backoff with jitter. Connect/timeout
   failures are retried for idempotent GETs only: a ``/query/run`` POST is never replayed, since
   a retry would submit a second job.
 * **Secrecy** — the API key lives in exactly one attribute, is never formatted into a message,
@@ -30,6 +31,7 @@ import random
 import re
 import time
 from collections.abc import Callable, Mapping
+from math import isfinite
 from types import TracebackType
 from typing import Any, Final
 from urllib.parse import quote, urlsplit, urlunsplit
@@ -53,6 +55,7 @@ from omniframes.transport.ndjson import JobLine, StreamAccumulator
 __all__ = [
     "DEFAULT_MAX_DEADLINE_SECONDS",
     "DEFAULT_POLL_INTERVAL_SECONDS",
+    "DEFAULT_RATE_LIMIT_WAIT_SECONDS",
     "DEFAULT_TIMEOUT",
     "REDACTED_API_KEY",
     "USER_AGENT",
@@ -84,6 +87,9 @@ DEFAULT_MAX_DEADLINE_SECONDS: Final = 600.0
 #: Pause before re-polling ``/query/wait`` when the pending set did not shrink.
 DEFAULT_POLL_INTERVAL_SECONDS: Final = 1.0
 
+#: One full 60-second WAF window, plus enough slack for a request to clear it.
+DEFAULT_RATE_LIMIT_WAIT_SECONDS: Final = 65.0
+
 _RUN_PATH: Final = "/api/v1/query/run"
 _WAIT_PATH: Final = "/api/v1/query/wait"
 _WHOAMI_PATH: Final = "/api/v1/whoami"
@@ -112,6 +118,7 @@ _NETWORK_ERRORS: Final = (httpx.TimeoutException, httpx.NetworkError, httpx.Prot
 _BACKOFF_BASE_SECONDS: Final = 0.5
 _MAX_BACKOFF_SECONDS: Final = 8.0
 _JITTER_FRACTION: Final = 0.5
+_MAX_ZERO_DELAY_RETRIES: Final = 8
 
 
 def _segment(value: str) -> str:
@@ -180,7 +187,10 @@ class HttpTransport:
         sleep: injectable ``time.sleep`` (poll pacing and retry backoff).
         monotonic: injectable ``time.monotonic`` (deadline accounting).
         jitter: injectable ``random.random``; returns a value in ``[0, 1)``.
-        max_retries: bound on retries for 429s and for network failures on idempotent GETs.
+        max_retries: bound on retries for POST 429s and for network failures on idempotent GETs.
+        rate_limit_max_wait_seconds: cumulative waiting budget for 429 recovery on one
+            idempotent GET. This bounds waiting, not wall time; a multi-request action may spend
+            the budget once per request.
         poll_interval_seconds: pause between ``/query/wait`` polls that made no progress.
     """
 
@@ -195,6 +205,7 @@ class HttpTransport:
         "_monotonic",
         "_owns_client",
         "_poll_interval_seconds",
+        "_rate_limit_max_wait",
         "_sleep",
         "_timeout",
         "_user_id",
@@ -214,6 +225,7 @@ class HttpTransport:
         monotonic: Callable[[], float] = time.monotonic,
         jitter: Callable[[], float] = random.random,
         max_retries: int = 3,
+        rate_limit_max_wait_seconds: float = DEFAULT_RATE_LIMIT_WAIT_SECONDS,
         poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
     ) -> None:
         if not api_key or not api_key.strip():
@@ -222,6 +234,16 @@ class HttpTransport:
             raise TransportError("max_deadline_seconds must be positive")
         if max_retries < 0:
             raise TransportError("max_retries must not be negative")
+        rate_limit_wait: object = rate_limit_max_wait_seconds
+        if (
+            isinstance(rate_limit_wait, bool)
+            or not isinstance(rate_limit_wait, int | float)
+            or not isfinite(rate_limit_wait)
+            or rate_limit_wait < 0
+        ):
+            raise TransportError(
+                "rate_limit_max_wait_seconds must be a finite, non-negative number"
+            )
 
         self._base_url = normalize_base_url(base_url)
         self._api_key = api_key.strip()
@@ -233,6 +255,7 @@ class HttpTransport:
         self._monotonic = monotonic
         self._jitter = jitter
         self._max_retries = max_retries
+        self._rate_limit_max_wait = float(rate_limit_wait)
         self._poll_interval_seconds = float(poll_interval_seconds)
 
         self._owns_client = client is None
@@ -258,6 +281,11 @@ class HttpTransport:
     def branch_id(self) -> str | None:
         """The default ``branchId`` applied to run envelopes that lack one."""
         return self._branch_id
+
+    @property
+    def rate_limit_max_wait_seconds(self) -> float:
+        """The cumulative 429 wait budget for one idempotent GET request."""
+        return self._rate_limit_max_wait
 
     def __repr__(self) -> str:
         """Never renders the key — that is the whole point of this method existing."""
@@ -520,6 +548,9 @@ class HttpTransport:
         retry_network = method == "GET"
         network_attempts = 0
         throttle_attempts = 0
+        throttle_waited = 0.0
+        last_retry_after: str | None = None
+        zero_delay_retries = 0
 
         while True:
             try:
@@ -542,6 +573,63 @@ class HttpTransport:
                 continue
 
             if response.status_code == 429:
+                if retry_network:
+                    throttle_attempts += 1
+                    last_retry_after = response.headers.get("Retry-After")
+                    remaining = self._rate_limit_max_wait - throttle_waited
+                    retry_after = _retry_after(response)
+
+                    if retry_after is not None:
+                        delay = retry_after
+                        if delay > remaining:
+                            raise self._rate_limit_error(
+                                response,
+                                throttle_attempts,
+                                method=method,
+                                path=path,
+                                waited=throttle_waited,
+                                budget=self._rate_limit_max_wait,
+                                last_retry_after=last_retry_after,
+                                requested_wait=delay,
+                                remaining_budget=max(remaining, 0.0),
+                            )
+                    else:
+                        if remaining <= 0:
+                            raise self._rate_limit_error(
+                                response,
+                                throttle_attempts,
+                                method=method,
+                                path=path,
+                                waited=throttle_waited,
+                                budget=self._rate_limit_max_wait,
+                                last_retry_after=last_retry_after,
+                            )
+                        exponent = min(throttle_attempts - 1, 6)
+                        delay = min(
+                            _BACKOFF_BASE_SECONDS * 2.0**exponent,
+                            _MAX_BACKOFF_SECONDS,
+                        ) * (1.0 + _JITTER_FRACTION * self._jitter())
+                        delay = min(delay, remaining)
+
+                    if delay == 0:
+                        if remaining <= 0 or zero_delay_retries >= _MAX_ZERO_DELAY_RETRIES:
+                            raise self._rate_limit_error(
+                                response,
+                                throttle_attempts,
+                                method=method,
+                                path=path,
+                                waited=throttle_waited,
+                                budget=self._rate_limit_max_wait,
+                                last_retry_after=last_retry_after,
+                            )
+                        zero_delay_retries += 1
+                    else:
+                        zero_delay_retries = 0
+
+                    self._sleep(delay)
+                    throttle_waited += delay
+                    continue
+
                 if throttle_attempts >= self._max_retries:
                     raise self._rate_limit_error(response, throttle_attempts + 1)
                 throttle_attempts += 1
@@ -559,14 +647,49 @@ class HttpTransport:
         delay = min(_BACKOFF_BASE_SECONDS * 2.0 ** (attempt - 1), _MAX_BACKOFF_SECONDS)
         return delay * (1.0 + _JITTER_FRACTION * self._jitter())
 
-    def _rate_limit_error(self, response: httpx.Response, attempts: int) -> TransportError:
+    def _rate_limit_error(
+        self,
+        response: httpx.Response,
+        attempts: int,
+        *,
+        method: str | None = None,
+        path: str | None = None,
+        waited: float | None = None,
+        budget: float | None = None,
+        last_retry_after: str | None = None,
+        requested_wait: float | None = None,
+        remaining_budget: float | None = None,
+    ) -> TransportError:
+        """Build a credential-safe 429 diagnostic without ever reading the response body."""
         waf = response.headers.get(WAF_ACTION_HEADER)
         source = f" (WAF action: {waf})" if waf else ""
+        if method is None or path is None or waited is None or budget is None:
+            return TransportError(
+                self._scrub(
+                    f"the Omni API rate-limited this request{source} and it still failed after "
+                    f"{attempts} attempts. Rate limiting is keyed on the API key itself: every "
+                    "client sharing the key shares one 60 requests/minute bucket. Slow down, or "
+                    "use a separate key for this workload."
+                ),
+                status=response.status_code,
+            )
+
+        retry_after = last_retry_after if last_retry_after is not None else "absent"
+        requested = ""
+        if requested_wait is not None and remaining_budget is not None:
+            requested = (
+                f" The server asked for a {requested_wait:g}s wait, which exceeds the remaining "
+                f"rate-limit budget ({remaining_budget:g}s of {budget:g}s); raise it via "
+                f"OmniSession.builder.rate_limit_wait(seconds) or retry after {requested_wait:g}s."
+            )
         return TransportError(
-            f"the Omni API rate-limited this request{source} and it still failed after "
-            f"{attempts} attempts. Rate limiting is keyed on the API key itself: every client "
-            "sharing the key shares one 60 requests/minute bucket. Slow down, or use a "
-            "separate key for this workload.",
+            self._scrub(
+                f"the Omni API rate-limited {method} {path}{source}: {attempts} 429 response(s) "
+                f"after waiting {waited:g}s of its {budget:g}s rate-limit budget; last "
+                f"Retry-After: {retry_after}. Rate limiting is keyed on the API key itself: every "
+                "client sharing the key shares one 60 requests/minute bucket. Slow down, or use "
+                f"a separate key for this workload.{requested}"
+            ),
             status=response.status_code,
         )
 
@@ -712,7 +835,7 @@ def _retry_after(response: httpx.Response) -> float | None:
         seconds = float(raw.strip())
     except ValueError:
         return None
-    return seconds if seconds >= 0 else None
+    return seconds if isfinite(seconds) and seconds >= 0 else None
 
 
 def _text_snippet(response: httpx.Response, limit: int = 200) -> str:
