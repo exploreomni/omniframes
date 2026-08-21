@@ -98,6 +98,24 @@ def aggregate(*aggs: Column, keys: tuple[Column, ...] = ()) -> nodes.Aggregate:
         ((F.col(AGE) - 1).expr, "${users.age} - 1"),
         ((F.col(AGE) * 2).expr, "${users.age} * 2"),
         ((F.col(AGE) / 2).expr, "${users.age} / 2"),
+        # Nested arithmetic keeps its grouping.  SQLGlot's generator prints the tree it is handed
+        # and never re-derives precedence, so the parens have to be nodes: without them
+        # ``(a - b) / a`` prints as ``a - b / a``, which the warehouse answers — wrongly.
+        (
+            ((F.col(PRICE) - F.col(AGE)) / F.col(PRICE)).expr,
+            "(${order_items.sale_price} - ${users.age}) / ${order_items.sale_price}",
+        ),
+        (
+            ((F.col(AGE) + 1) * (F.col(AGE) - 1)).expr,
+            "(${users.age} + 1) * (${users.age} - 1)",
+        ),
+        ((F.col(AGE) - (F.col(AGE) - 1)).expr, "${users.age} - (${users.age} - 1)"),
+        (
+            ((F.measure(REVENUE) - F.col(PRICE)) / F.count_distinct("users.id")).expr,
+            "(${order_items.total_sale_price} - ${order_items.sale_price})"
+            " / COUNT(DISTINCT ${users.id})",
+        ),
+        (((F.col(AGE) + 1) * 2 > 30).expr, "(${users.age} + 1) * 2 > 30"),
         (
             ((F.col(AGE) > 30) & (F.col(STATE) == "Ohio")).expr,
             "(${users.age} > 30 AND ${users.state} = 'Ohio')",
