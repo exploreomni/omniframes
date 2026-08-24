@@ -26,6 +26,8 @@ primary; thin camelCase aliases exist for muscle memory.
 - `uv run pytest` — full suite (offline; there is no live pytest lane)
 - `uv run pytest tests/unit/test_x.py::test_name` — single test
 - `uv run python scripts/live_smoke.py` — the live-org probe (needs credentials)
+- `uv run marimo edit examples/demo.py` — launch the marimo demo notebook (needs
+  OMNI_BASE_URL/OMNI_API_KEY for live cells)
 - `uv run ruff format && uv run ruff check --fix` — format + lint (run after every edit)
 - `uv run mypy` — strict type check
 - Milestone gate: `uv run ruff format --check && uv run ruff check && uv run mypy && uv run pytest -m "not live"`

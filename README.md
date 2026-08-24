@@ -85,6 +85,7 @@ uv run pytest                # run tests (live tests auto-skip without credentia
 uv run ruff format && uv run ruff check --fix
 uv run mypy
 uv run mkdocs build --strict # docs site
+uv run marimo edit examples/demo.py  # the demo notebook (needs OMNI_BASE_URL/OMNI_API_KEY live)
 ```
 
 The full gate, which CI enforces and every milestone must pass:
