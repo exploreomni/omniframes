@@ -327,6 +327,23 @@ def test_a_computed_column_agrees(orders: DataFrame) -> None:
     )
 
 
+def test_a_nested_computed_column_agrees(orders: DataFrame) -> None:
+    """Grouping survives the trip: ``(a - b) / a`` must not be re-read as ``a - b / a``.
+
+    The local engine evaluates the expression tree, so it is the honest reference here — a tier 2
+    that drops the parens answers a different question and the two sides diverge.
+    """
+    agree(
+        orders.select(ID, PRICE, DISCOUNT, QUANTITY).with_column(
+            "net_total", (F.col(PRICE) - F.col(DISCOUNT)) * F.col(QUANTITY)
+        )
+    )
+
+
+def test_a_nested_arithmetic_filter_agrees(orders: DataFrame) -> None:
+    agree(orders.select(ID, PRICE).filter((F.col(PRICE) - F.col(DISCOUNT)) * F.col(QUANTITY) > 200))
+
+
 def test_a_computed_column_propagates_nulls_the_same_way(orders: DataFrame) -> None:
     table = agree(
         orders.select(ID, PRICE, DISCOUNT).with_column("net", F.col(PRICE) - F.col(DISCOUNT))
