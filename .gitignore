@@ -16,6 +16,7 @@ htmlcov/
 
 # Notebooks
 .ipynb_checkpoints/
+__marimo__/
 
 # Docs site build output
 site/

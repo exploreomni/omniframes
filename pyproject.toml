@@ -48,6 +48,7 @@ dev = [
     "nbclient>=0.10",
     "nbformat>=5.10",
     "ipykernel>=6.29",
+    "marimo>=0.13",
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=0.26",
     "python-dotenv>=1.2.2",
@@ -83,6 +84,12 @@ ignore = [
     "E501",   # line length is enforced by the formatter
     "SIM108", # ternary is not always clearer
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# marimo notebooks (examples/demo.py): every cell is a generated function, so its imports live
+# inside the cell (I001) and a bare trailing expression is the cell's rendered output (B018).
+"examples/*.py" = ["B018", "I001", "RUF001"]
+"examples/*.ipynb" = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"
