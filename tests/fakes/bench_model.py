@@ -28,10 +28,12 @@ __all__ = [
     "BENCH_DATA_DIR",
     "BENCH_MODEL_ID",
     "BENCH_MODEL_NAME",
+    "BENCH_MODEL_VIEWS",
     "BENCH_TOPIC",
     "BENCH_TOPIC_NAME",
     "DEFAULT_PERMISSIONS",
     "GRAIN_FORMATS",
+    "INVENTORY_VIEW",
     "OTHER_MODELS",
     "TABLE_NAMES",
     "FakeField",
@@ -445,6 +447,23 @@ BENCH_TOPIC: Final = FakeTopic(
         ),
     ),
 )
+
+#: A view that exists in the composed model but that **no topic reaches**.  It is here so the
+#: widened ``read.view`` semantics are actually exercised: the flattened ``/view`` endpoint
+#: returns it, the topic-detail walk never does (docs/DESIGN.md).
+INVENTORY_VIEW: Final = FakeView(
+    name="inventory_snapshots",
+    label="Inventory Snapshots",
+    dimensions=(
+        _dimension("inventory_snapshots", "id", "NUMBER"),
+        _dimension("inventory_snapshots", "product_id", "NUMBER"),
+        _dimension("inventory_snapshots", "on_hand", "NUMBER"),
+    ),
+)
+
+#: Every view of the *composed* model — what ``GET /models/{id}/view`` flattens.  A superset of
+#: the topic's views; the extra entry is unreachable through any topic.
+BENCH_MODEL_VIEWS: Final = (*BENCH_TOPIC.views, INVENTORY_VIEW)
 
 #: Decoy models so ``GET /models`` pagination has something to page through.  None of them is
 #: queryable — a query against one of these ids gets a PLAN job error.

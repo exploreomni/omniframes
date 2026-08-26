@@ -2,7 +2,9 @@
 
 **This document is the source of truth for everything Omniframes puts on the wire.** It was
 produced by reading the Omni monorepo server source (checkout `~/omni/omni`, commit
-`86569cd50c6197836ed66365ccc2258b213ea2de`, 2026-08-14), NOT the published OpenAPI spec — the
+`86569cd50c6197836ed66365ccc2258b213ea2de`, 2026-08-14 — §4's model filters and flattened view
+list re-verified at `916a42204fca897542433ede1d6f8bc074cd4fd0`, 2026-08-25), NOT the published
+OpenAPI spec — the
 public spec is wrong in several load-bearing places (see [Public-docs discrepancies](#5-public-docs-discrepancies)).
 File references below are paths within that monorepo.
 
@@ -396,7 +398,27 @@ job-error lines.
 ## 4. Catalog endpoints
 
 - **`GET /api/v1/models`** — cursor-paginated: `?pageSize=` (1..100, default 20), `?cursor=`
-  (opaque — echo back exactly), `?modelKind=SHARED|...`, `?name=`, `?sortField/sortDirection`.
+  (opaque — echo back exactly), `?modelKind=SHARED|...`, `?name=`, `?modelId=`,
+  `?sortField/sortDirection`.
+  `?name=` and `?modelId=` are **exact** matches, not substring — but `?name=` is
+  **case-insensitive**: it compares against `OmniModel.name`, a Postgres `CITEXT` column
+  (`packages/db-models/prisma/schema.prisma:1391`). `buildWhereClause` hands Prisma
+  `...(name && {name})` / `...(modelId && {id: modelId})`
+  (`packages/bi-app/app/routes/api.unstable.models/get-handler.server.ts:56,58`, re-exported at
+  `api.v1.models.ts`). `modelId` is declared `z.uuid()` on a `.strict()` schema
+  (`packages/bi-app/app/types/api/models/schema.ts:2260`), so a **non-UUID `modelId` is a 400,
+  not an empty page** — only send it for an input matching zod's *canonical* UUID grammar
+  (dashed form, version nibble 1-8, variant nibble 8/9/a/b, plus the nil and max UUIDs;
+  `node_modules/zod/v4/core/regexes.js`). Python's `uuid.UUID()` is looser — it also accepts
+  un-hyphenated, `{...}`-braced and `urn:uuid:`-prefixed forms — and anything it accepts that the
+  server rejects becomes a 400 in place of the whole fallback chain. Both filters make model resolution
+  a single request instead of a full cursor walk.
+  **A filter is only applied when the server considers it truthy.** `name` is
+  `z.string().optional()` with no min-length, so `?name=` passes validation and `...(name &&
+  {name})` then drops it — the reply is page one of the *whole catalog*, not an empty page. A
+  filtered reply must therefore be checked against the filter that was sent; treating
+  `records[0]` as the answer silently resolves an arbitrary model. (`modelId` differs: `z.uuid()`
+  rejects the empty string outright, so it 400s rather than being dropped.)
   Response `{pageInfo: {hasNextPage, nextCursor, pageSize, totalRecords}, records: [{id, name,
   modelKind, connectionId, baseModelId, createdAt, updatedAt, deletedAt}]}`. The **strict**
   param schema 400s on unknown query params.
@@ -406,9 +428,19 @@ job-error lines.
   `{success, topic: {..., views: [{name, label, dimensions: Field[], measures: Field[],
   filter_only_fields: Field[]}], relationships: [{join_type, sql, left_view_name,
   right_view_name, ...}]}}`. 404 `"Topic <name> not found"`.
-- **`GET /api/v1/models/{modelId}/view`** — flattened & lossy (`{views: [{name, label, fields:
-  [{name, type: DIMENSION|MEASURE|FILTER}]}]}`). There is **no per-view detail GET** — full field
-  metadata comes from the topic-detail endpoint only.
+- **`GET /api/v1/models/{modelId}/view`** — flattened & lossy: `{success, views: [{name, label,
+  description, hidden, fields: [{name, type: "dimension"|"measure"|"filter"}]}]}`. The `type`
+  values are **lowercase** — `VIEW_FIELD_TYPE` is `{DIMENSION: 'dimension', FILTER: 'filter',
+  MEASURE: 'measure'}` (`packages/bi-app/app/types/api/models/view-field-type.ts`), so the
+  uppercase spelling is the TS constant's name, not what goes on the wire. Field **names and
+  kinds only, no data types** — the loader calls `getComposedModel` with
+  `excludeFieldProps: ['expr']` and maps `dimensions`/`measures`/`filter_only_fields` down to
+  `{name, type}` (`packages/bi-app/app/routes/api.unstable.model.$modelId.view.ts`, re-exported
+  at `api.v1.models.$modelId.view.ts`). Scope: **every view of the composed model** with
+  `ignored` filtered out — `hidden` views are included, and views no topic reaches are too, so
+  this is a *superset* of what the topic-detail walk returns. Accepts `?branch_id=`.
+  There is **no per-view detail GET** — `api.v1.models.$modelId.view.$viewName.ts` exports only
+  an `action`, no `loader`; full field metadata comes from the topic-detail endpoint only.
 - **`GET /api/v1/documents/{identifier}/queries`** — `{queries: [{id, name, query, url}]}`;
   the `query` blob is a stored query (verify/inject `modelId` before running). 404 when the
   document has no dashboard.

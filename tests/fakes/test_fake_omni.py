@@ -430,12 +430,64 @@ def test_models_rejects_out_of_range_page_size(client: httpx.Client, page_size: 
     assert response.json()["status"] == 400
 
 
-def test_models_name_filter(client: httpx.Client) -> None:
-    payload = client.get("/api/v1/models", params={"name": "ecommerce"}).json()
-    assert [record["name"] for record in payload["records"]] == [
-        "bench_ecommerce",
-        "bench_ecommerce_branch",
-    ]
+def test_models_name_filter_is_exact(client: httpx.Client) -> None:
+    """``?name=`` is an exact Prisma match, not a contains-clause (CONTRACT_NOTES §4)."""
+    payload = client.get("/api/v1/models", params={"name": "bench_ecommerce"}).json()
+    assert [record["name"] for record in payload["records"]] == ["bench_ecommerce"]
+
+    partial = client.get("/api/v1/models", params={"name": "ecommerce"}).json()
+    assert partial["records"] == [], "a substring must not match"
+
+
+def test_models_empty_name_filter_is_dropped_not_matched(client: httpx.Client) -> None:
+    """`name` is `z.string().optional()`, so "" validates and `name && {name}` then drops it.
+
+    The reply is page one of the whole catalog. A client that trusts `records[0]` positionally
+    resolves an arbitrary model instead of reporting no match.
+    """
+    payload = client.get("/api/v1/models", params={"name": ""}).json()
+
+    assert len(payload["records"]) > 1
+    assert payload["records"][0]["name"] == "bench_ecommerce"
+
+
+def test_models_name_filter_is_case_insensitive(client: httpx.Client) -> None:
+    """`OmniModel.name` is a Postgres CITEXT column, so `m.name = ${name}` ignores case."""
+    payload = client.get("/api/v1/models", params={"name": "BENCH_EcOmMeRcE"}).json()
+
+    assert [record["name"] for record in payload["records"]] == ["bench_ecommerce"]
+
+
+def test_models_model_id_filter(client: httpx.Client) -> None:
+    payload = client.get("/api/v1/models", params={"modelId": BENCH_MODEL_ID}).json()
+    assert [record["id"] for record in payload["records"]] == [BENCH_MODEL_ID]
+
+
+def test_models_model_id_filter_rejects_a_non_uuid(client: httpx.Client) -> None:
+    """The param is declared ``z.uuid()``, so a bare name 400s rather than matching nothing."""
+    response = client.get("/api/v1/models", params={"modelId": "bench_ecommerce"})
+    assert response.status_code == 400
+
+
+def test_view_list_reports_lowercase_field_kinds(client: httpx.Client) -> None:
+    """`VIEW_FIELD_TYPE`'s *values* are lowercase; the uppercase form is the TS constant name."""
+    payload = client.get(f"/api/v1/models/{BENCH_MODEL_ID}/view").json()
+    kinds = {field["type"] for view in payload["views"] for field in view["fields"]}
+
+    assert kinds <= {"dimension", "measure", "filter"}
+    assert "dimension" in kinds
+
+
+def test_view_list_spans_the_composed_model(client: httpx.Client) -> None:
+    """Every non-ignored view, including ones no topic reaches."""
+    payload = client.get(f"/api/v1/models/{BENCH_MODEL_ID}/view").json()
+
+    assert {view["name"] for view in payload["views"]} == {
+        "order_items",
+        "users",
+        "products",
+        "inventory_snapshots",
+    }
 
 
 # --------------------------------------------------------------------------------------

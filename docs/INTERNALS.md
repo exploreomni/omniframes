@@ -204,12 +204,17 @@ Local [pandas]
   `.transport(QueryTransport)` (injection for tests), `.get_or_create()`.
   No network I/O. `session.verify()` runs whoami eagerly; otherwise the first action triggers a
   cached whoami preflight for crisp errors.
-- `session.catalog`: `models()` (paginate all), `model(name_or_id)` (resolves name→id, cached),
-  `topics(model)`, `topic(model, name)` (full metadata → typed `TopicInfo` with views/fields/
-  relationships), `views(model)`. All read-through-cache; `refresh()` clears.
+- `session.catalog`: `models()` (paginate all), `model(name_or_id)` (one exact-match filtered
+  request — `?modelId=` for a UUID, else `?name=`; the cursor walk is only the fallback that
+  builds the error's model list), `topics(model)`, `topic(model, name)` (full metadata → typed
+  `TopicInfo` with views/fields/relationships), `views(model)` (typed, topic-scoped, `1+N_topics`
+  requests), `view_names(model)` (flattened `/view`, one request, composed-model scope). All
+  read-through-cache; `refresh()` clears. Filtered resolutions cache separately from `models()`,
+  so a cheap lookup never masquerades as the complete catalog.
 - `session.read.topic(model, topic)` / `read.view(model, view)` → DataFrame(Scan). Resolution of
   model name and topic existence happens at read time (one catalog call; clear error naming the
-  model/topic). `df.schema` → `session._transport.plan(...)` cached on the DataFrame instance.
+  model/topic). Both are three requests on a cold session — whoami, the filtered model lookup,
+  and one list call — independent of catalog and topic count. `df.schema` → `session._transport.plan(...)` cached on the DataFrame instance.
 - Actions: `collect() -> pa.Table` (normalized), `to_pandas()`, `to_arrow()`, `show(n=20)`,
   `count()`, `first()`, `explain(analyze=False)`, `omni_url()` (M5), `with_totals()` (M2).
   Truncation warning per DESIGN §3.

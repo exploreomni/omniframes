@@ -62,6 +62,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -74,11 +75,13 @@ import pyarrow as pa
 from tests.fakes.bench_model import (
     BENCH_MODEL_ID,
     BENCH_MODEL_NAME,
+    BENCH_MODEL_VIEWS,
     BENCH_TOPIC,
     DEFAULT_PERMISSIONS,
     OTHER_MODELS,
     FakeModel,
     FakeTopic,
+    FakeView,
 )
 from tests.fakes.documents import (
     DEFAULT_DOCUMENTS,
@@ -173,6 +176,7 @@ class FakeOmniAPI:
         model_id: str = BENCH_MODEL_ID,
         model_name: str = BENCH_MODEL_NAME,
         topic: FakeTopic = BENCH_TOPIC,
+        model_views: Sequence[FakeView] = BENCH_MODEL_VIEWS,
         data_dir: Path | None = None,
         key_scope: str = "organization",
         org_role: str = "ADMIN",
@@ -192,6 +196,8 @@ class FakeOmniAPI:
         self.model_id = model_id
         self.model_name = model_name
         self.topic = topic
+        #: Every view of the composed model — a superset of ``topic.views`` (see ``_list_views``).
+        self.model_views = tuple(model_views)
         self.key_scope = key_scope
         self.org_role = org_role
         self.role_name = role_name
@@ -274,6 +280,8 @@ class FakeOmniAPI:
             return self._list_topics(route[1])
         if method == "GET" and len(route) == 4 and route[0] == "models" and route[2] == "topic":
             return self._get_topic(route[1], route[3])
+        if method == "GET" and len(route) == 3 and route[0] == "models" and route[2] == "view":
+            return self._list_views(route[1])
         if (
             method == "GET"
             and len(route) == 3
@@ -364,9 +372,24 @@ class FakeOmniAPI:
         model_kind = params.get("modelKind")
         if model_kind is not None:
             records = [m for m in records if m.model_kind == model_kind]
+        # Both filters are *exact* server-side: Prisma gets `{name}` / `{id: modelId}`
+        # (CONTRACT_NOTES §4), not a contains-clause.
         name = params.get("name")
-        if name is not None:
-            records = [m for m in records if name.lower() in m.name.lower()]
+        if name:
+            # JS truthiness, not `is not None`: `name` is `z.string().optional()` so an empty
+            # string passes validation, and `...(name && {name})` then drops the filter — the
+            # reply is page one of the whole catalog, not an empty page.
+            #
+            # The comparison is exact but *case-insensitive*: `m.name = ${name}` runs against
+            # `OmniModel.name`, a Postgres CITEXT column (`packages/db-models/prisma/
+            # schema.prisma:1391`).  Exact and case-sensitive are not the same claim.
+            records = [m for m in records if m.name.casefold() == name.casefold()]
+        model_id = params.get("modelId")
+        if model_id is not None:
+            # Declared `z.uuid()` under a `.strict()` schema: a non-UUID is a 400, not no-match.
+            if _ZOD_UUID.match(model_id) is None:
+                return _detail(400, "modelId must be a valid uuid")
+            records = [m for m in records if m.id == model_id]
 
         page = records[offset : offset + page_size]
         next_offset = offset + page_size
@@ -399,6 +422,33 @@ class FakeOmniAPI:
             200,
             json={"success": True, "topic": self.topic.to_wire(redact_sql=self.redact_sql)},
         )
+
+    def _list_views(self, model_id: str) -> httpx.Response:
+        """``GET /models/{id}/view`` — flattened & lossy: field names and kinds, no data types.
+
+        Serves every non-ignored view of the *composed* model, so it is a superset of the views
+        the topic detail reaches (CONTRACT_NOTES §4).
+        """
+        if not self._model_exists(model_id):
+            return _detail(404, f"Model {model_id} not found")
+        views = self.model_views if model_id == self.model_id else ()
+        payload = [
+            {
+                "name": view.name,
+                "label": view.label,
+                "description": None,
+                "hidden": False,
+                # `VIEW_FIELD_TYPE` maps to the *lowercase* strings `dimension`/`measure`/
+                # `filter` (`packages/bi-app/app/types/api/models/view-field-type.ts`) — the
+                # uppercase spelling is the TS constant's name, not its wire value.
+                "fields": [
+                    *({"name": f.field_name, "type": "dimension"} for f in view.dimensions),
+                    *({"name": f.field_name, "type": "measure"} for f in view.measures),
+                ],
+            }
+            for view in views
+        ]
+        return httpx.Response(200, json={"success": True, "views": payload})
 
     def _model_exists(self, model_id: str) -> bool:
         return any(model.id == model_id for model in self.models)
@@ -767,6 +817,16 @@ def _unsupported_feature(body: Mapping[str, Any], query: Mapping[str, Any]) -> s
 # --------------------------------------------------------------------------------------
 # Response helpers
 # --------------------------------------------------------------------------------------
+
+
+#: `z.uuid()`'s grammar, ported from the zod the server pins (`zod/v4/core/regexes.js`).  Kept as
+#: its own copy rather than imported from `omniframes.catalog`: the fake mirrors the *server*, so
+#: a client-side check that drifts from this one has to show up as a test failure.
+_ZOD_UUID: Final = re.compile(
+    r"^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
+    r"|00000000-0000-0000-0000-000000000000"
+    r"|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+)
 
 
 def _detail(status: int, message: str) -> httpx.Response:

@@ -535,27 +535,27 @@ class DataFrameReader:
 
         No topic means no governed join paths: only this view's own fields are selectable.
         Prefer :meth:`topic` unless you specifically want the ungoverned shape.
+
+        The name is validated against every view in the composed model — including views no
+        topic reaches, which is the point of a bare-view read (docs/DESIGN.md).  That check is
+        one request, not one per topic: it does not need the field metadata it would discard.
         """
         catalog = self._session.catalog
         model_info = catalog.model(model)
-        views = catalog.views(model_info.name)
-        for candidate in views:
-            if candidate.name == view:
-                return DataFrame(
-                    self._session,
-                    nodes.Scan(
-                        nodes.ViewScan(
-                            model_name=model_info.name,
-                            model_id=model_info.id,
-                            view=candidate.name,
-                        )
-                    ),
-                )
-        available = ", ".join(sorted(candidate.name for candidate in views)) or "(none)"
-        raise CompileError(
-            f"model {model_info.name!r} has no view {view!r} reachable through its topics. "
-            f"Views: {available}"
-        )
+        names = catalog.view_names(model_info.name)
+        if view in names:
+            return DataFrame(
+                self._session,
+                nodes.Scan(
+                    nodes.ViewScan(
+                        model_name=model_info.name,
+                        model_id=model_info.id,
+                        view=view,
+                    )
+                ),
+            )
+        available = ", ".join(sorted(names)) or "(none)"
+        raise CompileError(f"model {model_info.name!r} has no view {view!r}. Views: {available}")
 
     def sql(self, model: str, sql: str) -> DataFrame:
         """Run **your** SQL on the model's connection (needs ``QUERY_SQL``).

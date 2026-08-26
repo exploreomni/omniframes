@@ -13,6 +13,7 @@ release here.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -28,6 +29,10 @@ _PAGE_SIZE = 100
 
 #: Guard against a server that keeps handing back cursors.
 _MAX_PAGES = 1_000
+
+#: ``GET /models`` filter param -> the :class:`ModelInfo` attribute it filters on.  Used to check
+#: that a filtered reply actually answers the question that was asked (see ``_filtered_model``).
+_FILTER_FIELD = {"modelId": "id", "name": "name"}
 
 
 @dataclass(frozen=True)
@@ -177,6 +182,28 @@ class TopicInfo:
         raise CompileError(f"topic {self.name!r} has no field {name!r}")
 
 
+#: The server's own ``z.uuid()`` grammar, ported verbatim from the zod it pins
+#: (``node_modules/zod/v4/core/regexes.js``): canonical dashed form with a version nibble of
+#: 1-8 and a variant nibble of 8/9/a/b, plus the nil and max UUIDs.  Deliberately *not*
+#: ``uuid.UUID()``, which also accepts un-hyphenated, ``{...}``-braced and ``urn:uuid:``-prefixed
+#: forms and any version nibble — all of which the server rejects.
+_ZOD_UUID = re.compile(
+    r"^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
+    r"|00000000-0000-0000-0000-000000000000"
+    r"|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+)
+
+
+def _is_uuid(value: str) -> bool:
+    """Whether ``?modelId=`` will accept this string (the server declares it ``z.uuid()``).
+
+    Being *looser* than the server here is not harmless: a value this accepts and the server
+    rejects becomes a 400 that replaces the whole fallback chain — the ``?name=`` filter and the
+    catalog walk never run, so a name that used to resolve fails with a transport error instead.
+    """
+    return _ZOD_UUID.match(value) is not None
+
+
 def _fields(raw: object) -> tuple[OmniField, ...]:
     if not isinstance(raw, Sequence) or isinstance(raw, str):
         return ()
@@ -199,9 +226,14 @@ class Catalog:
         #: Run before the first request of any lookup — the session hooks its cached ``whoami``
         #: preflight in here so a bad key fails crisply at the first catalog call.
         self._preflight = preflight
+        #: The *complete* catalog, populated only by :meth:`models`.  Filtered resolutions never
+        #: write here — a partial result must not masquerade as the whole listing.
         self._models: tuple[ModelInfo, ...] | None = None
+        #: Cheap resolutions, keyed by every string that is known to resolve to the record.
+        self._resolved: dict[str, ModelInfo] = {}
         self._topics: dict[str, tuple[TopicInfo, ...]] = {}
         self._topic_details: dict[tuple[str, str], TopicInfo] = {}
+        self._view_names: dict[str, tuple[str, ...]] = {}
 
     def __repr__(self) -> str:
         cached = "cached" if self._models is not None else "empty"
@@ -238,14 +270,86 @@ class Catalog:
         )
 
     def model(self, name_or_id: str) -> ModelInfo:
-        """Resolve a model by name or id (cached)."""
+        """Resolve a model by name or id, cheaply (cached).
+
+        Resolution does **not** enumerate the catalog.  The list endpoint filters exactly
+        server-side on ``?modelId=`` and ``?name=`` (CONTRACT_NOTES §4), so one filtered request
+        answers the question that a full cursor walk used to answer with
+        ``ceil(N_models / 100)`` of them.  The walk survives only as the fallback that supplies
+        the "available models" list for the error — and as the fast path when the caller already
+        asked for the whole catalog via :meth:`models`.
+        """
+        if self._models is not None:
+            # The whole catalog is already cached, which makes it *authoritative*: it lists every
+            # model this key can see, so a miss here is a miss at the filters too.  Asking anyway
+            # would spend requests to be told what the cache already knows — and a typo in a long
+            # session would spend them again on every retry.
+            for candidate in self._models:
+                if name_or_id in (candidate.id, candidate.name):
+                    return candidate
+            raise self._no_such_model(name_or_id)
+
+        cached = self._resolved.get(name_or_id)
+        if cached is not None:
+            return cached
+
+        # ``?modelId=`` is declared ``z.uuid()`` under a ``.strict()`` schema, so a non-UUID value
+        # is a 400, not an empty page.  Only ask when the input can possibly be an id.
+        if _is_uuid(name_or_id):
+            found = self._filtered_model(modelId=name_or_id)
+            if found is not None:
+                return self._remember(name_or_id, found)
+
+        found = self._filtered_model(name=name_or_id)
+        if found is not None:
+            return self._remember(name_or_id, found)
+
+        # Nothing matched either filter.  Walk the catalog: it both tolerates any server-side
+        # filter quirk and produces the name list the error message promises.
         for candidate in self.models():
             if name_or_id in (candidate.id, candidate.name):
-                return candidate
+                return self._remember(name_or_id, candidate)
+        raise self._no_such_model(name_or_id)
+
+    def _no_such_model(self, name_or_id: str) -> CompileError:
+        """The resolution failure, naming the alternatives.  Reads the cached catalog."""
         names = ", ".join(sorted(candidate.name for candidate in self.models())) or "(none)"
-        raise CompileError(
+        return CompileError(
             f"no model named {name_or_id!r} is visible to this API key. Available models: {names}"
         )
+
+    def _filtered_model(self, **params: str) -> ModelInfo | None:
+        """One exact-match lookup against ``GET /models``; ``None`` when nothing matched.
+
+        The response is **verified against the filter that was sent**, never trusted
+        positionally.  A filtered list endpoint is not a lookup-by-key: the server builds its
+        where-clause with JS truthiness (``...(name && {name})``, CONTRACT_NOTES §4), so a filter
+        it considers empty is *dropped* rather than matched — the reply is then page one of the
+        whole catalog, and an unverified ``records[0]`` silently resolves an arbitrary model.
+        Taking the first record on trust turns a clean "no such model" into the wrong answer.
+        """
+        if not all(params.values()):
+            # A filter the server would drop cannot identify anything; don't spend the request.
+            return None
+        self._before_call()
+        payload = self._transport.list_models(pageSize=_PAGE_SIZE, **params)
+        records = payload.get("records")
+        if not isinstance(records, Sequence) or isinstance(records, str):
+            return None
+        for record in records:
+            if not isinstance(record, Mapping):
+                continue
+            info = ModelInfo.from_wire(record)
+            if all(getattr(info, _FILTER_FIELD[key]) == value for key, value in params.items()):
+                return info
+        return None
+
+    def _remember(self, name_or_id: str, info: ModelInfo) -> ModelInfo:
+        """Cache a resolution under every key that is now known to reach it."""
+        for key in (name_or_id, info.id, info.name):
+            if key:
+                self._resolved[key] = info
+        return info
 
     def model_id(self, name_or_id: str) -> str:
         """The model id for a name or id."""
@@ -298,6 +402,43 @@ class Catalog:
                 seen.setdefault(view.name, view)
         return tuple(seen.values())
 
+    def view_names(self, model: str) -> tuple[str, ...]:
+        """Every view name in the composed model, in one request (cached).
+
+        Backed by the flattened ``GET /models/{id}/view`` list, which is lossy — field kinds,
+        no data types (CONTRACT_NOTES §4).  That is enough to validate a view name, which is all
+        the bare-view read path needs; :meth:`views` remains the typed, topic-scoped view.
+
+        The two differ in *scope*, not just in fidelity: this returns every non-ignored view of
+        the composed model, including views no topic reaches — and including ``hidden`` ones,
+        which the server filters out of nothing (docs/DESIGN.md).
+        """
+        model_id = self.model_id(model)
+        cached = self._view_names.get(model_id)
+        if cached is None:
+            self._before_call()
+            payload = self._transport.list_views(model_id)
+            raw = payload.get("views")
+            if not isinstance(raw, Sequence) or isinstance(raw, str):
+                # An absent `views` key is a malformed or changed payload, not a model with no
+                # views.  Caching `()` for it would turn one bad response into a session-long
+                # "Views: (none)" for every read.view — fail loudly instead, the way `topic()`
+                # does when its own expected key is missing.
+                raise CompileError(
+                    f"the view list response for model {model_id!r} carried no 'views' array"
+                )
+            entries = raw
+            names: list[str] = []
+            for entry in entries:
+                if not isinstance(entry, Mapping):
+                    continue
+                name = str(entry.get("name", ""))
+                if name and name not in names:
+                    names.append(name)
+            cached = tuple(names)
+            self._view_names[model_id] = cached
+        return cached
+
     def _before_call(self) -> None:
         if self._preflight is not None:
             self._preflight()
@@ -305,5 +446,7 @@ class Catalog:
     def refresh(self) -> None:
         """Drop every cached payload; the next lookup re-reads from the API."""
         self._models = None
+        self._resolved.clear()
         self._topics.clear()
         self._topic_details.clear()
+        self._view_names.clear()

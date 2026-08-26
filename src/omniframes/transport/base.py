@@ -82,6 +82,10 @@ class QueryTransport(Protocol):
         """``GET /models/{id}/topic/{name}`` — the full field-metadata payload."""
         ...
 
+    def list_views(self, model_id: str) -> dict[str, Any]:
+        """``GET /models/{id}/view`` — the flattened view list (names and field kinds only)."""
+        ...
+
     def document_queries(self, document_identifier: str) -> dict[str, Any]:
         """``GET /documents/{identifier}/queries``."""
         ...

@@ -58,6 +58,9 @@ class NoNetworkTransport:
     def get_topic(self, model_id: str, topic_name: str) -> NoReturn:
         self._refuse("get_topic")
 
+    def list_views(self, model_id: str) -> NoReturn:
+        self._refuse("list_views")
+
     def document_queries(self, document_identifier: str) -> NoReturn:
         self._refuse("document_queries")
 

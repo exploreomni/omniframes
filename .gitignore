@@ -16,6 +16,8 @@ htmlcov/
 
 # Notebooks
 .ipynb_checkpoints/
+# marimo session state: generated on every run, and it records the host and cell outputs
+# (query results, SQL) from whatever org the notebook was last run against.
 __marimo__/
 
 # Docs site build output

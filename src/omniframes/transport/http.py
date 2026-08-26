@@ -391,6 +391,15 @@ class HttpTransport:
         path = f"{_MODELS_PATH}/{_segment(model_id)}/topic/{_segment(topic_name)}"
         return _json_object(self._send("GET", path))
 
+    def list_views(self, model_id: str) -> dict[str, Any]:
+        """``GET /api/v1/models/{modelId}/view`` — the flattened view list.
+
+        Every non-ignored view of the *composed* model, with field names and kinds but no data
+        types (CONTRACT_NOTES §4).  Lossy by design: it exists so a view name can be validated
+        without walking every topic detail payload for metadata that is then discarded.
+        """
+        return _json_object(self._send("GET", f"{_MODELS_PATH}/{_segment(model_id)}/view"))
+
     def document_queries(self, document_identifier: str) -> dict[str, Any]:
         """``GET /api/v1/documents/{identifier}/queries``."""
         path = f"/api/v1/documents/{_segment(document_identifier)}/queries"

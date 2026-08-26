@@ -1138,6 +1138,28 @@ def test_list_topics_and_get_topic_build_the_right_paths():
     ]
 
 
+def test_list_views_builds_the_right_path():
+    server = json_server({"success": True, "views": []})
+
+    transport(server).list_views(MODEL_ID)
+
+    assert server.paths == [f"/api/v1/models/{MODEL_ID}/view"]
+
+
+def test_list_models_passes_the_exact_match_filters_through():
+    server = json_server({"records": [], "pageInfo": {"hasNextPage": False}})
+    client = transport(server)
+
+    client.list_models(pageSize=100, modelId=MODEL_ID)
+    client.list_models(pageSize=100, name="bench_ecommerce", cursor=None)
+
+    first = dict(server.requests[0].url.params)
+    second = dict(server.requests[1].url.params)
+    assert first["modelId"] == MODEL_ID
+    assert second["name"] == "bench_ecommerce"
+    assert "cursor" not in second, "a None param is dropped, not sent to a strict schema"
+
+
 def test_document_queries_builds_the_right_path():
     server = json_server({"queries": []})
 
