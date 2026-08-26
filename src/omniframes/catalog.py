@@ -13,7 +13,7 @@ release here.
 
 from __future__ import annotations
 
-import uuid
+import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -182,13 +182,26 @@ class TopicInfo:
         raise CompileError(f"topic {self.name!r} has no field {name!r}")
 
 
+#: The server's own ``z.uuid()`` grammar, ported verbatim from the zod it pins
+#: (``node_modules/zod/v4/core/regexes.js``): canonical dashed form with a version nibble of
+#: 1-8 and a variant nibble of 8/9/a/b, plus the nil and max UUIDs.  Deliberately *not*
+#: ``uuid.UUID()``, which also accepts un-hyphenated, ``{...}``-braced and ``urn:uuid:``-prefixed
+#: forms and any version nibble — all of which the server rejects.
+_ZOD_UUID = re.compile(
+    r"^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
+    r"|00000000-0000-0000-0000-000000000000"
+    r"|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+)
+
+
 def _is_uuid(value: str) -> bool:
-    """Whether ``?modelId=`` will accept this string (the server declares it ``z.uuid()``)."""
-    try:
-        uuid.UUID(value)
-    except ValueError:
-        return False
-    return True
+    """Whether ``?modelId=`` will accept this string (the server declares it ``z.uuid()``).
+
+    Being *looser* than the server here is not harmless: a value this accepts and the server
+    rejects becomes a 400 that replaces the whole fallback chain — the ``?name=`` filter and the
+    catalog walk never run, so a name that used to resolve fails with a transport error instead.
+    """
+    return _ZOD_UUID.match(value) is not None
 
 
 def _fields(raw: object) -> tuple[OmniField, ...]:
@@ -397,7 +410,8 @@ class Catalog:
         the bare-view read path needs; :meth:`views` remains the typed, topic-scoped view.
 
         The two differ in *scope*, not just in fidelity: this returns every non-ignored view of
-        the composed model, including views no topic reaches (docs/DESIGN.md).
+        the composed model, including views no topic reaches — and including ``hidden`` ones,
+        which the server filters out of nothing (docs/DESIGN.md).
         """
         model_id = self.model_id(model)
         cached = self._view_names.get(model_id)
@@ -405,7 +419,15 @@ class Catalog:
             self._before_call()
             payload = self._transport.list_views(model_id)
             raw = payload.get("views")
-            entries = raw if isinstance(raw, Sequence) and not isinstance(raw, str) else ()
+            if not isinstance(raw, Sequence) or isinstance(raw, str):
+                # An absent `views` key is a malformed or changed payload, not a model with no
+                # views.  Caching `()` for it would turn one bad response into a session-long
+                # "Views: (none)" for every read.view — fail loudly instead, the way `topic()`
+                # does when its own expected key is missing.
+                raise CompileError(
+                    f"the view list response for model {model_id!r} carried no 'views' array"
+                )
+            entries = raw
             names: list[str] = []
             for entry in entries:
                 if not isinstance(entry, Mapping):

@@ -108,7 +108,9 @@ every local operator). No silent local fallback, ever.
   `Catalog.views()`, which reads views out of topic-detail payloads because that is the only
   place their *fields* have types. Reachability is a topic concept; a bare view is read outside
   any topic, so gating on it contradicted the method's own contract. The change strictly widens
-  the accepted set: nothing that used to work stops working.
+  the accepted set: nothing that used to work stops working. `hidden` views are accepted too —
+  the loader filters only `ignored` ones — so a query against a hidden view is the server's call
+  to refuse, not a name omniframes rejects locally.
 - **The catalog resolves cheaply and hydrates lazily.** *Settled 2026-08-26.* Turning a name or
   id into a model must never enumerate the catalog: `Catalog.model()` uses the exact-match
   `?modelId=` / `?name=` filters (one request), falling back to the cursor walk only to build

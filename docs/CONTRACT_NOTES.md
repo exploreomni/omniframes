@@ -407,7 +407,11 @@ job-error lines.
   (`packages/bi-app/app/routes/api.unstable.models/get-handler.server.ts:56,58`, re-exported at
   `api.v1.models.ts`). `modelId` is declared `z.uuid()` on a `.strict()` schema
   (`packages/bi-app/app/types/api/models/schema.ts:2260`), so a **non-UUID `modelId` is a 400,
-  not an empty page** — only send it for a UUID-shaped input. Both filters make model resolution
+  not an empty page** — only send it for an input matching zod's *canonical* UUID grammar
+  (dashed form, version nibble 1-8, variant nibble 8/9/a/b, plus the nil and max UUIDs;
+  `node_modules/zod/v4/core/regexes.js`). Python's `uuid.UUID()` is looser — it also accepts
+  un-hyphenated, `{...}`-braced and `urn:uuid:`-prefixed forms — and anything it accepts that the
+  server rejects becomes a 400 in place of the whole fallback chain. Both filters make model resolution
   a single request instead of a full cursor walk.
   **A filter is only applied when the server considers it truthy.** `name` is
   `z.string().optional()` with no min-length, so `?name=` passes validation and `...(name &&

@@ -62,6 +62,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -386,9 +387,7 @@ class FakeOmniAPI:
         model_id = params.get("modelId")
         if model_id is not None:
             # Declared `z.uuid()` under a `.strict()` schema: a non-UUID is a 400, not no-match.
-            try:
-                uuid.UUID(model_id)
-            except ValueError:
+            if _ZOD_UUID.match(model_id) is None:
                 return _detail(400, "modelId must be a valid uuid")
             records = [m for m in records if m.id == model_id]
 
@@ -818,6 +817,16 @@ def _unsupported_feature(body: Mapping[str, Any], query: Mapping[str, Any]) -> s
 # --------------------------------------------------------------------------------------
 # Response helpers
 # --------------------------------------------------------------------------------------
+
+
+#: `z.uuid()`'s grammar, ported from the zod the server pins (`zod/v4/core/regexes.js`).  Kept as
+#: its own copy rather than imported from `omniframes.catalog`: the fake mirrors the *server*, so
+#: a client-side check that drifts from this one has to show up as a test failure.
+_ZOD_UUID: Final = re.compile(
+    r"^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
+    r"|00000000-0000-0000-0000-000000000000"
+    r"|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+)
 
 
 def _detail(status: int, message: str) -> httpx.Response:

@@ -20,7 +20,7 @@ from tests.fakes import (
     FakeOmniAPI,
 )
 
-from omniframes.catalog import Catalog
+from omniframes.catalog import Catalog, _is_uuid
 from omniframes.errors import CompileError
 from omniframes.transport import HttpTransport
 from omniframes.types import OmniDataType
@@ -174,6 +174,40 @@ def test_resolving_by_id_uses_the_model_id_filter(catalog: Catalog, handler: Fak
     assert handler.last_request.param("cursor") is None
 
 
+@pytest.mark.parametrize(
+    ("value", "accepted"),
+    [
+        ("3f2b1a0c-9d8e-4c7b-a6f5-000000000001", True),
+        ("00000000-0000-0000-0000-000000000000", True),  # the nil UUID, allowed explicitly
+        ("ffffffff-ffff-ffff-ffff-ffffffffffff", True),  # the max UUID, allowed explicitly
+        ("3f2b1a0c9d8e4c7ba6f5000000000001", False),  # un-hyphenated
+        ("{3f2b1a0c-9d8e-4c7b-a6f5-000000000001}", False),  # braced
+        ("urn:uuid:3f2b1a0c-9d8e-4c7b-a6f5-000000000001", False),  # URN
+        ("3f2b1a0c-9d8e-9c7b-a6f5-000000000001", False),  # version nibble out of 1-8
+        ("3f2b1a0c-9d8e-4c7b-c6f5-000000000001", False),  # variant nibble not 8/9/a/b
+        ("bench_ecommerce", False),
+    ],
+)
+def test_is_uuid_matches_the_servers_grammar(value: str, accepted: bool) -> None:
+    """`uuid.UUID()` is looser than `z.uuid()`; being looser here costs the whole fallback chain.
+
+    A value this accepts and the server rejects is a 400 that pre-empts the `?name=` filter and
+    the catalog walk, so a resolvable name fails with a transport error instead.
+    """
+    assert _is_uuid(value) is accepted
+
+
+def test_a_dashless_id_still_resolves_by_falling_through_to_the_name_filter(
+    catalog: Catalog, handler: FakeOmniAPI
+) -> None:
+    """The server would 400 on it as `?modelId=`, so it must never be sent as one."""
+    with pytest.raises(CompileError, match="no model named"):
+        catalog.model(BENCH_MODEL_ID.replace("-", ""))
+
+    assert all("modelId" not in request.params for request in handler.requests)
+    assert any("name" in request.params for request in handler.requests), "it tried ?name= instead"
+
+
 def test_resolving_by_name_uses_the_name_filter(catalog: Catalog, handler: FakeOmniAPI) -> None:
     info = catalog.model(BENCH_MODEL_NAME)
 
@@ -311,6 +345,47 @@ def test_view_names_are_one_request_and_span_the_composed_model(
         "the flattened list is wider than the topic-reachable one — that is the point"
     )
     assert handler.paths.count(f"GET /api/v1/models/{BENCH_MODEL_ID}/view") == 1
+
+
+def test_a_view_list_without_a_views_array_raises_instead_of_caching_empty() -> None:
+    """One malformed response must not become a session-long "Views: (none)"."""
+
+    class NoViewsTransport:
+        def list_models(self, **params: Any) -> dict[str, Any]:
+            return {
+                "records": [{"id": BENCH_MODEL_ID, "name": BENCH_MODEL_NAME}],
+                "pageInfo": {"hasNextPage": False},
+            }
+
+        def list_views(self, model_id: str) -> dict[str, Any]:
+            return {"success": True}
+
+    catalog = Catalog(NoViewsTransport())  # type: ignore[arg-type]
+
+    with pytest.raises(CompileError, match="no 'views' array"):
+        catalog.view_names(BENCH_MODEL_NAME)
+
+
+def test_a_model_with_no_views_caches_the_empty_result() -> None:
+    """An empty array is a real answer, unlike a missing key — cache it, don't re-ask."""
+    calls: list[str] = []
+
+    class EmptyViewsTransport:
+        def list_models(self, **params: Any) -> dict[str, Any]:
+            return {
+                "records": [{"id": BENCH_MODEL_ID, "name": BENCH_MODEL_NAME}],
+                "pageInfo": {"hasNextPage": False},
+            }
+
+        def list_views(self, model_id: str) -> dict[str, Any]:
+            calls.append(model_id)
+            return {"success": True, "views": []}
+
+    catalog = Catalog(EmptyViewsTransport())  # type: ignore[arg-type]
+
+    assert catalog.view_names(BENCH_MODEL_NAME) == ()
+    assert catalog.view_names(BENCH_MODEL_NAME) == ()
+    assert len(calls) == 1
 
 
 def test_view_names_are_cached_and_dropped_by_refresh(

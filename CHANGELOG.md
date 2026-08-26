@@ -21,9 +21,17 @@ Initial release.
   truthiness), so an unverified `records[0]` would silently resolve an arbitrary model. A miss
   against an already-cached catalog is answered from the cache instead of re-asking the server.
 
+- **Breaking, custom transports only:** `QueryTransport` gains a required `list_views(model_id)`
+  member. `Protocol` is not runtime-checked, so a transport injected through
+  `SessionBuilder.transport(...)` that predates this release still constructs and only fails at
+  the first `read.view(...)`, with a bare `AttributeError`. `mypy` catches it; nothing else will.
+  There is no fallback to the old topic-detail path — that path is the `1 + N_topics` fan-out
+  this release exists to remove.
+
 - **Behavior change:** `read.view(...)` now accepts any view in the composed model, including
-  views no topic reaches. Bare views are read outside any topic, so the old topic-reachability
-  gate contradicted the method's contract; the accepted set strictly widens.
+  views no topic reaches, and `hidden` ones (the server filters neither out of the flattened
+  list). Bare views are read outside any topic, so the old topic-reachability gate contradicted
+  the method's contract; the accepted set strictly widens.
 
 - Lazy, immutable PySpark-style `DataFrame` API over Omni's semantic layer
   (`OmniSession`, `read.topic` / `read.view` / `read.sql` / `read.saved_query`, `session.ask`).
