@@ -325,11 +325,45 @@ def test_read_topic_resolves_the_model_and_the_topic(handler: FakeOmniAPI) -> No
     assert scan.source.base_view == "order_items"  # type: ignore[attr-defined]
 
 
-def test_read_view_resolves_through_the_topic_metadata(handler: FakeOmniAPI) -> None:
+def test_read_view_resolves_through_the_flattened_view_list(handler: FakeOmniAPI) -> None:
     session = make_session(handler)
     df = session.read.view("bench_ecommerce", "users")
 
     assert df.logical_plan.source.view == "users"  # type: ignore[attr-defined]
+
+
+def test_read_view_accepts_a_view_no_topic_reaches(handler: FakeOmniAPI) -> None:
+    """A bare view is read *outside* any topic, so topic reachability must not gate it."""
+    session = make_session(handler)
+    df = session.read.view("bench_ecommerce", "inventory_snapshots")
+
+    assert df.logical_plan.source.view == "inventory_snapshots"  # type: ignore[attr-defined]
+
+
+def test_read_topic_costs_three_requests_on_a_cold_session(handler: FakeOmniAPI) -> None:
+    """No cursor walk, whatever the catalog size (issue #4)."""
+    session = make_session(handler)
+    session.read.topic(BENCH_MODEL_ID, BENCH_TOPIC_NAME)
+
+    assert handler.paths == [
+        "GET /api/v1/whoami",
+        "GET /api/v1/models",
+        f"GET /api/v1/models/{BENCH_MODEL_ID}/topic",
+    ]
+    assert handler.requests[1].params["modelId"] == [BENCH_MODEL_ID]
+
+
+def test_read_view_costs_three_requests_independent_of_topic_count(handler: FakeOmniAPI) -> None:
+    """No per-topic detail fan-out (issue #5)."""
+    session = make_session(handler)
+    session.read.view(BENCH_MODEL_ID, "users")
+
+    assert handler.paths == [
+        "GET /api/v1/whoami",
+        "GET /api/v1/models",
+        f"GET /api/v1/models/{BENCH_MODEL_ID}/view",
+    ]
+    assert not any("/topic" in path for path in handler.paths)
 
 
 def test_unknown_topics_and_views_fail_at_read_time_with_the_alternatives(

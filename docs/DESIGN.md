@@ -101,6 +101,24 @@ every local operator). No silent local fallback, ever.
   columns by default (CONTRACT_NOTES §2.7).
 - **`read.view()`** (bare view, no topic) requires `QUERY_FULL_MODEL`; its 403 gets a distinct
   message. `read.topic()` is the governed default path.
+- **`read.view()` accepts any view in the composed model**, including views no topic reaches.
+  *Settled 2026-08-26.* Validation goes through the flattened `GET /models/{id}/view` list
+  (CONTRACT_NOTES §4), which returns every non-ignored view of the composed model. The earlier
+  behavior — only views reachable through a topic — was an artifact of validating against
+  `Catalog.views()`, which reads views out of topic-detail payloads because that is the only
+  place their *fields* have types. Reachability is a topic concept; a bare view is read outside
+  any topic, so gating on it contradicted the method's own contract. The change strictly widens
+  the accepted set: nothing that used to work stops working.
+- **The catalog resolves cheaply and hydrates lazily.** *Settled 2026-08-26.* Turning a name or
+  id into a model must never enumerate the catalog: `Catalog.model()` uses the exact-match
+  `?modelId=` / `?name=` filters (one request), falling back to the cursor walk only to build
+  the "available models" error list. Likewise a *name* check never pays for *field metadata* —
+  `Catalog.view_names()` (flattened, one request) answers it instead of `Catalog.views()`
+  (topic-detail fan-out, `1 + N_topics` requests). Both caches are separate from the full
+  listing: a filtered resolution never satisfies `Catalog.models()`, which still walks the whole
+  cursor when the user genuinely asks for everything. `Catalog.views()` keeps its typed,
+  topic-scoped semantics for callers who actually want the fields — no upstream `include=fields`
+  API is needed, because the paths that were paying for that metadata never used it.
 - **Security.** API keys live only in the transport; `repr(session)` and all errors/logs redact
   them (tested). Docs never show a literal key.
 

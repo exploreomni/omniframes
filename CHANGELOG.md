@@ -7,6 +7,24 @@ Initial release.
 - Idempotent GETs now recover from WAF 429s within a configurable cumulative wait budget;
   `SessionBuilder.rate_limit_wait(...)` configures it without changing POST retry behavior.
 
+- Catalog bootstrap now resolves cheaply and hydrates lazily. `read.topic(...)` and
+  `read.view(...)` each cost three requests on a cold session, independent of how many models the
+  key can see and how many topics the model has — previously `ceil(N_models/100)` for model
+  resolution plus `1 + N_topics` for a bare-view read, all against a shared 60 req/min bucket.
+  Model resolution uses the exact-match `?modelId=`/`?name=` filters; view-name validation uses
+  the flattened `GET /models/{id}/view` list instead of walking every topic's field metadata and
+  discarding it. `catalog.models()` and `catalog.views()` are unchanged for callers who want the
+  full listing or the typed fields, and a new `catalog.view_names(model)` exposes the cheap path.
+
+  Model resolution verifies a filtered reply against the filter it sent rather than trusting the
+  first record: the server drops a filter it considers empty (`...(name && {name})` is JS
+  truthiness), so an unverified `records[0]` would silently resolve an arbitrary model. A miss
+  against an already-cached catalog is answered from the cache instead of re-asking the server.
+
+- **Behavior change:** `read.view(...)` now accepts any view in the composed model, including
+  views no topic reaches. Bare views are read outside any topic, so the old topic-reachability
+  gate contradicted the method's contract; the accepted set strictly widens.
+
 - Lazy, immutable PySpark-style `DataFrame` API over Omni's semantic layer
   (`OmniSession`, `read.topic` / `read.view` / `read.sql` / `read.saved_query`, `session.ask`).
 - Three-tier compile chain with a DAG splitter: governed semantic queries (tier 1), one
