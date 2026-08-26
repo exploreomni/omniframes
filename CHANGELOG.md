@@ -33,3 +33,7 @@ Initial release.
   Executed headlessly in CI by `tests/e2e/test_demo_notebook.py`.
 - Packaging validated end to end: `uv build`, `twine check`, and a clean-venv wheel install that
   runs a fake-backed query (`py.typed` ships in the wheel).
+- Nested arithmetic keeps its grouping in tier-2 SQL: `(a - b) / c` no longer flattened to
+  `a - b / c`. SQLGlot prints the tree it is handed and never re-derives precedence, so the
+  parens are now nodes; without them the warehouse answered by its own precedence and tiers 2
+  and 3 disagreed on the same frame.
