@@ -42,7 +42,9 @@ org; the register at the bottom lists them all.
   query endpoints. Missing `QUERY_TOPICS` → 403 `{"detail": "Permission denied", "status": 403}`.
 - **Rate limiting** is at the AWS WAF: 60 req/min keyed on the exact `Authorization` header value
   (elevated tiers exist per-org). Blocked → **429** with header `X-Omni-Waf-Action: block`.
-  All clients sharing a key share one bucket — back off on 429, bounded retries.
+  All clients sharing a key share one bucket. For idempotent GETs, Omniframes honors a numeric
+  `Retry-After` value verbatim within its per-request cumulative wait budget; POST 429s remain
+  attempt-bounded.
 
 ### Error envelopes (a client must handle all three)
 
@@ -461,7 +463,9 @@ body sections above):
 
 5. `generate-query` response variance (topic vs baseView, error shapes).
 6. High-limit mode (`limit > 50000`) result streaming behavior.
-7. WAF 429 shape under the shared 60/min bucket.
+7. WAF 429 shape under the shared 60/min bucket: whether it reliably sends `Retry-After` (and
+   whether that value is numeric seconds or an HTTP date), and whether it reliably accompanies
+   the response with `X-Omni-Waf-Action: block`.
 8. Wait-loop timing under a genuinely cold warehouse (multi-minute jobs).
 9. **Dialect portability of `read.sql`.** A verbatim raw-SQL job (`rewriteSql: false`) reaches
    the warehouse untouched, so its dialect is the user's own problem and omniframes has nothing

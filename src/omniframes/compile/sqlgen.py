@@ -276,7 +276,7 @@ def _render(expr: Expr, refs: _References) -> exp.Expr:
         return _aggregate(expr, refs)
     if isinstance(expr, Arithmetic):
         return _ARITHMETIC[expr.op](
-            this=_render(expr.left, refs), expression=_render(expr.right, refs)
+            this=_operand(expr.left, refs), expression=_operand(expr.right, refs)
         )
     if isinstance(expr, Comparison):
         return _comparison(expr, refs)
@@ -295,6 +295,19 @@ def _render(expr: Expr, refs: _References) -> exp.Expr:
     if isinstance(expr, Between):
         return _between(expr, refs)
     raise CannotCompile(f"{display_name(expr)} has no SQL rendering omniframes can write")
+
+
+def _operand(expr: Expr, refs: _References) -> exp.Expr:
+    """Render one side of an arithmetic node, parenthesized if it is itself arithmetic.
+
+    SQLGlot's generator prints the tree it is given and never re-derives grouping: an
+    ``exp.Div(this=exp.Sub(a, b), expression=c)`` prints as ``a - b / c``, which the warehouse
+    then reads by *its* precedence — silently the wrong number.  Grouping has to be explicit in
+    the tree, so every nested operand gets its own parens.  Redundant ones are harmless; a
+    missing one is a wrong answer.
+    """
+    rendered = _render(expr, refs)
+    return exp.paren(rendered) if isinstance(expr, Arithmetic) else rendered
 
 
 def _literal(value: object) -> exp.Expr:
