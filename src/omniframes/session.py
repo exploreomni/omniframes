@@ -28,6 +28,7 @@ import os
 import re
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
+from math import isfinite
 from types import TracebackType
 from typing import Any, Final
 
@@ -80,6 +81,7 @@ class SessionBuilder:
         "_branch",
         "_cache",
         "_decomposition_row_cap",
+        "_rate_limit_wait",
         "_timezone",
         "_transport",
         "_user_id",
@@ -94,6 +96,7 @@ class SessionBuilder:
         self._user_id: str | None = None
         self._transport: QueryTransport | None = None
         self._decomposition_row_cap: int | None = None
+        self._rate_limit_wait: float | None = None
 
     def __repr__(self) -> str:
         return f"SessionBuilder(base_url={self._base_url!r})"
@@ -185,12 +188,32 @@ class SessionBuilder:
         self._decomposition_row_cap = rows
         return self
 
+    def rate_limit_wait(self, seconds: float) -> SessionBuilder:
+        """Wait up to ``seconds`` for each rate-limited GET, not for the whole action.
+
+        A catalog action can make multiple GET requests, and each receives its own waiting budget.
+        """
+        wait: object = seconds
+        if (
+            isinstance(wait, bool)
+            or not isinstance(wait, int | float)
+            or not isfinite(wait)
+            or wait < 0
+        ):
+            raise CompileError("rate_limit_wait() takes a finite, non-negative number")
+        if self._transport is not None:
+            raise CompileError("configure rate-limit waiting on the transport you provided")
+        self._rate_limit_wait = float(wait)
+        return self
+
     def transport(self, transport: QueryTransport) -> SessionBuilder:
         """Use an existing transport instead of building an :class:`HttpTransport`.
 
         This is the seam tests use (``HttpTransport`` over ``httpx.MockTransport``) and the seam
         an in-product notebook broker will use.
         """
+        if self._rate_limit_wait is not None:
+            raise CompileError("configure rate-limit waiting on the transport you provided")
         self._transport = transport
         return self
 
@@ -210,12 +233,21 @@ class SessionBuilder:
                     "no API key configured: call .api_key(...) / .api_key_from_env() or set "
                     f"{API_KEY_ENV}"
                 )
-            transport = HttpTransport(
-                base_url=base_url,
-                api_key=api_key,
-                branch_id=self._branch,
-                user_id=self._user_id,
-            )
+            if self._rate_limit_wait is None:
+                transport = HttpTransport(
+                    base_url=base_url,
+                    api_key=api_key,
+                    branch_id=self._branch,
+                    user_id=self._user_id,
+                )
+            else:
+                transport = HttpTransport(
+                    base_url=base_url,
+                    api_key=api_key,
+                    branch_id=self._branch,
+                    user_id=self._user_id,
+                    rate_limit_max_wait_seconds=self._rate_limit_wait,
+                )
         return OmniSession(
             transport=transport,
             branch=self._branch,

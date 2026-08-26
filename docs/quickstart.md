@@ -108,7 +108,8 @@ first thing to run when a query 403s.
 Other builder knobs — all optional, all covered in the [API reference](api.md):
 `.base_url(...)` / `.base_url_from_env()`, `.branch(uuid)` to query a model branch,
 `.timezone("America/Los_Angeles")`, `.cache("SkipCache")`, `.user_id(membership_id)` to
-impersonate, `.decomposition_row_cap(n)`, and `.transport(...)` for injecting a fake in tests.
+impersonate, `.decomposition_row_cap(n)`, `.rate_limit_wait(seconds)` for each rate-limited GET,
+and `.transport(...)` for injecting a fake in tests.
 
 There is deliberately no warehouse-dialect knob. The tier-2 statement omniframes writes is
 OmniSQL, which Omni parses against the model and re-renders in the warehouse's own dialect —

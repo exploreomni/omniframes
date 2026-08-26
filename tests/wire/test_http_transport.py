@@ -29,6 +29,7 @@ from omniframes.errors import (
 )
 from omniframes.transport import QueryTransport
 from omniframes.transport.http import (
+    DEFAULT_RATE_LIMIT_WAIT_SECONDS,
     REDACTED_API_KEY,
     USER_AGENT,
     HttpTransport,
@@ -112,13 +113,14 @@ class Server:
 def transport(server: Server, **kwargs: Any) -> HttpTransport:
     """An HttpTransport wired to ``server`` with deterministic time and no jitter."""
     client = httpx.Client(transport=httpx.MockTransport(server))
+    jitter = kwargs.pop("jitter", lambda: 0.0)
     return HttpTransport(
         BASE_URL,
         API_KEY,
         client=client,
         sleep=server.clock.sleep,
         monotonic=server.clock.monotonic,
-        jitter=lambda: 0.0,
+        jitter=jitter,
         **kwargs,
     )
 
@@ -813,45 +815,218 @@ def counting_server(
     return Server(handler)
 
 
-def test_429_is_retried_with_bounded_exponential_backoff():
-    server = counting_server([429, 429, 200], headers={"X-Omni-Waf-Action": "block"})
-
-    result = transport(server).run(TOPIC_ENVELOPE)
-
-    assert result.job_id == JOB_HAPPY
-    assert len(server.requests) == 3
-    assert server.clock.sleeps == [0.5, 1.0]
+def models_payload() -> dict[str, Any]:
+    return {"records": [], "pageInfo": {"hasNextPage": False}}
 
 
-def test_429_gives_up_after_max_retries_and_names_the_shared_bucket():
-    server = counting_server([429], headers={"X-Omni-Waf-Action": "block"})
+def test_get_429_honours_retry_after_exactly_within_its_budget() -> None:
+    responses = iter(
+        [
+            httpx.Response(429, headers={"Retry-After": "60"}),
+            httpx.Response(200, json=models_payload()),
+        ]
+    )
+    jitter_calls = 0
+
+    def jitter() -> float:
+        nonlocal jitter_calls
+        jitter_calls += 1
+        return 0.0
+
+    server = Server(lambda _request: next(responses))
+
+    transport(server, rate_limit_max_wait_seconds=65, jitter=jitter).list_models()
+
+    assert server.clock.sleeps == [60.0]
+    assert len(server.requests) == 2
+    assert jitter_calls == 0
+
+
+def test_get_headerless_429_clamps_its_final_delay_to_the_budget() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        if server.clock.now < 60:
+            return httpx.Response(429)
+        return httpx.Response(200, json=models_payload())
+
+    server = Server(handler)
+
+    transport(server, rate_limit_max_wait_seconds=65, jitter=lambda: 1.0).list_models()
+
+    assert sum(server.clock.sleeps) == 65.0
+    assert server.clock.now == 65.0
+    assert server.clock.sleeps[-1] == 5.75
+
+
+def test_persistent_headerless_get_429_exhausts_its_budget() -> None:
+    server = Server(lambda _request: httpx.Response(429))
 
     with pytest.raises(TransportError) as excinfo:
-        transport(server).run(TOPIC_ENVELOPE)
+        transport(server, rate_limit_max_wait_seconds=10).whoami()
 
-    # 1 initial attempt + max_retries (3).
-    assert len(server.requests) == 4
-    assert server.clock.sleeps == [0.5, 1.0, 2.0]
+    assert excinfo.value.status == 429
+    assert sum(server.clock.sleeps) <= 10
+    assert f"{len(server.requests)} 429 response(s)" in str(excinfo.value)
+
+
+def test_get_retry_after_that_exceeds_its_remaining_budget_fails_without_sleeping() -> None:
+    server = Server(lambda _request: httpx.Response(429, headers={"Retry-After": "30"}))
+
+    with pytest.raises(TransportError) as excinfo:
+        transport(server, rate_limit_max_wait_seconds=10).list_models()
+
     message = str(excinfo.value)
-    assert "60 requests/minute" in message
-    assert "block" in message
+    assert server.clock.sleeps == []
+    assert "30" in message
+    assert "10s of 10s" in message
+    assert "rate_limit_wait" in message
 
 
-def test_429_max_retries_is_configurable():
-    server = counting_server([429])
+def test_get_retry_after_equal_to_the_remaining_budget_gets_one_final_request() -> None:
+    responses = iter(
+        [
+            httpx.Response(429, headers={"Retry-After": "10"}),
+            httpx.Response(200, json=models_payload()),
+        ]
+    )
+    server = Server(lambda _request: next(responses))
 
-    with pytest.raises(TransportError):
-        transport(server, max_retries=1).run(TOPIC_ENVELOPE)
+    transport(server, rate_limit_max_wait_seconds=10).list_models()
 
+    assert server.clock.sleeps == [10.0]
     assert len(server.requests) == 2
 
 
-def test_429_honours_retry_after():
-    server = counting_server([429, 200], headers={"Retry-After": "2"})
+def test_headerless_get_429_backoff_uses_jitter() -> None:
+    responses = iter(
+        [httpx.Response(429), httpx.Response(429), httpx.Response(200, json=models_payload())]
+    )
+    server = Server(lambda _request: next(responses))
 
-    transport(server).run(TOPIC_ENVELOPE)
+    transport(server, jitter=lambda: 1.0).list_models()
 
-    assert server.clock.sleeps == [2.0]
+    assert server.clock.sleeps == [0.75, 1.5]
+
+
+def test_get_429_diagnostics_are_scrubbed_and_body_free() -> None:
+    body = f"body echo: Bearer {API_KEY}"
+    responses = iter(
+        [
+            httpx.Response(
+                429,
+                json={"detail": body},
+                headers={"X-Omni-Waf-Action": "block", "Retry-After": "7"},
+            ),
+            httpx.Response(
+                429,
+                json={"detail": body},
+                headers={"X-Omni-Waf-Action": "block", "Retry-After": "7"},
+            ),
+        ]
+    )
+    server = Server(lambda _request: next(responses))
+
+    with pytest.raises(TransportError) as excinfo:
+        transport(server, rate_limit_max_wait_seconds=7).list_models()
+
+    message = str(excinfo.value)
+    assert "GET /api/v1/models" in message
+    assert "2 429 response(s)" in message
+    assert "after waiting 7s of its 7s rate-limit budget" in message
+    assert "Retry-After: 7" in message
+    assert "block" in message
+    assert API_KEY not in message
+    assert "Bearer " not in message
+    assert body not in message
+
+
+def test_get_429_diagnostics_keep_the_last_raw_retry_after_value() -> None:
+    responses = iter(
+        [
+            httpx.Response(429, headers={"Retry-After": "1"}),
+            httpx.Response(429, headers={"Retry-After": "not-a-number"}),
+        ]
+    )
+    server = Server(lambda _request: next(responses))
+
+    with pytest.raises(TransportError, match="not-a-number"):
+        transport(server, rate_limit_max_wait_seconds=1).list_models()
+
+    absent = Server(lambda _request: httpx.Response(429))
+    with pytest.raises(TransportError, match="Retry-After: absent"):
+        transport(absent, rate_limit_max_wait_seconds=0).list_models()
+
+    malformed = Server(lambda _request: httpx.Response(429, headers={"Retry-After": "bad"}))
+    with pytest.raises(TransportError, match="Retry-After: bad"):
+        transport(malformed, rate_limit_max_wait_seconds=0).list_models()
+
+
+def test_get_retry_after_zero_has_a_bounded_no_progress_guard() -> None:
+    server = Server(lambda _request: httpx.Response(429, headers={"Retry-After": "0"}))
+
+    with pytest.raises(TransportError) as excinfo:
+        transport(server).whoami()
+
+    assert len(server.requests) == 9
+    assert server.clock.sleeps == [0.0] * 8
+    assert excinfo.value.status == 429
+
+
+def test_get_retry_after_fractional_seconds_is_honoured_exactly() -> None:
+    responses = iter(
+        [
+            httpx.Response(429, headers={"Retry-After": "0.25"}),
+            httpx.Response(200, json=models_payload()),
+        ]
+    )
+    server = Server(lambda _request: next(responses))
+
+    transport(server).list_models()
+
+    assert server.clock.sleeps == [0.25]
+
+
+@pytest.mark.parametrize("value", [True, float("nan"), float("inf"), float("-inf"), -1])
+def test_rate_limit_wait_validation_rejects_invalid_transport_values(value: object) -> None:
+    server = json_server({"user": {}})
+
+    with pytest.raises(TransportError, match="rate_limit_max_wait_seconds"):
+        transport(server, rate_limit_max_wait_seconds=value)
+
+
+def test_rate_limit_wait_is_configurable_on_the_transport() -> None:
+    server = json_server({"user": {}})
+
+    assert transport(server).rate_limit_max_wait_seconds == DEFAULT_RATE_LIMIT_WAIT_SECONDS
+    assert transport(server, rate_limit_max_wait_seconds=42).rate_limit_max_wait_seconds == 42
+
+
+def test_post_429_then_connect_error_is_not_replayed_after_the_connect_error() -> None:
+    attempts = 0
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(429)
+        raise httpx.ConnectError("connection reset by peer")
+
+    server = Server(handler)
+
+    with pytest.raises(TransportError, match="1 attempt"):
+        transport(server).run(TOPIC_ENVELOPE)
+
+    assert attempts == 2
+    assert server.clock.sleeps == [0.5]
+
+
+def test_post_429_remains_attempt_bounded_with_the_old_capped_delays() -> None:
+    server = counting_server([429], headers={"Retry-After": "60"})
+
+    with pytest.raises(TransportError):
+        transport(server).run(TOPIC_ENVELOPE)
+
+    assert len(server.requests) == 4
+    assert server.clock.sleeps == [8.0, 8.0, 8.0]
 
 
 def test_connect_errors_are_retried_for_idempotent_gets():

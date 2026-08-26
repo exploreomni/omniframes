@@ -146,6 +146,80 @@ def test_camel_case_get_or_create_alias(handler: FakeOmniAPI) -> None:
     assert isinstance(OmniSession.builder.transport(transport).getOrCreate(), OmniSession)
 
 
+def test_rate_limit_wait_reaches_a_transport_built_by_the_builder() -> None:
+    session = (
+        OmniSession.builder.host(BASE_URL)
+        .api_key(DEFAULT_TOKEN)
+        .rate_limit_wait(42)
+        .get_or_create()
+    )
+
+    assert isinstance(session._transport, HttpTransport)
+    assert session._transport.rate_limit_max_wait_seconds == 42
+    session.close()
+
+
+@pytest.mark.parametrize("value", [True, float("nan"), float("inf"), -1, "x"])
+def test_rate_limit_wait_rejects_invalid_builder_values(value: object) -> None:
+    with pytest.raises(CompileError, match="rate_limit_wait"):
+        OmniSession.builder.rate_limit_wait(value)  # type: ignore[arg-type]
+
+
+def test_rate_limit_wait_cannot_be_combined_with_an_injected_transport(
+    handler: FakeOmniAPI,
+) -> None:
+    injected = HttpTransport(
+        BASE_URL, DEFAULT_TOKEN, client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+
+    with pytest.raises(CompileError, match="configure rate-limit waiting"):
+        OmniSession.builder.transport(injected).rate_limit_wait(42)
+    with pytest.raises(CompileError, match="configure rate-limit waiting"):
+        OmniSession.builder.rate_limit_wait(42).transport(injected)
+
+
+def test_read_topic_recovers_from_a_rate_limited_catalog_request_and_caches_it() -> None:
+    fake = FakeOmniAPI()
+    sleeps: list[float] = []
+    requests: list[httpx.Request] = []
+    model_attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal model_attempts
+        requests.append(request)
+        if request.url.path == "/api/v1/models":
+            model_attempts += 1
+            if model_attempts == 1:
+                return httpx.Response(429, headers={"Retry-After": "1"})
+        return fake(request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), base_url=BASE_URL)
+    injected = HttpTransport(
+        BASE_URL,
+        DEFAULT_TOKEN,
+        client=client,
+        sleep=sleeps.append,
+        jitter=lambda: 0.0,
+        rate_limit_max_wait_seconds=2,
+    )
+    session = OmniSession.builder.transport(injected).get_or_create()
+
+    session.read.topic("bench_ecommerce", BENCH_TOPIC_NAME)
+    request_count = len(requests)
+    session.read.topic("bench_ecommerce", BENCH_TOPIC_NAME)
+
+    assert sleeps == [1.0]
+    assert [request.url.path for request in requests] == [
+        "/api/v1/whoami",
+        "/api/v1/models",
+        "/api/v1/models",
+        f"/api/v1/models/{BENCH_MODEL_ID}/topic",
+    ]
+    assert len(requests) == request_count
+    session.close()
+    fake.close()
+
+
 # --------------------------------------------------------------------------------------
 # Secrecy
 # --------------------------------------------------------------------------------------

@@ -4,6 +4,9 @@
 
 Initial release.
 
+- Idempotent GETs now recover from WAF 429s within a configurable cumulative wait budget;
+  `SessionBuilder.rate_limit_wait(...)` configures it without changing POST retry behavior.
+
 - Lazy, immutable PySpark-style `DataFrame` API over Omni's semantic layer
   (`OmniSession`, `read.topic` / `read.view` / `read.sql` / `read.saved_query`, `session.ask`).
 - Three-tier compile chain with a DAG splitter: governed semantic queries (tier 1), one

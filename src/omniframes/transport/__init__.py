@@ -18,7 +18,11 @@ from omniframes.transport.arrow import (
     schema_from_summary,
 )
 from omniframes.transport.base import PlanResult, QueryResult, QueryTransport
-from omniframes.transport.http import HttpTransport, normalize_base_url
+from omniframes.transport.http import (
+    DEFAULT_RATE_LIMIT_WAIT_SECONDS,
+    HttpTransport,
+    normalize_base_url,
+)
 from omniframes.transport.ndjson import (
     Footer,
     Header,
@@ -32,6 +36,7 @@ from omniframes.transport.ndjson import (
 from omniframes.transport.normalize import NormalizedResult, is_reserved_column, normalize
 
 __all__ = [
+    "DEFAULT_RATE_LIMIT_WAIT_SECONDS",
     "Footer",
     "Header",
     "HttpTransport",

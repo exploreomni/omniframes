@@ -200,7 +200,8 @@ Local [pandas]
 
 - `OmniSession.builder` → `SessionBuilder`: `.host(str)` / `.base_url(str)`, `.api_key(str)`,
   `.api_key_from_env()` (OMNI_API_KEY), `.branch(str)`, `.timezone(str)`, `.cache(str)`,
-  `.user_id(str)`, `.transport(QueryTransport)` (injection for tests), `.get_or_create()`.
+  `.user_id(str)`, `.rate_limit_wait(float)` (per-GET 429 waiting budget),
+  `.transport(QueryTransport)` (injection for tests), `.get_or_create()`.
   No network I/O. `session.verify()` runs whoami eagerly; otherwise the first action triggers a
   cached whoami preflight for crisp errors.
 - `session.catalog`: `models()` (paginate all), `model(name_or_id)` (resolves name→id, cached),
