@@ -1,6 +1,7 @@
 name: Release
 
-# Builds and validates distribution artifacts on every v* tag.
+# Builds and validates distribution artifacts on every v* tag. A manual dispatch performs the
+# same validation but never publishes.
 #
 # SETUP PREREQUISITE — this workflow cannot enforce it, so it is written down here.
 # The `publish` job below is gated on the `pypi` environment. GitHub **auto-creates** an
@@ -34,6 +35,16 @@ jobs:
           python-version: "3.12"
       - name: Install
         run: uv sync --all-extras
+      - name: Validate release tag
+        if: github.ref_type == 'tag'
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: >-
+          uv run python -c 'import os, sys, omniframes;
+          actual = os.environ["RELEASE_TAG"];
+          expected = f"v{omniframes.__version__}";
+          sys.exit(f"release tag {actual!r} does not match package version {expected!r}")
+          if actual != expected else print(actual)'
       - name: Gate
         run: |
           uv run ruff format --check
@@ -48,7 +59,7 @@ jobs:
         run: |
           uv venv /tmp/smoke --python 3.12
           VIRTUAL_ENV=/tmp/smoke uv pip install dist/*.whl
-          /tmp/smoke/bin/python -c "import omniframes; print(omniframes.__version__)"
+          /tmp/smoke/bin/python -c "from importlib.metadata import version; import sys, omniframes; metadata = version('omniframes'); sys.exit(f'runtime version {omniframes.__version__!r} does not match wheel metadata {metadata!r}') if omniframes.__version__ != metadata else print(metadata)"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dist
@@ -56,6 +67,7 @@ jobs:
 
   publish:
     needs: build
+    if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-latest
     # The manual approval step — but only once the `pypi` environment carries required
     # reviewers (see the SETUP PREREQUISITE at the top of this file). Do not remove it.

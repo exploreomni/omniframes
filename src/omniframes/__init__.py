@@ -15,12 +15,8 @@ as much compute as possible into Omni's SQL execution layer::
     )
 """
 
-__version__ = "0.1.0.dev0"
-
-# `__version__` is assigned before these imports on purpose: the transport stamps it into its
-# User-Agent with `from omniframes import __version__`, and importing the submodules first
-# would reach that line while this module is still empty.
 from omniframes import functions
+from omniframes._version import __version__
 from omniframes.column import Column
 from omniframes.dataframe import DataFrame, GroupedData
 from omniframes.errors import (

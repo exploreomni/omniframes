@@ -100,6 +100,16 @@ bench dataset — no credentials, no network. See
 lanes. Checks against a live Omni org are a standalone script, `scripts/live_smoke.py`, run with
 `OMNI_BASE_URL` and `OMNI_API_KEY` set — not a pytest lane.
 
+## Releasing
+
+The release version has one source of truth: `src/omniframes/_version.py`. Update it and the
+changelog, then run `uv sync --reinstall-package omniframes` so the editable install's metadata
+sees the new version (`uv.lock` intentionally omits a dynamically sourced root-project version).
+Tag the release as that exact version prefixed with `v`; for example, version `0.1.0` uses tag
+`v0.1.0`. The release workflow builds and smoke-installs the wheel, verifies its metadata and
+public `omniframes.__version__`, and refuses a mismatched tag before publishing to PyPI. A manual
+workflow run builds and validates artifacts but does not publish them.
+
 ## Related projects
 
 - [`omni-python-sdk`](https://github.com/exploreomni/omni-python-sdk) — the official low-level

@@ -4,6 +4,12 @@
 
 Initial release.
 
+- The package version now has one source of truth shared by `omniframes.__version__`, wheel and
+  source-distribution metadata, and PyPI. Release builds reject a `v*` tag that does not exactly
+  match it. HTTP requests identify the Omniframes and Python runtime versions and report a
+  best-effort, coarse `google-colab`, `google-colab-enterprise`, or `databricks` runtime label;
+  no raw environment values or workspace identifiers are sent.
+
 - Idempotent GETs now recover from WAF 429s within a configurable cumulative wait budget;
   `SessionBuilder.rate_limit_wait(...)` configures it without changing POST retry behavior.
 

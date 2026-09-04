@@ -397,6 +397,7 @@ def test_run_polls_wait_until_every_job_is_terminal():
     assert server.requests[1].method == "GET"
     assert server.requests[1].url.params["jobIds"] == JOB_SLOW
     assert server.requests[2].url.params["jobIds"] == JOB_SLOW
+    assert {request.headers["User-Agent"] for request in server.requests} == {USER_AGENT}
     # One sleep: the first poll follows the run immediately, the second waits because the
     # pending set did not shrink.
     assert server.clock.sleeps == [1.0]

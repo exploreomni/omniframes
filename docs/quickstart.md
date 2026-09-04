@@ -51,6 +51,10 @@ export OMNI_API_KEY="…"   # Settings → API keys, in Omni
     or a docstring. Omniframes holds the key inside the transport and nowhere else: it never
     appears in a `repr`, a log line, or an error message. Keep it that way on your side too.
 
+    Requests do carry a User-Agent with the Omniframes version, Python language and implementation
+    versions, and a coarse Colab or Databricks label when detected. It never includes raw
+    environment values, hostnames, usernames, workspace/cluster identifiers, or paths.
+
 ### Two org-side prerequisites
 
 1.  **The `query-api` feature flag must be enabled for your organization.** Without it every

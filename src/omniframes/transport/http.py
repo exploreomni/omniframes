@@ -38,7 +38,7 @@ from urllib.parse import quote, urlsplit, urlunsplit
 
 import httpx
 
-from omniframes import __version__
+from omniframes._user_agent import USER_AGENT
 from omniframes.errors import (
     AuthError,
     FeatureFlagError,
@@ -67,9 +67,6 @@ __all__ = [
 
 #: What the API key is replaced by everywhere it could otherwise be seen.
 REDACTED_API_KEY: Final = "omni_osk_***"
-
-#: ``User-Agent`` sent by clients this transport constructs itself.
-USER_AGENT: Final = f"omniframes/{__version__}"
 
 #: Response header carrying the workbook URL when the envelope asked for ``workbookUrl: true``.
 WORKBOOK_URL_HEADER: Final = "X-Omni-Workbook-Url"
