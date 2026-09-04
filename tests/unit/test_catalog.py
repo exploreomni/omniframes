@@ -102,6 +102,7 @@ def test_topic_detail_carries_views_relationships_and_typed_fields(catalog: Cata
         ("order_items", "users"),
         ("order_items", "products"),
     ]
+    assert {edge.relationship_type for edge in topic.relationships} == {"many_to_one"}
 
 
 def test_views_are_reachable_and_split_dimensions_from_measures(catalog: Catalog) -> None:

@@ -110,7 +110,9 @@ class RelationshipInfo:
             left_view_name=str(payload.get("left_view_name", "")),
             right_view_name=str(payload.get("right_view_name", "")),
             join_type=payload.get("join_type"),
-            relationship_type=payload.get("relationship_type"),
+            # The live topic-detail endpoint calls cardinality `type`; older captured payloads
+            # and the original catalog contract called it `relationship_type`.
+            relationship_type=payload.get("relationship_type") or payload.get("type"),
             sql=payload.get("sql"),
             raw=dict(payload),
         )

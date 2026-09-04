@@ -1,0 +1,217 @@
+{
+  "base_url": "https://omni-connectors-testing.omniapp.co",
+  "model_id": "6df994b5-13da-48d6-a762-319605a1525f",
+  "model_name": "omni-connectors-testing-postgres",
+  "fixture": {
+    "name": "wide_world_importers_dw",
+    "schema": "wide_world_importers_v1",
+    "version": "v1",
+    "content_sha256": "b44d646e07998ae42fc30b5e8a5448a17b81b96857b5e6e9c5df871bf26eed24",
+    "schema_sha256": "d5b2c9d4c12781033b9729bea7bb2ef50df934ca56017197be7db3768c3e262a"
+  },
+  "principals": {
+    "querier": {
+      "role_name": "QUERIER",
+      "required_permissions": [
+        "QUERY_TOPICS",
+        "QUERY_FULL_MODEL",
+        "QUERY_SQL",
+        "VIEW_SQL"
+      ],
+      "forbidden_permissions": [
+        "UPDATE",
+        "UPDATE_RESTRICTED"
+      ]
+    },
+    "restricted": {
+      "role_name": "QUERY_TOPICS",
+      "required_permissions": [
+        "QUERY_TOPICS"
+      ],
+      "forbidden_permissions": [
+        "QUERY_FULL_MODEL",
+        "QUERY_SQL",
+        "VIEW_SQL",
+        "UPDATE",
+        "UPDATE_RESTRICTED"
+      ]
+    }
+  },
+  "forbidden_messages": {
+    "view": "queries without a Topic specified are restricted.",
+    "sql": "queries based on manually written SQL are restricted."
+  },
+  "topics": {
+    "wwi_sales": {
+      "label": "WWI Sales",
+      "base_view": "wwi_sales_fact",
+      "relationships": [
+        "city",
+        "sold_to_customer",
+        "bill_to_customer",
+        "stock_item",
+        "invoice_date",
+        "delivery_date",
+        "salesperson"
+      ],
+      "measures": {
+        "wwi_sales_fact.sale_line_count": "228265",
+        "wwi_sales_fact.invoice_count": "70510",
+        "wwi_sales_fact.customer_count": "403",
+        "wwi_sales_fact.quantity_sold": "8950628",
+        "wwi_sales_fact.sales_excluding_tax": "172261341.20",
+        "wwi_sales_fact.sales_tax": "25782098.25",
+        "wwi_sales_fact.sales_including_tax": "198043439.45",
+        "wwi_sales_fact.total_profit": "85729180.90",
+        "wwi_sales_fact.average_unit_price": "45.5916886075",
+        "wwi_sales_fact.average_days_to_delivery": "1"
+      },
+      "join_invariant_measure": "wwi_sales_fact.sale_line_count",
+      "join_probes": {
+        "city.city_key": 1240,
+        "sold_to_customer.customer_key": 403,
+        "bill_to_customer.customer_key": 3,
+        "stock_item.stock_item_key": 227,
+        "invoice_date.date": 1069,
+        "delivery_date.date": 1069,
+        "salesperson.employee_key": 101
+      }
+    },
+    "wwi_orders": {
+      "label": "WWI Orders",
+      "base_view": "wwi_orders_fact",
+      "relationships": [
+        "city",
+        "customer",
+        "stock_item",
+        "order_date",
+        "picked_date",
+        "salesperson",
+        "picker"
+      ],
+      "measures": {
+        "wwi_orders_fact.order_line_count": "231412",
+        "wwi_orders_fact.order_count": "73595",
+        "wwi_orders_fact.backordered_order_count": "7538",
+        "wwi_orders_fact.quantity_ordered": "9310904",
+        "wwi_orders_fact.order_value_excluding_tax": "177634276.40",
+        "wwi_orders_fact.order_tax": "26588038.98",
+        "wwi_orders_fact.order_value_including_tax": "204222315.38",
+        "wwi_orders_fact.average_unit_price": "45.2070657529",
+        "wwi_orders_fact.average_days_to_pick": "1.3309530589"
+      },
+      "join_invariant_measure": "wwi_orders_fact.order_line_count",
+      "join_probes": {
+        "city.city_key": 1240,
+        "customer.customer_key": 403,
+        "stock_item.stock_item_key": 227,
+        "order_date.date": 1069,
+        "picked_date.date": 1070,
+        "salesperson.employee_key": 101,
+        "picker.employee_key": 133
+      }
+    },
+    "wwi_purchasing": {
+      "label": "WWI Purchasing",
+      "base_view": "wwi_purchases_fact",
+      "relationships": [
+        "supplier",
+        "stock_item",
+        "purchase_date"
+      ],
+      "measures": {
+        "wwi_purchases_fact.purchase_line_count": "8367",
+        "wwi_purchases_fact.purchase_order_count": "2074",
+        "wwi_purchases_fact.finalized_purchase_order_count": "2072",
+        "wwi_purchases_fact.ordered_outers_total": "10310535",
+        "wwi_purchases_fact.ordered_quantity_total": "139778604",
+        "wwi_purchases_fact.received_outers_total": "10284586"
+      },
+      "join_invariant_measure": "wwi_purchases_fact.purchase_line_count",
+      "join_probes": {
+        "supplier.supplier_key": 7,
+        "stock_item.stock_item_key": 227,
+        "purchase_date.date": 1064
+      }
+    },
+    "wwi_inventory": {
+      "label": "WWI Inventory",
+      "base_view": "wwi_inventory_holdings_fact",
+      "relationships": [
+        "stock_item"
+      ],
+      "measures": {
+        "wwi_inventory_holdings_fact.stock_item_count": "227",
+        "wwi_inventory_holdings_fact.quantity_on_hand_total": "30343296",
+        "wwi_inventory_holdings_fact.last_stocktake_quantity_total": "29459593",
+        "wwi_inventory_holdings_fact.inventory_cost_value": "466844972.00",
+        "wwi_inventory_holdings_fact.reorder_level_total": "5098",
+        "wwi_inventory_holdings_fact.target_stock_level_total": "15511",
+        "wwi_inventory_holdings_fact.items_below_reorder_level": "2",
+        "wwi_inventory_holdings_fact.average_last_cost_price": "22.2422907489"
+      },
+      "join_invariant_measure": "wwi_inventory_holdings_fact.quantity_on_hand_total",
+      "join_probes": {
+        "stock_item.stock_item_key": 227
+      }
+    },
+    "wwi_stock_movements": {
+      "label": "WWI Stock Movements",
+      "base_view": "wwi_inventory_movements_fact",
+      "relationships": [
+        "movement_date",
+        "stock_item",
+        "customer",
+        "supplier",
+        "transaction_type"
+      ],
+      "measures": {
+        "wwi_inventory_movements_fact.movement_count": "236667",
+        "wwi_inventory_movements_fact.stock_item_transaction_count": "236667",
+        "wwi_inventory_movements_fact.net_quantity_moved": "130467680",
+        "wwi_inventory_movements_fact.inbound_quantity": "139418381",
+        "wwi_inventory_movements_fact.outbound_quantity": "8950701"
+      },
+      "join_invariant_measure": "wwi_inventory_movements_fact.movement_count",
+      "join_probes": {
+        "movement_date.date": 1070,
+        "stock_item.stock_item_key": 227,
+        "customer.customer_key": 403,
+        "supplier.supplier_key": 8,
+        "transaction_type.transaction_type_key": 3
+      }
+    },
+    "wwi_financial_transactions": {
+      "label": "WWI Financial Transactions",
+      "base_view": "wwi_financial_transactions_fact",
+      "relationships": [
+        "transaction_date",
+        "customer",
+        "bill_to_customer",
+        "supplier",
+        "transaction_type",
+        "payment_method"
+      ],
+      "measures": {
+        "wwi_financial_transactions_fact.transaction_count": "99585",
+        "wwi_financial_transactions_fact.customer_transaction_count": "97147",
+        "wwi_financial_transactions_fact.supplier_transaction_count": "2438",
+        "wwi_financial_transactions_fact.finalized_transaction_count": "99499",
+        "wwi_financial_transactions_fact.unfinalized_transaction_count": "86",
+        "wwi_financial_transactions_fact.amount_excluding_tax": "1116604613.10",
+        "wwi_financial_transactions_fact.transaction_tax": "167432339.41",
+        "wwi_financial_transactions_fact.amount_including_tax": "2988689.65",
+        "wwi_financial_transactions_fact.outstanding_balance_total": "2988689.65"
+      },
+      "join_invariant_measure": "wwi_financial_transactions_fact.transaction_count",
+      "join_probes": {
+        "transaction_date.date": 1247,
+        "customer.customer_key": 403,
+        "bill_to_customer.customer_key": 3,
+        "supplier.supplier_key": 8,
+        "transaction_type.transaction_type_key": 4,
+        "payment_method.payment_method_key": 2
+      }
+    }
+  }
+}

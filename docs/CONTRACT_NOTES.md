@@ -426,8 +426,9 @@ job-error lines.
   label, description, group_label, hidden}]}`. Optional `?branch_id=`.
 - **`GET /api/v1/models/{modelId}/topic/{topicName}`** — detail; THE field-metadata endpoint:
   `{success, topic: {..., views: [{name, label, dimensions: Field[], measures: Field[],
-  filter_only_fields: Field[]}], relationships: [{join_type, sql, left_view_name,
-  right_view_name, ...}]}}`. 404 `"Topic <name> not found"`.
+  filter_only_fields: Field[]}], relationships: [{join_type, type, sql, left_view_name,
+  right_view_name, ...}]}}`. Relationship cardinality is carried in `type` (for example,
+  `MANY_TO_ONE`), not `relationship_type`. 404 `"Topic <name> not found"`.
 - **`GET /api/v1/models/{modelId}/view`** — flattened & lossy: `{success, views: [{name, label,
   description, hidden, fields: [{name, type: "dimension"|"measure"|"filter"}]}]}`. The `type`
   values are **lowercase** — `VIEW_FIELD_TYPE` is `{DIMENSION: 'dimension', FILTER: 'filter',

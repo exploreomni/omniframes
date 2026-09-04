@@ -113,11 +113,8 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
-    # Reserved so `-m \"not live\"` (the milestone gate) keeps working and so a live test can be
-    # added without touching config. Nothing carries it today: checks that need a real org are
-    # `scripts/live_smoke.py`, a standalone script, so `pytest -m live` collects ZERO tests and
-    # its green exit means nothing. See docs/DESIGN.md §5.
-    "live: needs a live Omni org (OMNI_BASE_URL + OMNI_API_KEY); no test uses it yet",
+    # Kept out of ordinary CI with `-m \"not live\"`; requires the explicit `--live` safety gate.
+    "live: makes read-only requests to a live Omni organization",
 ]
 filterwarnings = [
     "error::DeprecationWarning:omniframes.*",
