@@ -122,7 +122,10 @@ every local operator). No silent local fallback, ever.
   topic-scoped semantics for callers who actually want the fields — no upstream `include=fields`
   API is needed, because the paths that were paying for that metadata never used it.
 - **Security.** API keys live only in the transport; `repr(session)` and all errors/logs redact
-  them (tested). Docs never show a literal key.
+  them (tested). Docs never show a literal key. Every HTTP request carries a coarse User-Agent
+  with the Omniframes version, Python language and implementation versions, and (when detected)
+  an allowlisted Colab or Databricks label. Raw environment values, hostnames, user/workspace/
+  cluster identifiers, paths, and compiler/build strings are never included.
 
 ## 4. Transport
 
@@ -132,7 +135,10 @@ every local operator). No silent local fallback, ever.
   budget, wait-loop per CONTRACT_NOTES §2.2, error-envelope mapping (all three shapes), bounded
   retries on connect errors, and WAF-aware 429 recovery: GETs have a cumulative wait budget
   while POSTs remain attempt-bounded. `max_retries` governs GET network failures and POST 429s;
-  ambiguous POST network failures are never retried. Explicit timeouts.
+  ambiguous POST network failures are never retried. Explicit timeouts. It sends
+  `omniframes/<version> python/<version> <implementation>/<version>` as its User-Agent and adds
+  only a static `runtime/google-colab[-enterprise]` or `runtime/databricks` label when a known
+  process marker is present.
 - Tests use the in-process **FakeOmniAPI** via `httpx.MockTransport` — full wire fidelity.
 - A future `BrokerTransport` (in-product notebooks) implements the same protocol; nothing above
   the transport may assume HTTP.
@@ -174,4 +180,5 @@ uv run ruff format --check && uv run ruff check && uv run mypy && uv run pytest 
 
 Server-side wishlist items; `df.write.table()` (no CTAS endpoint); durable
 `save_as_workbook()`; wire-level pivot pushdown (`df.pivot()` is local, post-collect);
-period-over-period; cross-field OR via `controls`; calculations emission; telemetry (none in 0.x).
+period-over-period; cross-field OR via `controls`; calculations emission; event telemetry (the
+coarse client/runtime User-Agent described above is the only usage metadata sent in 0.x).

@@ -1,6 +1,6 @@
 [project]
 name = "omniframes"
-version = "0.1.0.dev0"
+dynamic = ["version"]
 description = "A PySpark-style DataFrame library for Omni: dataframe code in, governed semantic queries out."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -57,6 +57,9 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/omniframes/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/omniframes"]
