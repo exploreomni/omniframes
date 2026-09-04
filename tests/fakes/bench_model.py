@@ -190,7 +190,7 @@ class FakeRelationship:
             "left_view_name": self.left_view_name,
             "right_view_name": self.right_view_name,
             "join_type": self.join_type,
-            "relationship_type": self.relationship_type,
+            "type": self.relationship_type,
             "sql": "" if redact_sql else self.sql,
             "join_from_base_view": True,
             "reversible": False,

@@ -1,0 +1,56 @@
+name: Omni Integration
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * *"
+
+# The live suite only needs to read the checkout and query Omni.
+permissions:
+  contents: read
+
+# Avoid overlapping scheduled/manual runs against the shared integration model.
+concurrency:
+  group: omni-integration-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  querier:
+    name: Querier
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: omni-integration
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: uv sync --all-extras --locked
+      - name: Run querier integration tests
+        env:
+          OMNI_API_KEY: ${{ secrets.OMNI_QUERIER_PAT }}
+          OMNI_BASE_URL: ${{ vars.OMNI_BASE_URL }}
+          OMNI_WWI_MODEL_ID: ${{ vars.OMNI_WWI_MODEL_ID }}
+          OMNI_EXPECTED_MEMBERSHIP_ID: ${{ vars.OMNI_QUERIER_MEMBERSHIP_ID }}
+        run: uv run pytest --live --principal querier tests/integration -q
+
+  restricted-querier:
+    name: Restricted querier
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: omni-integration
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: uv sync --all-extras --locked
+      - name: Run restricted-querier integration tests
+        env:
+          OMNI_API_KEY: ${{ secrets.OMNI_RESTRICTED_QUERIER_PAT }}
+          OMNI_BASE_URL: ${{ vars.OMNI_BASE_URL }}
+          OMNI_WWI_MODEL_ID: ${{ vars.OMNI_WWI_MODEL_ID }}
+          OMNI_EXPECTED_MEMBERSHIP_ID: ${{ vars.OMNI_RESTRICTED_MEMBERSHIP_ID }}
+        run: uv run pytest --live --principal restricted tests/integration -q
