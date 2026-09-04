@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Before making changes, read and follow `AGENTS.md`. Its repository-wide requirements, including
+Conventional Commits and mandatory coding-agent attribution, apply alongside this guide.
+
 ## What this is
 
 Omniframes: a PySpark-style Python DataFrame library for Omni. Users write dataframe code; it
