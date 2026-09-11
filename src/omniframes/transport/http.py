@@ -3,7 +3,7 @@
 Everything here follows ``docs/CONTRACT_NOTES.md``; the section references in the docstrings
 point at it.  The load-bearing behaviors:
 
-* **Base URL normalization** — users hand us ``acme.omni.co``, ``https://acme.omni.co`` or a URL
+* **Base URL normalization** — users hand us ``acme.omniapp.co``, ``https://acme.omniapp.co`` or a URL
   that already ends in ``/api/v1``.  :func:`normalize_base_url` turns all of them into the same
   origin, because every path this module builds starts with ``/api/v1``.
 * **The run → wait loop** (§2.2) — ``POST /api/v1/query/run`` waits ~10 s server-side, then
@@ -133,8 +133,8 @@ def _segment(value: str) -> str:
 def normalize_base_url(base_url: str) -> str:
     """Normalize a user-supplied Omni host into a bare origin.
 
-    Accepts ``acme.omni.co``, ``https://acme.omni.co/``, ``https://acme.omni.co/api`` and
-    ``https://acme.omni.co/api/v1`` — all of which become ``https://acme.omni.co``.  A missing
+    Accepts ``acme.omniapp.co``, ``https://acme.omniapp.co/``, ``https://acme.omniapp.co/api`` and
+    ``https://acme.omniapp.co/api/v1`` — all of which become ``https://acme.omniapp.co``.  A missing
     scheme defaults to ``https``; any query string or fragment is dropped.
 
     Raises:
@@ -142,7 +142,7 @@ def normalize_base_url(base_url: str) -> str:
     """
     raw = base_url.strip()
     if not raw:
-        raise TransportError("base_url must not be empty (e.g. 'acme.omni.co')")
+        raise TransportError("base_url must not be empty (e.g. 'acme.omniapp.co')")
     if "://" not in raw:
         raw = f"https://{raw}"
 

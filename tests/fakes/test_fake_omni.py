@@ -55,7 +55,7 @@ from tests.fakes import (
     no_such_view,
 )
 
-BASE_URL = "https://bench.example.omni.co"
+BASE_URL = "https://bench.omniapp.co"
 BENCH_DIR = Path(__file__).resolve().parents[1] / "data" / "bench"
 OTHER_MODEL_ID = "11111111-2222-4333-8444-555555555555"
 
@@ -2366,7 +2366,7 @@ def test_workbook_url_is_echoed_as_a_response_header(client: httpx.Client) -> No
     assert job.status is JobStatus.COMPLETE, job.error_message
     assert job.result is not None, "the rows still come back; the header rides alongside them"
     assert response.headers[WORKBOOK_URL_HEADER] == (
-        f"https://bench.example.omni.co/w/fake/{job.job_id}"
+        f"https://bench.omniapp.co/w/fake/{job.job_id}"
     )
 
 
@@ -2879,7 +2879,7 @@ def test_the_document_map_is_configurable() -> None:
         id="q_states",
         name="Just states",
         query=bench_query(fields=["users.state"]),
-        url="https://bench.example.omni.co/dashboards/deck/q_states",
+        url="https://bench.omniapp.co/dashboards/deck/q_states",
     )
     fake = FakeOmniAPI(documents={"deck": (saved,)})
     with make_client(fake) as client:

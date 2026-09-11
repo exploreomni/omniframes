@@ -29,7 +29,7 @@ from omniframes.errors import CompileError, TruncationWarning
 from omniframes.transport import HttpTransport
 from tests.fakes import BENCH_MODEL_NAME, BENCH_TOPIC_NAME, DEFAULT_TOKEN, FakeOmniAPI
 
-BASE_URL = "https://bench.example.omni.co"
+BASE_URL = "https://bench.omniapp.co"
 BENCH_DIR = Path(__file__).resolve().parents[1] / "data" / "bench"
 
 REVENUE = "order_items.total_sale_price"

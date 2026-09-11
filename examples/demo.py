@@ -40,7 +40,7 @@ def _(mo):
       tables with `OMNI_BENCH_SCHEMA` (e.g. `OMNIFRAMES_BENCH.`, trailing dot included).
 
     ```bash
-    export OMNI_BASE_URL="https://acme.omni.co"
+    export OMNI_BASE_URL="https://acme.omniapp.co"
     export OMNI_API_KEY="…"                 # never paste a key into a cell
     export OMNI_BENCH_SCHEMA="OMNIFRAMES_BENCH."
     ```
@@ -102,7 +102,7 @@ def _():
 
         from tests.fakes import DEFAULT_TOKEN, FakeOmniAPI
 
-        BASE_URL = "https://bench.example.omni.co"
+        BASE_URL = "https://bench.omniapp.co"
         handler = FakeOmniAPI(model_name=MODEL)
         client = httpx.Client(transport=httpx.MockTransport(handler), base_url=BASE_URL)
         session = (

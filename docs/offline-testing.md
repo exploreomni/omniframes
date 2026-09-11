@@ -43,7 +43,7 @@ from omniframes import OmniSession
 from omniframes.transport import HttpTransport
 from tests.fakes import DEFAULT_TOKEN, FakeOmniAPI
 
-BASE_URL = "https://bench.example.omni.co"
+BASE_URL = "https://bench.omniapp.co"
 
 handler = FakeOmniAPI()
 client = httpx.Client(transport=httpx.MockTransport(handler), base_url=BASE_URL)

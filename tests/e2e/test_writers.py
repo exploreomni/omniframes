@@ -33,7 +33,7 @@ from tests.fakes import (
     FakeOmniAPI,
 )
 
-BASE_URL = "https://bench.example.omni.co"
+BASE_URL = "https://bench.omniapp.co"
 PRICE = "order_items.sale_price"
 STATE = "users.state"
 
