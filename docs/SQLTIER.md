@@ -1,12 +1,12 @@
-# SQLTIER v2 — tier 2 on OmniSQL
+# The SQL compiler — tier 2 on OmniSQL
 
-Authoritative design for the tier-2 redesign (supersedes v1 — historical note at the bottom).
+Authoritative design for the implemented OmniSQL compiler (historical rationale at the bottom).
 Read with CONTRACT_NOTES §3.5/§3.6 (the wire truth, live-pinned 2026-08-14), §2.7 (grain
 `__raw` sidecars), §6 items 11–12 (open residue), and HYBRID.md (the splitter/local engine
-this slots into). Every DECISION is marked with its rationale; implement as written.
+it integrates with). Every DECISION is marked with its rationale.
 
-Tier 2 still exists to kill tier 3's biggest cost: the **unlimited raw scan** feeding a local
-aggregate. What changed is the delivery mechanism: a tier-2 job is now **one OmniSQL
+Tier 2 avoids the **unlimited raw scan** feeding a local aggregate by pushing supported
+operations into a warehouse query. A tier-2 job is **one OmniSQL
 statement** — `userEditedSQL` with `rewriteSql` ABSENT — that the server parses, binds against
 the model (joins from the topic's relationships, measures expanded to their governed SQL,
 row-level policies applied), and plans as a governed model job. There is no reference core, no
@@ -35,14 +35,14 @@ node. Shapes `try_sql` accepts:
 | `Project`/`WithColumn` computed columns | select-list expressions `AS <alias>` |
 | `Sort`/`Limit`/`offset` on top | `ORDER BY <position>` / `LIMIT`/`OFFSET` in the text (verified P1/P10) |
 
-**NEW — mixed aggregation collapses.** Governed measures are legal select items
+**Mixed aggregation uses one statement.** Governed measures are legal select items
 (`${view.measure}` expands server-side, mixes with ad-hoc aggregates — CONTRACT_NOTES §3.6,
-P2/P3). A mixed `agg()` becomes ONE tier-2 statement; the M3 decomposition
+P2/P3). A mixed `agg()` becomes ONE tier-2 statement; aggregate decomposition
 (tier-1 measures + raw scan + `LocalAggregate` + `AlignJoin`) survives only as the fallback
 when `try_sql` declines. See §4.
 
-Refuses tier 2 (falls to tier 3, or to the M3 decomposition for aggregates) — the v1 list plus
-the deltas marked ⊖ (capability lost with the reference core) and hazard rules from §3.3:
+The following shapes refuse tier 2. The splitter then attempts local execution or aggregate
+decomposition, subject to the constraints in HYBRID §6:
 
 - UDFs / `map_pandas`; user-facing `Join`/`Union`; anything above `SqlScan`/`SavedQueryScan`;
   `with_totals()` on non-tier-1 plans (all unchanged).
@@ -55,8 +55,8 @@ the deltas marked ⊖ (capability lost with the reference core) and hazard rules
   as SELECT items and GROUP BY keys.
 - Predicates over columns the aggregate consumed, double limits, sorts below aggregates —
   unchanged `_match` rules.
-- `drop_duplicates` pushdown: **never** — `SELECT DISTINCT` is silently stripped
-  (CONTRACT_NOTES §3.6). Dedup stays local.
+- `SELECT DISTINCT` is silently stripped (CONTRACT_NOTES §3.6), so the compiler never emits
+  it. There is no `DataFrame.drop_duplicates()` method; use `map_pandas()` for local deduplication.
 - A field, topic, or view whose name fails the sentinel charset (§3.1) — refuse, tier 3.
 
 ## 2. Envelope and guards
@@ -76,7 +76,7 @@ the deltas marked ⊖ (capability lost with the reference core) and hazard rules
 
 > DECISION — `Query.for_omnisql(model_id, sql, *, limit, offset)`: sets
 > `user_edited_sql=sql`, `rewrite_sql=None` (key absent on the wire), and a **non-wire flag**
-> `omnisql=True` (excluded from `to_wire()`). `Query.validate()` becomes: a SQL job requires
+> `omnisql=True` (excluded from `to_wire()`). `Query.validate()` requires a SQL job to have
 > `rewrite_sql is False` (verbatim, `for_sql`) XOR (`omnisql` flag and `rewrite_sql is None`).
 > `RemoteStep.__post_init__` mirrors it off the envelope: `userEditedSQL` present requires
 > either `rewriteSql: false` in the bytes, or the compilation's `omnisql` flag with the key
@@ -166,7 +166,7 @@ The tier-2-vs-tier-3 differential (§9) remains the regression net for naming dr
 
 ### 3.3 WHERE discipline
 
-The live predicate loss (probe M4) is specific to mixing a BARE ref and a GRAIN ref of the
+The live predicate loss in the bare-plus-grain filter probe is specific to mixing a BARE ref and a GRAIN ref of the
 same field in one WHERE. Plain same-column conjunct composition and parenthesized compound
 ranges — `(${a} >= x AND ${a} < y)`, the BETWEEN shapes — survive intact
 (CONTRACT_NOTES §3.6). Rules:
@@ -181,12 +181,13 @@ ranges — `(${a} >= x AND ${a} < y)`, the BETWEEN shapes — survive intact
 
 ## 4. Splitter integration
 
-- `SplitOptions`: `disable_sql` stays (differential lane). `sql_dialect` is DELETED (§6).
+- `SplitOptions.disable_sql` lets the differential tests exercise the local fallback.
+  There is no `sql_dialect` option (§6).
 - `split()`: unchanged — `try_semantic` → `try_sql` → `_local`.
 - `_aggregate()` (mixed path): FIRST attempt the whole node — keys + measures + ad-hoc — as
   one tier-2 statement via `try_sql`. On success: single `RemoteStep(label="sql", tier=2)`,
   no `AlignJoin`, no decomposition, and `decomposition_row_cap` does not apply (nothing
-  decomposed). On decline: M3 decomposition verbatim (governed tier-1 step + ad-hoc half
+  decomposed). On decline: aggregate decomposition (governed tier-1 step + ad-hoc half
   tier-2-else-raw-scan-plus-`LocalAggregate` + local `AlignJoin`).
 
 > DECISION — tier 1 still wins measure-only aggregates (native governed path, measure-filter
@@ -218,20 +219,17 @@ Grain refs are regime-(a) bare refs (§3.2): `view.field[grain]` and its `__raw`
 exact, alias-proof names, so the collapse works on predicted names and needs no suffix
 matching.
 
-## 6. Obsolete machinery — removal
+## 6. Dialect handling
 
-> DECISION — REMOVE (not deprecate; 0.1.0.dev has no users): `SessionBuilder.sql_dialect()`
-> and its `EnvelopeOptions`/`SplitOptions` plumbing; `_refuse_dialect_sensitive_literals` and
-> the backslash refusal (the server owns per-warehouse rendering on the parsed path — a
-> backslash literal rides through as a value, P7b); CONTRACT_NOTES §6 LV#9's tier-2 half
-> (dialect portability is now the server's problem; the note shrinks to the verbatim
-> `read.sql` caveat, which was always the user's own SQL). The `!` LIKE escape STAYS — the
-> parse re-renders `ESCAPE` with the warehouse's own escape character, so escaping is
-> server-owned end to end (CONTRACT_NOTES §3.6). CHANGELOG records the removal.
+The server renders parsed OmniSQL for the warehouse dialect. `SessionBuilder` has no
+`sql_dialect()` method, and neither `EnvelopeOptions` nor `SplitOptions` carries a dialect
+override. Backslash-containing literals pass through as values. The compiler uses `!` for
+LIKE escaping; the server renders the warehouse-specific escape syntax (CONTRACT_NOTES §3.6).
+Verbatim `read.sql()` remains the caller's responsibility for dialect portability.
 
 ## 7. FakeOmniAPI: the OmniSQL resolver
 
-New `tests/fakes/omnisql.py`, dispatched from the sql_job handler when `rewrite_sql` is
+`tests/fakes/omnisql.py` is dispatched from the sql_job handler when `rewrite_sql` is
 absent (verbatim path with `rewrite_sql: false` keeps its current handler):
 
 - Substitute `${topic}` → the bench base table with LEFT JOINs from the bench relationships,
@@ -267,11 +265,11 @@ a message saying the tier-2 statement was rejected by the server, naming the mis
 view/field from the server text, and pointing at `explain()`. Verbatim `read.sql` errors are
 untouched (the SQL is the user's own).
 
-## 9. Test migration
+## 9. Test coverage
 
-- **Golden**: regenerate `sql_*.sql` (OmniSQL text) and `semantic_sql_*.json` (no
+- **Golden**: `sql_*.sql` (OmniSQL text) and `semantic_sql_*.json` (no
   `staticQueryReferences`, no `rewriteSql`, no `sqlSortsEnabled`; `omnisql` flag is non-wire
-  so envelopes stay clean). New cases: mixed-agg single statement, measure grand total.
+  so envelopes stay clean), including mixed aggregation as a single statement and measure grand totals.
 - **Unit (sqlgen)**: the translation table rows (`${}` rendering, sentinel charset gate,
   measure select items incl. measure arithmetic and measure HAVING), §3.2 both regimes
   (bare-ref dedup at emission, `of_expr_<n>` alias generation and ordering), §3.3 refusals
@@ -280,40 +278,41 @@ untouched (the SQL is the user's own).
   literals — the sentinel pass must never touch a literal).
 - **Unit (querymodel/semantic)**: `for_omnisql` wire shape (no `rewriteSql` key), the XOR
   guard both ways, `RemoteStep` envelope mirror.
-- **Differential**: `test_tiers.py` re-run with the new emission (`disable_sql` on/off must
-  agree) + a mixed-agg case now asserting ONE remote request vs the decomposed tier-3 result.
+- **Differential**: `test_tiers.py` compares SQL pushdown with local execution (`disable_sql`
+  on/off must agree), including one-request mixed aggregation against its decomposed result.
 - **Wire/normalize**: `__raw` pair fixtures (tier-1 semantic AND OmniSQL results), the §5
   collapse incl. schema; a user-requested `X__raw`-style name passing through untouched;
   suffix-match renaming of `of_expr_<n>` columns under arbitrary scope prefixes.
-- **e2e**: envelope assertions flip (`userEditedSQL` with `${…}`, no `rewriteSql`, no refs;
+- **e2e**: envelope assertions (`userEditedSQL` with `${…}`, no `rewriteSql`, no refs;
   mixed agg = one request); explain snapshots; fake resolver tests incl. the loud hazard
   rejections; error-mapping test off the fake's substitution error.
 
-## 10. Work packages
+## 10. Implementation and validation
 
 **The L probe battery ran 2026-08-14** (compound ranges, LIKE ESCAPE, measure arithmetic,
 measure HAVING, unselected ORDER BY, expression scoping, duplicate select items); every
-outcome is folded into the DECISIONs above and recorded in CONTRACT_NOTES §3.6. **No probes
-remain before implementation.**
+outcome is folded into the DECISIONs above and recorded in CONTRACT_NOTES §3.6. The compiler
+and integration paths described here are implemented:
 
-**Work packages (disjoint files, parallelizable after WP1+WP2 land):**
+| Behavior | Implementation | Offline coverage |
+|---|---|---|
+| Parsed-OmniSQL envelope and guards | `compile/querymodel.py`, `compile/semantic.py` | query-model and semantic compiler unit tests |
+| SQL emission, output naming, filters, and explain output | `compile/sqlgen.py`, `compile/explain.py` | SQL compiler unit tests and golden snapshots |
+| Mixed aggregation as one statement, with decomposition fallback | `compile/splitter.py` | splitter unit tests and `tests/differential/test_tiers.py` |
+| Fake resolver, formatted grain pairs, and rejected hazards | `tests/fakes/omnisql.py`, `tests/fakes/sqljobs.py`, `tests/fakes/engine.py` | fake and end-to-end tests |
+| Grain normalization and expression-column renaming | `transport/normalize.py`, `transport/arrow.py`, `dataframe.py` | wire fixtures and schema tests |
+| Removed dialect knob and substitution-error mapping | `session.py`, `compile/executor.py` | session, executor, and end-to-end tests |
 
-| WP | Files | Delivers | Acceptance |
-|---|---|---|---|
-| WP1 | `compile/querymodel.py`, `compile/semantic.py` (RemoteStep + measure-refusal seams), their unit tests | `for_omnisql`, `omnisql` flag, XOR guards | guard tests both ways; wire shape pinned |
-| WP2 | `compile/sqlgen.py`, `compile/explain.py`, `tests/unit/test_sqlgen*.py`, golden snapshots | §3 emission, naming, WHERE discipline, explain | golden + unit lanes green; injection pins |
-| WP3 | `compile/splitter.py`, `tests/unit/test_splitter.py`, `tests/differential/test_tiers.py` | §4 mixed collapse + fallback | differential green both `disable_sql` states |
-| WP4 | `tests/fakes/omnisql.py` (new), `tests/fakes/sqljobs.py`, `tests/fakes/engine.py`, `tests/fakes/bench_model.py`, fake tests, `docs/bench_omni_model.md` | §7 resolver + grain pairs + loud hazards | fake tests incl. error texts; e2e unblocked |
-| WP5 | `transport/normalize.py`, `transport/arrow.py`, `dataframe.py` (schema), wire/unit tests | §5 `__raw` collapse everywhere + §3.2 `of_expr_<n>` suffix-match renaming | wire fixtures + schema tests green |
-| WP6 | `session.py`, `compile/executor.py`, `tests/e2e/*`, `docs/DESIGN.md`, `docs/INTERNALS.md`, `CHANGELOG.md` | §6 removal, §8 error mapping, e2e migration, docs | milestone gate green |
+Run the offline validation gate and docs build:
 
-Order: WP1 → WP2 → {WP3, WP4, WP5} in parallel → WP6. WP4 may start alongside WP2 (it
-consumes §3.2's rules, not the code).
+```bash
+uv run ruff format --check && uv run ruff check && uv run mypy && uv run pytest -m "not live"
+uv run mkdocs build --strict
+```
 
-**Final gate**: `uv run ruff format --check && uv run ruff check && uv run mypy &&
-uv run pytest -m "not live"` all green, `mkdocs build --strict`, THEN live re-verification:
-the frame probe (tier-2 ad-hoc agg, mixed agg, HAVING case must PASS live) and
-`scripts/live_smoke.py` (0 FAIL), against the org in `.env` while it lasts.
+Live verification is separate and requires a configured Omni organization. Use
+`scripts/live_smoke.py` and the LIVE-VALIDATE register in CONTRACT_NOTES §6 for server behaviors
+that offline tests cannot establish.
 
 ---
 

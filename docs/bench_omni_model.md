@@ -625,9 +625,9 @@ table before suspecting the client.
 
 ### Known gaps in the offline twin
 
-The fake grows per milestone (DESIGN.md §5). Anything it does not implement is **refused loudly**
-rather than approximated — a live-only capability is a missing offline expectation, and the
-backlog below is the list of gaps still open.
+The fake covers the wire behaviors exercised by the test suite (DESIGN.md §5). Unsupported
+query shapes are **refused loudly** rather than approximated; some request options are accepted
+but have no effect. The table below records both kinds of gap.
 
 **Implemented today**
 
@@ -653,25 +653,28 @@ backlog below is the list of gaps still open.
 - **`staticQueryReferences`** compiled through the semantic engine and registered as temp views
   named after the reference key (§6.6);
 - `GET /documents/{identifier}/queries` and `POST /ai/generate-query` (§7).
+- `workbookUrl: true` returns an `X-Omni-Workbook-Url` response header; invalid combinations
+  with `planOnly` or query references are rejected.
 
-**Still refused (the backlog)**
+**Known limitations**
 
-| gap | how it is refused | closes with |
+| gap | behavior in the fake | status / verification needed |
 |---|---|---|
 | dimension-keyed `filters` on a raw-SQL job (Omni's mustache templating) | `PLAN` job error | pinning the templating syntax |
 | `"::total::"` and non-numeric columns in a raw-SQL `column_totals` | `PLAN` job error | — (a SQL job has no measures to grand-total) |
 | a reference key that is not a bare SQL identifier; a referenced query carrying SQL, its own references or totals | `PLAN` job error | — (refKey-as-table is refuted live; §6.6) |
 | on the OmniSQL path: CTEs, an explicit `JOIN`, a `FROM ${view}` that is not the topic's root, a non-`SELECT` statement | `PLAN` job error, `FakeOmniAPI rejects…` | flattening/precedence pinned (CONTRACT_NOTES §6 item 11) |
-| `staticQueryReferences` on a non-SQL job (`type: "query"` filter arms, XLOOKUP calc operators) | `PLAN` job error | later milestone |
+| `staticQueryReferences` on a non-SQL job (`type: "query"` filter arms, XLOOKUP calc operators) | `PLAN` job error | not implemented |
 | `type: "user_attribute"` filter arms | `PLAN` job error | user-attribute support |
 | `calculations` (including on the `sqlSortsEnabled` path) | 400 | out of scope for 0.1 (DESIGN.md §6) |
-| `fill_fields` | 400 | later milestone |
-| `pivots` | 400 | wire pivots are out of scope for 0.1; `df.pivot()` is local |
-| `row_totals` | 400 | later milestone (`column_totals` is done) |
+| `fill_fields` | 400 | not implemented |
+| `pivots` | 400 | wire pivots are out of scope; use pandas through `map_pandas()` for local pivots |
+| `row_totals` | 400 | not implemented (`column_totals` is supported) |
 | `resultType` / `formatResults` single-document mode | 400 | `session.ask` parity work |
-| relative date literals (`"30 days ago"`, `"last quarter"`), and the date kinds beyond `BETWEEN` / `ON_OR_AFTER` / `BEFORE` | `PLAN` job error | later milestone |
-| non-number arms of a measure-keyed filter (`string`, `date`, `boolean`, `null` on a measure) | `PLAN` job error naming the arm | later milestone, if the live org ever needs them |
+| relative date literals (`"30 days ago"`, `"last quarter"`), and the date kinds beyond `BETWEEN` / `ON_OR_AFTER` / `BEFORE` | `PLAN` job error | not implemented |
+| non-number arms of a measure-keyed filter (`string`, `date`, `boolean`, `null` on a measure) | `PLAN` job error naming the arm | not implemented; requires verified measure-filter semantics |
 | `column_totals` next to a measure-keyed filter | `PLAN` job error | pinning what a total over a HAVING-restricted group set means |
-| grains outside §4.1 (`millisecond`, `day_of_quarter`, `fiscal_*`, `epoch`, `time_of_day`, durations) | `summary.missing_fields` | later milestone |
+| grains outside §4.1 (`millisecond`, `day_of_quarter`, `fiscal_*`, `epoch`, `time_of_day`, durations) | `summary.missing_fields` | not implemented |
 | cross-field OR via `controls`, period-over-period, `join_via_map`, `column_limit`, `custom_summary_types` | ignored / unmodeled | out of scope for 0.1 |
-| `branchId`, `timezone`, `cache` (the enum is validated, the answer is always `cache_type: MISS`), the `X-Omni-Workbook-Url` response header, and `limit`/`offset` **on either SQL path** (the statement owns its row count) | accepted and inert | later milestone |
+| `branchId`, `timezone`, `cache` (the enum is validated, the answer is always `cache_type: MISS`) | accepted and inert | branch, timezone, and cache effects are not modeled |
+| envelope `limit`/`offset` **on either SQL path** | accepted and inert; the SQL statement controls its row count | matches the SQL execution contract (§6) |

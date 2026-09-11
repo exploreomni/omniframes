@@ -54,8 +54,8 @@ Local [pandas]
   (`collect`, `to_pandas`, `show`, `count`).
 - **Three-tier compilation.** The planner pushes each plan down as far as it can:
   1. **Semantic query** — fully governed: model measures, topic join paths, row-level security.
-  2. **SQL job** — warehouse-executed SQL over embedded semantic sub-queries.
-  3. **Local pandas** — anything Python can do, with the remote prefix still pushed down.
+  2. **SQL job** — warehouse-executed OmniSQL using governed model references.
+  3. **Local execution** — Arrow operators and Python functions over remote query results.
 - **Always explicit.** `explain()` shows the pushdown split for every query. Never a silent
   laptop-melter.
 - **Omni-native.** Selecting dimensions plus a measure *is* the group-by; `group_by().agg()` is
@@ -88,7 +88,7 @@ uv run mkdocs build --strict # docs site
 uv run marimo edit examples/demo.py  # the demo notebook (needs OMNI_BASE_URL/OMNI_API_KEY live)
 ```
 
-The full gate, which CI enforces and every milestone must pass:
+The full validation gate enforced by CI:
 
 ```bash
 uv run ruff format --check && uv run ruff check && uv run mypy && uv run pytest -m "not live"

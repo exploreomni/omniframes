@@ -238,6 +238,13 @@ month = F.col("order_items.created_at").grain("month").alias("month")
 compiles to the byte-identical query — in Omni, selecting dimensions alongside measures **is**
 the group-by. The [mental model](mental-model.md) starts there.
 
+If you chain `select(...).group_by(...).agg(F.measure(...))` on a topic, the group keys replace
+the previously selected dimensions: omitted dimensions drop out, and Omni evaluates the
+measure at the new grain without summing an intermediate result locally. The grouping fields
+and governed measures must be available in the earlier `select()`; otherwise compilation
+raises `CompileError`. See [regrouping a selected topic DataFrame](mental-model.md#regrouping-a-selected-topic-dataframe)
+for an example and the scope of this behavior.
+
 ## 7. Read the plan
 
 `explain()` is the whole safety story. It compiles the plan (no I/O) and prints every query that

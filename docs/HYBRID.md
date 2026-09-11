@@ -1,10 +1,9 @@
-# The hybrid engine (M3) — authoritative design
+# The hybrid engine — authoritative design
 
-How a plan that tier 1 cannot fully express gets executed: split into **remote steps** (governed
-queries, exactly as today) feeding **local operators**, with the split always visible in
-`explain()`. This doc fits the as-built code (`compile/semantic.py`, `plan/nodes.py`,
-`column.py`, `dataframe.py`) and assumes M2's end state (Aggregate compiles tier-1 when all
-aggs are governed measures; measure filters compile to HAVING; `with_totals()` exists).
+How a plan gets executed: try a semantic query (tier 1), then an OmniSQL statement (tier 2),
+and split remaining work into **remote steps** feeding **local operators** (tier 3), with the
+split always visible in `explain()`. Aggregates containing only governed measures compile to
+tier 1, measure filters compile to HAVING, and `with_totals()` requests server-side totals.
 Rules here are binding; deviations require editing this doc in the same change.
 
 Every DECISION below is a judgment call with its one-line rationale; everything else follows
@@ -13,16 +12,16 @@ from the contract or the existing code.
 ## 0. Module map
 
 ```
-compile/splitter.py   split(plan, *, options) -> ExecutionPlan          (new)
-compile/local.py      LocalOp types, eval_expr, run_local_op            (new)
-compile/executor.py   execute(execution, run_remote) -> pa.Table        (new)
-compile/semantic.py   ExecutionPlan gains `root` and `output_columns`   (extended, back-compat)
-compile/explain.py    renders multi-step DAGs                           (extended)
-column.py             + Udf expr; functions.py + F.udf                  (extended)
+compile/splitter.py   split(plan, *, options) -> ExecutionPlan
+compile/local.py      LocalOp types, eval_expr, run_local_op
+compile/executor.py   execute(execution, run_remote) -> pa.Table
+compile/semantic.py   ExecutionPlan with `root` and `output_columns`
+compile/explain.py    renders single queries and multi-step DAGs
+column.py            Udf expression; functions.py exposes F.udf
 dataframe.py          with_column / map_pandas / mapInPandas; _collect routes through executor
 ```
 
-## 1. ExecutionPlan generalization
+## 1. ExecutionPlan
 
 ```python
 Step: TypeAlias = "RemoteStep | LocalStep"
@@ -37,29 +36,26 @@ class LocalStep:
 @dataclass(frozen=True)
 class ExecutionPlan:
     steps: tuple[RemoteStep, ...]  # ALL remote steps, DFS order (explain, tests)
-    root: Step | None = None  # None ⇒ M1/M2 degenerate: exactly steps[0]
+    root: Step | None = None  # None ⇒ a single remote step: steps[0]
     output_columns: tuple[str, ...] | None = None  # final user-facing columns when root is local
 ```
 
 - Constructor compatibility: every existing `ExecutionPlan((remote_step,))` call keeps working;
   `root=None` means "single remote step, no local work".
-- `.remote` keeps its exact current behavior (raises when `root` is a LocalStep or
-  `len(steps) != 1`) so M1/M2 fast paths and tests are untouched.
+- `.remote` returns the single remote step; it raises when `root` is set or `len(steps) != 1`.
 - `.columns` returns `output_columns` when set, else the single remote step's columns.
 - `.tier` when root is local: `3` (report the *lowest* tier involved; explain shows detail).
 
-`DataFrame._collect` becomes: if `execution.root is None` → current fast path (unchanged);
-else `executor.execute(execution, run_remote=self._session_runner)` where `_session_runner`
-runs one RemoteStep (`session.run(step.envelope)` → `normalize(..., aliases=step.alias_map)`)
-and returns the normalized Arrow table. `execute` is pure given `run_remote` — fully testable
-without a session.
+`DataFrame._collect` uses a single-query fast path when `execution.root is None`; otherwise it
+calls `executor.execute` with a callback that runs and normalizes each remote step into an
+Arrow table. `execute` is testable without a session by supplying a fake `run_remote` callback.
 
 ## 2. The splitter
 
 `split(plan, *, options) -> ExecutionPlan`. Top-down recursion; the invariant is
-**maximality**: at every node, first attempt `try_semantic(node)` on the whole subtree — if it
-compiles, that subtree is one RemoteStep and recursion stops. Only on `CannotCompile` does the
-node itself become a local op over the split of its child(ren). Because the attempt happens at
+**maximality**: at every node, attempt `try_semantic(node)`, then `try_sql(node)` on the whole
+subtree. If either compiles, that subtree is one RemoteStep and recursion stops. Only when
+both decline does the node become a local op over the split of its child(ren). Because this happens at
 every level, the remote frontier is automatically maximal; no separate analysis pass.
 
 Per-node rules when the subtree does NOT compile whole:
@@ -70,10 +66,10 @@ Per-node rules when the subtree does NOT compile whole:
 | `Project` (uncompilable column: arithmetic, Udf) | `LocalProject(columns)` | Compilable columns still push down via widening; the local project computes the rest and sets final order. |
 | `Sort` above a local op | `LocalSort(keys)` | A Sort whose subtree compiles rides remote as today. |
 | `Limit` above a local op | `LocalLimit(n, offset)` | See §2.3 — a Limit *below* local ops pins the frontier instead. |
-| `Aggregate` with any `AdHocAgg` | decomposition — §2.1 | Pure-measure aggregates compile tier-1 (M2), never reach here. |
-| `WithColumn` | `LocalWithColumn(name, expr)` | Always local in M3 (tier 2 takes some in M5). Widening applies to referenced fields. |
+| `Aggregate` with any `AdHocAgg` | decomposition — §2.1 | Used when the whole aggregate cannot run in tier 2. Governed measures must still have a remote query; they cannot be evaluated locally. |
+| `WithColumn` | `LocalWithColumn(name, expr)` | SQL-expressible derived columns use tier 2; otherwise widening supplies the fields for local evaluation. |
 | `MapPandas` | `LocalMapPandas(fn, schema_hint)` | Always local, by definition. |
-| `Join` / `Union` | M4 — splitter handles children independently, op is local | Nodes exist; DataFrame exposes them in M4. |
+| `Join` / `Union` | `LocalJoin` / `LocalUnion` | `df.join()` and `df.union()` split each input independently and combine the results locally. |
 
 The recursion carries a `required: frozenset[str]` of extra field names needed by local ops
 above (see §2.2) and, at the end, wraps the root in a `LocalProject` that drops widened columns
@@ -81,16 +77,18 @@ and fixes output order/aliases.
 
 ### 2.1 Mixed-aggregation decomposition
 
-`Aggregate(child, keys=K, aggs=M ∪ A)` where `M` are `MeasureRef`s and `A` are `AdHocAgg`s
-(A non-empty; if M is empty it is the same shape minus step 1):
+Tier 2 first tries the whole aggregate as one OmniSQL statement. The following decomposition
+is the fallback for `Aggregate(child, keys=K, aggs=M ∪ A)`, where `M` are `MeasureRef`s and
+`A` are `AdHocAgg`s (A non-empty; if M is empty, omit the governed step and alignment join):
 
 1. **RemoteStep "measures"**: `compile_semantic(Aggregate(child, K, M))` — the governed side,
    filters and scan included, `DEFAULT_FETCH_LIMIT` + TruncationWarning as usual. Omitted when
    `M` is empty.
-2. **RemoteStep "raw scan"**: `compile_semantic(Project(child, K ∪ operands(A)))` — raw rows of
-   the group keys plus every distinct `AdHocAgg.operand`. **`limit: None` (unlimited)** — see
-   the DECISION below.
-3. `LocalAggregate(keys=K_names, aggs=A)` over step 2's output.
+2. Try the ad-hoc half alone as a tier-2 `GROUP BY`. If it cannot compile, fetch raw rows of
+   the group keys plus every distinct `AdHocAgg.operand`, applying any required local work.
+   The raw scan is **unlimited by default** — see the DECISION below.
+3. When step 2 fetched raw rows, run `LocalAggregate(keys=K_names, aggs=A)` over them;
+   otherwise use the remotely aggregated result directly.
 4. `AlignJoin(on=K_names)` joining step 1 ⨝ step 3 (skipped when `M` is empty). Output column
    order: keys, then aggs in the user's original `agg()` order (measures and ad-hoc interleaved
    as written).
@@ -105,7 +103,7 @@ alias map, so the join keys line up by name.
 DECISION — **the raw scan is unlimited** (`limit: None`): a silently 50k-capped input to a local
 aggregation is a wrong-answer bug, not a truncation inconvenience. The wire allows `null` limit
 (no pivots involved). Cost is visible: `explain()` prints `raw scan (unlimited)` and the docs
-say ad-hoc aggregation pulls raw rows until tier 2 (M5) pushes it into SQL. A safety valve
+make clear that raw rows are fetched only when SQL pushdown cannot express the aggregation. A safety valve
 `OmniSession.builder.decomposition_row_cap(n)` (default `None`) turns the unlimited scan into
 `limit n` + a *mandatory* `TruncationWarning` when hit — opt-in cap, never a silent default.
 When the rows under the aggregate need local work of their own (a UDF, a `read.sql` scan, a
@@ -132,7 +130,7 @@ unknown) is a `CompileError` naming the column.
 ### 2.3 Limit pins the frontier
 
 `…local ops… → Limit → …remote-compilable…` : the Limit rides remote (today's semantics), and
-the local ops run on the limited result — semantically honest, matches M1's refusal reason.
+the local ops run on the limited result, preserving the order of operations.
 `Limit → …local ops…` (limit *above* local work): `LocalLimit`. Both directions tested.
 
 ### 2.4 TruncationWarning policy
@@ -164,11 +162,11 @@ LocalSort(keys: tuple[tuple[str, bool], ...])                        # (name, de
 LocalLimit(n: int | None, offset: int)
 LocalMapPandas(fn, schema_hint)     # table.to_pandas(types_mapper=pd.ArrowDtype) → fn → pa.Table.from_pandas
 AlignJoin(on: tuple[str, ...])      # §3.2
-LocalJoin(on: tuple[str, ...], how: JoinHow = INNER)   # M4 — the USER join; §3.2
-LocalUnion()                                            # M4 — UNION ALL by position; §3.3
+LocalJoin(on: tuple[str, ...], how: JoinHow = INNER)   # the user-facing join; §3.2
+LocalUnion()                                        # UNION ALL by position; §3.3
 ```
 
-### As-built (M4) — the two user-facing set operators
+### User-facing joins and unions
 
 - `LocalJoin` is the operator `df.join(...)` compiles to, and it is deliberately **not**
   `AlignJoin`. Its one rule: a NULL key never matches anything, not even another NULL (§3.2).
@@ -195,7 +193,7 @@ LocalUnion()                                            # M4 — UNION ALL by po
 - `BooleanOp`/`Not` → `and_kleene`/`or_kleene`/`invert` (`NOT NULL` → NULL → row dropped by
   LocalFilter; test proves `~(col == x)` keeps neither the match nor the NULLs).
 - `IsNull` → `is_null`; `IsIn` → `pc.is_in` (NULL never matches); `Between(low, high)` →
-  numbers: `low <= x AND x <= high` (inclusive, matching M2's compiled semantics); dates:
+  numbers: `low <= x AND x <= high` (inclusive, matching the semantic compiler); dates:
   `low <= x AND x < high` (half-open, matching the wire). String date-grammar literals
   ("30 days ago") are refused locally: `CannotCompile("relative date literals are evaluated by
   Omni")` — they only ever execute remotely.
@@ -217,8 +215,8 @@ LocalUnion()                                            # M4 — UNION ALL by po
   the opposite of SQL join semantics. DECISION: implement via pandas
   `merge(how="outer", on=keys)` over ArrowDtype frames — pandas factorization matches NA keys,
   giving exactly the alignment we need with zero sentinel hacks; convert back to Arrow after.
-  This is an internal op: the user-facing `Join` (M4) will implement SQL semantics
-  (NULL keys never match) and must NOT reuse AlignJoin.
+  This is an internal op: the user-facing `Join` implements SQL semantics
+  (NULL keys never match) and uses `LocalJoin` instead.
 
 ### 3.3 Dtype promotion (local aggs; the differential comparator uses the same table)
 
@@ -286,17 +284,20 @@ def map_pandas(self, fn: Callable[[pd.DataFrame], pd.DataFrame],
   column raises the §2.2 widening error.
 - `explain()` prints the function's `__name__` for both.
 
-## 6. Still CannotCompile after M3 (and who picks them up)
+## 6. Supported paths and remaining limits
 
-- `SqlScan` / `SavedQueryScan` sources — M4.
-- User-facing `Join` / `Union` DataFrame methods — M4 (nodes + splitter handling exist).
-- Ad-hoc aggregation pushdown, HAVING on ad-hoc aggs in SQL, computed-column pushdown — tier 2,
-  M5 (M3 executes them locally; M5 re-routes when expressible).
-- `with_totals()` over a decomposed aggregate — permanent `CompileError` (§2.1).
-- Relative date literals in LOCAL filter evaluation — permanent (`§3.1`); they work tier-1.
-- Local emulation of governed measures or grains — permanent by design.
-- Cross-field OR **as a wire filter** — permanent for 0.1 (executes locally instead; tier 2 can
-  take it in M5).
+- `read.sql()` and `read.saved_query()` are implemented as opaque remote sources. Operations
+  above their results run locally; their queries are sent as supplied.
+- `df.join()` and `df.union()` combine independently compiled inputs locally (§3).
+- Ad-hoc aggregates, HAVING on aggregate outputs, and computed columns use tier 2 when
+  expressible, otherwise the splitter attempts local execution or aggregate decomposition.
+- `with_totals()` requires a single tier-1 query; decomposed aggregates raise `CompileError`.
+- Relative date literals run as tier-1 filters. Local evaluation cannot interpret Omni's date
+  grammar; a plan that requires it locally raises an error.
+- Governed measures and model grains must be computed remotely. The local engine can use
+  their returned columns but cannot reconstruct their definitions.
+- Cross-field OR cannot be represented by the supported tier-1 wire filters. It uses SQL
+  when expressible, otherwise local filtering over the required remote columns.
 
 ## 7. explain() format
 
@@ -323,11 +324,11 @@ Local [arrow compute]
 Every local line names its inputs; every remote step is numbered in `steps` order. `analyze=True`
 appends per-remote-step `display_sql` exactly as today, per step.
 
-Since M5 that decomposition is the **fallback**, not the default: tier 2 takes the whole mixed
+That decomposition is the **fallback**, not the default: tier 2 takes the whole mixed
 aggregate as one OmniSQL statement (docs/SQLTIER.md §4), and this shape appears only when it
 declines. The rules below are unchanged — they are what runs when it does.
 
-### As-built (M4/M5) — the opaque step's rendering
+### Rendering opaque queries
 
 A step whose payload omniframes did not write — `SqlScan` (`read.sql`) or `SavedQueryScan`
 (`read.saved_query` / `session.ask`), i.e. `SemanticCompilation.opaque` — is rendered off the

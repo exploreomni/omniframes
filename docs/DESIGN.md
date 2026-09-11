@@ -28,7 +28,7 @@ the remote portion:
 - **Tier 1 — semantic query.** Scan(topic/view) + projections (dims, grains, model measures) +
   compilable filters + sorts + limit/offset. Fully governed. Dimension+measure selection IS the
   group-by (Omni semantics); `group_by().agg()` is sugar compiled identically.
-- **Tier 2 — OmniSQL job** (M5+). ONE SQLGlot-built statement sent as `userEditedSQL` with the
+- **Tier 2 — OmniSQL job**. ONE SQLGlot-built statement sent as `userEditedSQL` with the
   `rewriteSql` key **absent**, which is what makes the server parse it as OmniSQL and plan it as
   a governed model job: `${topic}` in FROM brings the topic's join graph, `${view.field}` and
   `${view.measure}` resolve against the model (measures expand to their governed SQL), and
@@ -36,12 +36,12 @@ the remote portion:
   object — the statement *is* the plan. Covers: ad-hoc aggregations over raw columns,
   post-aggregation filters (HAVING), computed columns and filters no typed filter can express,
   and governed measures mixed with ad-hoc aggregates in one `agg()`. Full design:
-  docs/SQLTIER.md (authoritative for M5); wire truth: CONTRACT_NOTES §3.5/§3.6.
+  docs/SQLTIER.md (the SQL compiler); wire truth: CONTRACT_NOTES §3.5/§3.6.
 - **Tier 3 — local execution.** The splitter pushes maximal remote sub-plans; a small operator
   interpreter (project/filter/join/aggregate/sort/limit/UDF-apply) finishes locally. The local
   engine runs on **pyarrow.compute** (Kleene logic, null-keyed group-by, decimal arithmetic —
   SQL parity for free); pandas appears only at the UDF boundary and as the differential lane's
-  independent reference. Full design: docs/HYBRID.md (authoritative for M3).
+  independent reference. Full design: docs/HYBRID.md (the splitter and local engine).
 
 **The splitter produces a DAG, not a prefix.** A plan may decompose into MULTIPLE remote
 sub-plans feeding local operators. Canonical case — mixed aggregation:
@@ -161,16 +161,16 @@ for `query-api`, `ModelPermissionError`), `QueryError` (job error lines, incl. r
   documented dtype-promotion table; NULL-heavy seed rows guaranteed by the bench dataset.
 - **Live probe** (`scripts/live_smoke.py`, needs `OMNI_BASE_URL`+`OMNI_API_KEY`): a standalone
   script with a PASS/FAIL/OBSERVED/SKIP protocol, not a pytest lane. It is what closes the
-  LIVE-VALIDATE register (CONTRACT_NOTES §6), and it is deliberately outside the milestone gate
+  LIVE-VALIDATE register (CONTRACT_NOTES §6), and it is deliberately outside the offline validation gate
   because it needs a real org. There is **no** `tests/live/`: the `live` pytest marker is
   registered but applied to nothing, so `pytest -m live` collects zero tests — never read a green
   run of it as live coverage.
 - **FakeOmniAPI** (`tests/fakes/`): in-process httpx.MockTransport ASGI-style fake serving
   whoami/catalog/run/wait with exact NDJSON framing over the bench dataset, executing semantic
-  queries via DuckDB (dev dependency only). It implements ONLY what the current milestone's
-  tests exercise, and grows per milestone.
+  queries via DuckDB (dev dependency only). It implements the wire behaviors exercised by the
+  test suite; unsupported behavior is documented in docs/bench_omni_model.md.
 
-Milestone gate (all must pass before a milestone is called done):
+Validation gate (all checks must pass):
 
 ```bash
 uv run ruff format --check && uv run ruff check && uv run mypy && uv run pytest -m "not live"
@@ -179,6 +179,6 @@ uv run ruff format --check && uv run ruff check && uv run mypy && uv run pytest 
 ## 6. Out of scope for 0.1 (do not build)
 
 Server-side wishlist items; `df.write.table()` (no CTAS endpoint); durable
-`save_as_workbook()`; wire-level pivot pushdown (`df.pivot()` is local, post-collect);
+`save_as_workbook()`; wire-level pivot pushdown (local pivots use pandas through `map_pandas()`);
 period-over-period; cross-field OR via `controls`; calculations emission; event telemetry (the
 coarse client/runtime User-Agent described above is the only usage metadata sent in 0.x).

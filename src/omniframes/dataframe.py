@@ -205,11 +205,10 @@ class DataFrame:
     def with_column(self, name: str, column: str | Column | Expr) -> DataFrame:
         """Add (or replace) a derived column.
 
-        The expression is evaluated by the local engine in M3 — arithmetic over selected fields,
-        a :func:`~omniframes.functions.udf`, anything Omni's query API has no way to express
-        (CONTRACT_NOTES §3.3 — ``calculations`` are post-limit row operations, not a computed
-        column).  Everything below the derived column still pushes down, and ``explain()`` shows
-        exactly where the split falls.
+        SQL-expressible expressions, such as arithmetic over selected fields, push down to
+        an OmniSQL job. A :func:`~omniframes.functions.udf` or an expression that cannot run
+        remotely is evaluated locally over the largest remote sub-plan. ``explain()`` shows
+        which tier runs the expression and where any local work begins.
         """
         if not isinstance(name, str) or not name:
             raise CompileError("with_column() needs a non-empty column name")
@@ -309,8 +308,7 @@ class DataFrame:
 
         The query gains ``column_totals: {"::total::": {"type": "aggregation"}}`` and the
         materialized frame gains a trailing ``row_type`` column: ``"data"`` on the rows the
-        query grouped, ``"total"`` on the appended totals row (subtotal rows, when a future
-        milestone requests them, carry the server's own label).  The totals row **re-aggregates
+        query grouped, ``"total"`` on the appended totals row. The totals row **re-aggregates
         the measures over every row the query touched** — post-filter, pre-limit — so it is not
         the sum of the values above it, which is exactly the point of asking the server for it.
 
@@ -565,10 +563,11 @@ class GroupedData:
     def agg(self, *columns: str | Column | Iterable[str | Column]) -> DataFrame:
         """Aggregate each group.
 
-        Takes governed measures (``F.measure("order_items.total_sale_price")``) — the only kind
-        Omni can compute for us — and ad-hoc aggregations (``F.count_distinct("users.id")``),
-        which have no server-side definition and therefore need the hybrid engine (M3); building
-        the plan succeeds, compiling it says so by name.
+        Takes governed measures (``F.measure("order_items.total_sale_price")``) and ad-hoc
+        aggregations (``F.count_distinct("users.id")``). Governed measures always execute
+        remotely. Ad-hoc and mixed aggregations use an OmniSQL job when expressible;
+        otherwise the splitter uses local aggregation, with a separate remote query for
+        governed measures when needed. ``explain()`` shows the resulting plan.
         """
         aggs = _as_columns(columns)
         if not aggs:

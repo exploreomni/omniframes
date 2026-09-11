@@ -7,8 +7,8 @@ The shape tier 1 accepts is
 ``Scan → [Filter] → (Project | Aggregate) → [Filter] → [Sort] → [Limit]`` in any build order
 that is *semantically* the same as that pipeline.  Anything else — a join, a derived column, an
 ad-hoc aggregation, a cross-field ``OR`` — raises :class:`CannotCompile` carrying the reason.
-In M2 the DataFrame turns that into a ``CompileError("not yet supported: <reason>")``; from M3
-the splitter catches it instead and pushes down what it can, finishing the rest locally.
+The splitter catches that refusal, tries tier 2 SQL, and then decomposes the plan as needed
+to push down remote work and finish the remaining operations locally.
 
 Five rules deserve their own paragraph:
 
@@ -144,9 +144,8 @@ __all__ = [
 class CannotCompile(Exception):
     """This plan is not expressible as a tier-1 semantic query.
 
-    Not a user-facing error on its own: today's DataFrame reports it as
-    ``CompileError("not yet supported: <reason>")``, and M3's splitter uses it as the signal to
-    cut the plan and finish locally.
+    Not a user-facing error on its own: the splitter uses it to try the next execution tier.
+    The single-query :func:`compile_plan` helper instead wraps it in ``CompileError``.
     """
 
     def __init__(self, reason: str) -> None:
@@ -486,10 +485,10 @@ def _negated(flt: Filter) -> Filter:
 
 
 def adhoc_filter_reason(expr: Expr) -> str:
-    """Why a predicate over an ad-hoc aggregation is not a tier-1 (or M3) filter.
+    """Why a predicate over an ad-hoc aggregation is not a tier-1 filter.
 
     Public because the splitter reports the same reason: an ad-hoc aggregation inside a
-    predicate has no aggregate to hang the comparison on until tier 2 emits the SQL (M5).
+    predicate needs either tier-2 SQL or a locally available aggregate output to compare.
     """
     return (
         f"filtering on {display_name(expr)}: an ad-hoc aggregation has no model definition for "
@@ -773,9 +772,9 @@ def _match(plan: nodes.PlanNode) -> _Shape:
                 "query, so each side compiles on its own and the two results are combined here"
             )
         elif isinstance(node, nodes.WithColumn):
-            raise CannotCompile("with_column() computes client-side or in a SQL job (M3)")
+            raise CannotCompile("with_column() computes client-side or in a SQL job")
         elif isinstance(node, nodes.MapPandas):
-            raise CannotCompile("map_pandas() always runs locally (M3)")
+            raise CannotCompile("map_pandas() always runs locally")
         else:
             raise CannotCompile(f"{type(node).__name__} is not a tier-1 operation")
         node = node.children[0]
@@ -793,7 +792,7 @@ def _aggregate_as_projection(node: nodes.Aggregate) -> nodes.Project:
     for column in (*node.keys, *node.aggs):
         if isinstance(column.expr, AdHocAgg):
             raise CannotCompile(
-                f"{display_name(column.expr)}: ad-hoc aggregations require the hybrid engine (M3)"
+                f"{display_name(column.expr)}: ad-hoc aggregations require the hybrid engine"
             )
     return nodes.Project(node.child, (*node.keys, *node.aggs))
 
@@ -1343,8 +1342,8 @@ Step: TypeAlias = "RemoteStep | LocalStep"
 class ExecutionPlan:
     """What running an action actually does.
 
-    M1/M2 always produce exactly one remote step and no local work; that stays the degenerate
-    case — ``root is None`` means "just run ``steps[0]``".  M3's splitter builds a DAG instead
+    A single remote query needs no local work: ``root is None`` means "just run ``steps[0]``".
+    For plans with local operations, the splitter builds a DAG
     (docs/HYBRID.md §1): ``steps`` lists every remote query in DFS order (which is how
     ``explain()`` numbers them) and ``root`` is the operator whose output the user receives.
     """
@@ -1411,8 +1410,9 @@ def compile_plan(
 ) -> ExecutionPlan:
     """Compile a logical plan into the steps that execute it.
 
-    M2 knows one tier: a non-tier-1 plan raises ``CompileError("not yet supported: …")``
-    carrying the :class:`CannotCompile` reason rather than falling back silently to pandas.
+    This single-query helper raises ``CompileError("not yet supported: …")`` carrying the
+    :class:`CannotCompile` reason when semantic compilation declines. DataFrame actions use
+    :func:`~omniframes.compile.splitter.split` for compilation across all three tiers.
     ``totals`` is the frame-level ``with_totals()`` marker (docs/INTERNALS.md §5).
     """
     try:

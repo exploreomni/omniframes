@@ -168,13 +168,12 @@ class SessionBuilder:
     def decomposition_row_cap(self, rows: int | None) -> SessionBuilder:
         """Cap the raw scan a mixed aggregation pulls down (docs/HYBRID.md §2.1).
 
-        Since M5 most ad-hoc aggregations ride tier 2 instead — a warehouse ``GROUP BY`` that
-        pulls no raw rows at all, so there is nothing for this cap to cap (docs/SQLTIER.md §1).
-        It still governs every aggregate tier 2 cannot express, which is where the local
-        decomposition remains the fallback.
+        SQL-expressible ad-hoc aggregations use a warehouse ``GROUP BY`` and fetch no raw
+        rows, so this cap does not apply to them (docs/SQLTIER.md §1). It applies when the
+        splitter falls back to local aggregation over raw rows.
 
-        When an ``agg()`` mixes a governed measure with an ad-hoc aggregation, the ad-hoc half
-        is computed here over raw rows, and that scan is **unlimited by default**: a silently
+        When a mixed ``agg()`` needs this fallback, the ad-hoc half is computed here over raw
+        rows, and that scan is **unlimited by default**: a silently
         capped input to a local aggregation is a wrong answer, not a truncated page.  This is
         the safety valve for when unlimited is not affordable — it sends ``limit: rows`` instead
         and warns loudly (:class:`~omniframes.errors.TruncationWarning`) whenever the cap is
