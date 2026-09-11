@@ -24,7 +24,7 @@ Four behaviors are worth reading before the code:
   (CONTRACT_NOTES §2.7).
 * **What Omni cannot express runs here, visibly.**  A derived column, a UDF, an ad-hoc
   aggregation next to a governed measure — the splitter pushes down the largest governed query
-  it can (tier 1), writes SQL over a governed reference core for what is left when it can
+  it can (tier 1), emits a governed OmniSQL statement for what is left when it can
   (tier 2, docs/SQLTIER.md), and finishes the rest locally (docs/HYBRID.md).  There is no silent
   fallback: :meth:`~DataFrame.explain` prints every query sent, the tier it ran at, and every
   operator run here.

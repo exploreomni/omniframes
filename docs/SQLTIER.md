@@ -93,7 +93,7 @@ decomposition, subject to the constraints in HYBRID §6:
 
 ## 3. compile/sqlgen.py
 
-`try_sql`/`compile_sql` keep their signatures and the `SemanticCompilation(tier=2)` carrier.
+`try_sql`/`compile_sql` take only the plan and return the `SemanticCompilation(tier=2)` carrier.
 The plan-matching machinery survives verbatim: `_match`, `_Shape`, `_core_selects` (minus the
 measure refusal), `_substitute`, `_partition`, `_conjuncts`, `_has_aggregate`,
 `_references_keys`. What is deleted: `_reference`, `_split_pushable` (no reference to push

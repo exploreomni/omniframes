@@ -48,11 +48,11 @@ visible in ``explain()``.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from sqlglot import exp
 
@@ -90,9 +90,7 @@ from omniframes.compile.semantic import (
 )
 from omniframes.errors import CompileError
 from omniframes.plan import nodes
-
-if TYPE_CHECKING:  # pragma: no cover - typing only
-    from omniframes.compile.splitter import SplitOptions
+from omniframes.plan.visitor import walk_expr
 
 __all__ = [
     "EXPR_ALIAS_PREFIX",
@@ -606,7 +604,7 @@ def _name(column: Column) -> str:
 
 def _is_aggregation(expr: Expr) -> bool:
     """Whether this expression collapses rows — an ad-hoc aggregate, or a governed measure."""
-    return any(isinstance(sub, AdHocAgg | MeasureRef) for sub in _walk(expr))
+    return any(isinstance(sub, AdHocAgg | MeasureRef) for sub in walk_expr(expr))
 
 
 def _aggregates_rows(expr: Expr) -> bool:
@@ -660,12 +658,6 @@ def _substitute(expr: Expr, definitions: Mapping[str, Expr]) -> Expr:
     return expr
 
 
-def _walk(expr: Expr) -> Iterator[Expr]:
-    yield expr
-    for child in expr.children:
-        yield from _walk(child)
-
-
 def _conjuncts(predicates: Sequence[Expr]) -> list[Expr]:
     """Flatten a stack of ``filter()`` calls into the conditions they AND together."""
     flat: list[Expr] = []
@@ -682,9 +674,7 @@ def _conjuncts(predicates: Sequence[Expr]) -> list[Expr]:
 # --------------------------------------------------------------------------------------
 
 
-def try_sql(
-    plan: nodes.PlanNode, *, options: SplitOptions | None = None
-) -> SemanticCompilation | None:
+def try_sql(plan: nodes.PlanNode) -> SemanticCompilation | None:
     """:func:`compile_sql`, returning ``None`` for anything tier 2 cannot express.
 
     A tier-2 construction failure is never a user error: tier 3 can express everything tier 2
@@ -692,24 +682,18 @@ def try_sql(
     tier ran (docs/SQLTIER.md §1).
     """
     try:
-        return compile_sql(plan, options=options)
+        return compile_sql(plan)
     except (CannotCompile, CompileError):
         return None
 
 
-def compile_sql(
-    plan: nodes.PlanNode, *, options: SplitOptions | None = None
-) -> SemanticCompilation:
+def compile_sql(plan: nodes.PlanNode) -> SemanticCompilation:
     """Compile ``plan`` into one OmniSQL statement the server parses against the model.
 
     Raises:
         CannotCompile: the plan is outside tier 2 (the reason names the operation).
         CompileError: the plan is tier-2 shaped but invalid.
     """
-    # Nothing outside the plan changes the emission any more: the server re-renders the parsed
-    # statement per warehouse, so there is no dialect to be told (docs/SQLTIER.md §6).
-    del options
-
     shape = _match(plan)
     selects, aggregated = _core_selects(shape.core)
 
@@ -887,7 +871,7 @@ def _refuse_where_hazards(where: Sequence[Expr]) -> None:
       the partition already routes it to; naming one in a ``WHERE`` is a different query.
     """
     for predicate in where:
-        for sub in _walk(predicate):
+        for sub in walk_expr(predicate):
             if isinstance(sub, MeasureRef):
                 raise CannotCompile(
                     f"{sub.name} is a governed measure and expands to an aggregate, so it "
