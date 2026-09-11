@@ -89,5 +89,3 @@ nav:
       - Internals: INTERNALS.md
       - Hybrid engine (tier 3): HYBRID.md
       - SQL tier (tier 2): SQLTIER.md
-      - Bench dataset: BENCH_DATASET.md
-      - Bench Omni model: bench_omni_model.md

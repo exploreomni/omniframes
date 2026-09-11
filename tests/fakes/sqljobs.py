@@ -9,7 +9,7 @@ the exchange is unchanged: the same NDJSON framing, the same base64 Arrow ``resu
 registered under their **bare** names — ``users``, ``products`` and ``order_items`` — with no
 schema qualifier, so ``SELECT ... FROM order_items oi LEFT JOIN users u ON u.id = oi.user_id``
 is the shape a tier-2 query takes offline.  A live org puts them behind whatever schema the
-connection uses (``OMNIFRAMES_BENCH`` in docs/bench_omni_model.md §1), so a SQL string that must
+connection uses (``OMNIFRAMES_BENCH`` in internal-docs/bench_omni_model.md §1), so a SQL string that must
 run in both lanes has to be schema-qualified by the caller, not by the fake.
 
 Three server behaviors are reproduced literally because they are the ones that bite clients:
@@ -27,7 +27,7 @@ Three server behaviors are reproduced literally because they are the ones that b
 ``staticQueryReferences`` (§3.5) are validated through the ordinary semantic planner, executed,
 and registered as temp views named **exactly** the reference key, so the outer SQL can name a
 reference as a bare table identifier.  That syntax is LIVE-VALIDATE #1 — an assumption, flagged
-as one in docs/bench_omni_model.md.
+as one in internal-docs/bench_omni_model.md.
 """
 
 from __future__ import annotations

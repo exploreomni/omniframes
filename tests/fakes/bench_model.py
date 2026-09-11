@@ -1,9 +1,9 @@
 """The governed Omni model the :class:`~tests.fakes.fake_omni.FakeOmniAPI` serves.
 
-This is the offline twin of the model that ``docs/bench_omni_model.md`` describes for the live
+This is the offline twin of the model that ``internal-docs/bench_omni_model.md`` describes for the live
 org: model ``bench_ecommerce``, topic ``order_items`` (base view ``order_items``, joined to
 ``users`` on ``user_id`` and to ``products`` on ``product_id``), over the checked-in bench
-dataset (``docs/BENCH_DATASET.md``).  Keeping the two in lockstep is the whole point — an
+dataset (``internal-docs/BENCH_DATASET.md``).  Keeping the two in lockstep is the whole point — an
 expectation written against the fake must hold against the live org.
 
 Field payloads follow the object documented in CONTRACT_NOTES §4 (``field_name``,
@@ -68,7 +68,7 @@ _DATE: Final = "date"
 #: ``AVG`` over a ``decimal(12,2)`` column is a ``DOUBLE`` in DuckDB, and a float cannot be
 #: compared exactly against ``known_answers.json``.  The known answers cast the average to
 #: ``DECIMAL(38,10)`` for exactness, so ``order_items.average_sale_price`` does the same —
-#: see docs/bench_omni_model.md ("offline-only rendering choices").
+#: see internal-docs/bench_omni_model.md ("offline-only rendering choices").
 AVERAGE_SCALE: Final = "DECIMAL(38, 10)"
 
 
@@ -280,7 +280,7 @@ class FakeModel:
 
 
 # --------------------------------------------------------------------------------------
-# Field definitions — one per column of docs/BENCH_DATASET.md, plus the governed measures.
+# Field definitions — one per column of internal-docs/BENCH_DATASET.md, plus the governed measures.
 # --------------------------------------------------------------------------------------
 
 

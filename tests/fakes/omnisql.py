@@ -570,7 +570,7 @@ def _summary_fields(outputs: Sequence[_Output], schema: pa.Schema) -> dict[str, 
 
     A bare-ref column reports the model's own metadata (label, ``date_type``, ``aggregate_type``);
     an expression column is synthesized, a dimension unless it aggregates.  ``sql`` is blank
-    throughout, exactly as on the verbatim path (docs/bench_omni_model.md §6.2): the fake does not
+    throughout, exactly as on the verbatim path (internal-docs/bench_omni_model.md §6.2): the fake does not
     model per-column SQL redaction on a SQL job.
     """
     types = {name: schema.field(name).type for name in schema.names}

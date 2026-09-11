@@ -168,7 +168,8 @@ for `query-api`, `ModelPermissionError`), `QueryError` (job error lines, incl. r
 - **FakeOmniAPI** (`tests/fakes/`): in-process httpx.MockTransport ASGI-style fake serving
   whoami/catalog/run/wait with exact NDJSON framing over the bench dataset, executing semantic
   queries via DuckDB (dev dependency only). It implements the wire behaviors exercised by the
-  test suite; unsupported behavior is documented in docs/bench_omni_model.md.
+  test suite; unsupported behavior is documented in the
+  [bench Omni model specification](https://github.com/exploreomni/omniframes/blob/main/internal-docs/bench_omni_model.md).
 
 Validation gate (all checks must pass):
 
