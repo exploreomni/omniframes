@@ -433,51 +433,25 @@ decided by the job kind, not by the request.
 
 ### 6.6 `staticQueryReferences` (CONTRACT_NOTES §3.5)
 
-Each entry is a full semantic query object plus a snake_case `model_id`. The fake compiles it
-through the ordinary planner (dimensions, grains, measures, filters and sorts all have to
-resolve), executes it, and registers the result as a DuckDB temp view named **exactly** the
-reference key, for the duration of that one job. The outer `userEditedSQL` then names it as a
-table:
-
-```sql
-SELECT r."users.state"                  AS state,
-       r."order_items.total_sale_price" AS revenue,
-       b."users.count"                  AS buyers
-FROM state_revenue r
-JOIN state_buyers b ON b."users.state" = r."users.state"
-```
-
-A reference's **columns are the referenced query's field names verbatim**, dots included, so the
-outer SQL has to quote them.
-
-> **Offline-only mechanism — REFUTED live (CONTRACT_NOTES §6, closure #1).** A reference key is
-> **not** usable as a table identifier in `userEditedSQL`. Probed 2026-08-14: bare and
-> double-quoted spellings reach the warehouse verbatim (`relation "<key>" does not exist`) and
-> the `${key}` spelling fails substitution (`No such view "<key>"`). There is no refKey-as-table
-> mechanism on `/query/run`, so this subsection describes a *fake-only* convenience that has no
-> live twin, and nothing omniframes emits may depend on it — tier 2 composes through parsed
-> OmniSQL instead (§6.8). The temp-view materialization survives here only because it costs
-> nothing and keeps the reference plumbing (the envelope's 400s, per-job lifetime) under test.
-
-Two further constraints:
+Raw SQL ignores `staticQueryReferences`. Reference keys do not become tables: bare and
+quoted keys in `userEditedSQL` reach the warehouse unchanged and fail if no such table exists.
+This matches the live-confirmed behavior in CONTRACT_NOTES §3.5; tier 2 composes through parsed
+OmniSQL (§6.8).
 
 - `workbookUrl: true` alongside a non-empty `staticQueryReferences` is a **400** at the envelope
   (CONTRACT_NOTES §2.1), not a job error.
-- References are only consumable from a raw-SQL outer query offline. The other two consumers —
-  `type: "query"` filter arms and the XLOOKUP calc operators — stay refused (`PLAN`), so a
-  reference on a semantic job is an error rather than a silently unused payload.
+- References on semantic and parsed-OmniSQL jobs are refused (`PLAN`). Their real consumers —
+  `type: "query"` filter arms and XLOOKUP calc operators — remain outside the fake's scope.
 
 ### 6.7 Offline-only choices on the SQL path
 
-Alongside §5.3, three things the wire leaves open that the fake pins:
+Alongside §5.3, two things the wire leaves open that the fake pins:
 
 - **`display_sql` is the executed SQL**, sort wrapper included, rather than `userEditedSQL`
   verbatim. That makes `sqlSortsEnabled` observable; a live org may render it differently.
 - **The envelope `limit`/`offset` are inert on a SQL job.** The SQL owns its own row count, and
   the contract does not say the server re-limits it. Sidecar totals therefore aggregate the
   entire SQL result.
-- **`used_query_references` is not emitted.** §3.5 says the server produces it for a SQL job but
-  not where it lands on the line, and a key in the wrong place teaches a client the wrong shape.
 
 ### 6.8 The parsed-OmniSQL path (CONTRACT_NOTES §3.6) — tier 2
 
@@ -650,8 +624,8 @@ but have no effect. The table below records both kinds of gap.
   four shapes the server silently rewrites;
 - **`__omni_summ` sidecars** on a raw-SQL `column_totals` job (§6.5), in the shape the client's
   normalizer round-trips;
-- **`staticQueryReferences`** compiled through the semantic engine and registered as temp views
-  named after the reference key (§6.6);
+- **`staticQueryReferences`** ignored on raw SQL, with the envelope rejection for
+  `workbookUrl: true` preserved (§6.6);
 - `GET /documents/{identifier}/queries` and `POST /ai/generate-query` (§7).
 - `workbookUrl: true` returns an `X-Omni-Workbook-Url` response header; invalid combinations
   with `planOnly` or query references are rejected.
@@ -662,9 +636,8 @@ but have no effect. The table below records both kinds of gap.
 |---|---|---|
 | dimension-keyed `filters` on a raw-SQL job (Omni's mustache templating) | `PLAN` job error | pinning the templating syntax |
 | `"::total::"` and non-numeric columns in a raw-SQL `column_totals` | `PLAN` job error | — (a SQL job has no measures to grand-total) |
-| a reference key that is not a bare SQL identifier; a referenced query carrying SQL, its own references or totals | `PLAN` job error | — (refKey-as-table is refuted live; §6.6) |
 | on the OmniSQL path: CTEs, an explicit `JOIN`, a `FROM ${view}` that is not the topic's root, a non-`SELECT` statement | `PLAN` job error, `FakeOmniAPI rejects…` | flattening/precedence pinned (CONTRACT_NOTES §6 item 11) |
-| `staticQueryReferences` on a non-SQL job (`type: "query"` filter arms, XLOOKUP calc operators) | `PLAN` job error | not implemented |
+| `staticQueryReferences` on semantic or parsed-OmniSQL jobs (`type: "query"` filter arms, XLOOKUP calc operators) | `PLAN` job error | not implemented |
 | `type: "user_attribute"` filter arms | `PLAN` job error | user-attribute support |
 | `calculations` (including on the `sqlSortsEnabled` path) | 400 | out of scope for 0.1 (DESIGN.md §6) |
 | `fill_fields` | 400 | not implemented |
