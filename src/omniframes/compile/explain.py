@@ -42,8 +42,8 @@ is numbered in execution order, and every local operator names the inputs it rea
 A tier-2 step is rendered as the OmniSQL statement omniframes wrote (docs/SQLTIER.md §4), elided
 after eight lines because a DAG of them still has to be readable.  The ``${…}`` refs make it
 self-documenting: the joins, the measure definitions and the access grants all come from the
-model the statement is parsed against.  Single-remote tier-1 plans keep the M1/M2 rendering byte
-for byte — a plan that did not change must not read as if it had.
+model the statement is parsed against. Single-remote tier-1 plans use the compact single-query
+rendering; plans with local work show every remote step and local operator.
 """
 
 from __future__ import annotations

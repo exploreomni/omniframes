@@ -7,9 +7,8 @@ executed — that is the compiler's job (:mod:`omniframes.compile`).
 Every node exposes ``children`` and ``with_children`` so the visitors in
 :mod:`omniframes.plan.visitor` can walk and rebuild a plan without knowing the node types.
 
-The full node set is declared here even though today's DataFrame only *builds* Scan / Project /
-Filter / Aggregate / Sort / Limit: later milestones add operations, not shapes, so the module
-does not have to be reshaped underneath the compiler.
+The nodes cover scans, projections, filters, aggregates, sorting, limits, joins, unions,
+derived columns, and whole-frame Python functions. The compiler chooses where each runs.
 """
 
 from __future__ import annotations
@@ -46,7 +45,7 @@ __all__ = [
 
 
 class JoinHow(enum.Enum):
-    """Join kinds a local (tier-3) join supports (M4)."""
+    """Join kinds a local (tier-3) join supports."""
 
     INNER = "inner"
     LEFT = "left"
@@ -99,7 +98,7 @@ class ViewScan(ScanSource):
 
 @dataclass(frozen=True)
 class SqlScan(ScanSource):
-    """A raw-SQL job (``userEditedSQL`` + ``rewriteSql: false``) — M4.
+    """A raw-SQL job (``userEditedSQL`` + ``rewriteSql: false``).
 
     The SQL is opaque to omniframes: the server decides what columns come back, so nothing can
     be pushed *into* it and every operation written on top of it runs in the local engine.
@@ -117,7 +116,7 @@ class SqlScan(ScanSource):
 
 @dataclass(frozen=True)
 class SavedQueryScan(ScanSource):
-    """A stored query, hydrated at read time and sent back **verbatim** — M4.
+    """A stored query, hydrated at read time and sent back **verbatim**.
 
     Two endpoints hand out a query object omniframes did not write (CONTRACT_NOTES §4):
     ``GET /documents/{id}/queries`` (``origin="saved query"``) and ``POST /ai/generate-query``
@@ -227,8 +226,8 @@ class Aggregate(PlanNode):
 
     In Omni, selecting dimensions plus measures *is* the group-by, so this node compiles to the
     same tier-1 query as the equivalent :class:`Project` when every aggregate is a governed
-    measure; an ad-hoc aggregation needs the hybrid engine, and mixed aggregates decompose
-    (docs/DESIGN.md §2) — both land in M3.
+    measure. Ad-hoc and mixed aggregates use tier 2 SQL when expressible, with local
+    aggregation and separate remote governed measures as the fallback (docs/DESIGN.md §2).
     """
 
     child: PlanNode
@@ -297,7 +296,7 @@ class Limit(PlanNode):
 
 @dataclass(frozen=True)
 class Join(PlanNode):
-    """A local join of two sub-plans, with **SQL** semantics — M4.
+    """A local join of two sub-plans, with **SQL** semantics.
 
     ``on`` is an equi-join over column names both sides produce; NULL keys never match, which
     is the whole difference between this node and the internal
@@ -320,7 +319,7 @@ class Join(PlanNode):
 
 @dataclass(frozen=True)
 class Union(PlanNode):
-    """A local union of two sub-plans, by position — M4.
+    """A local union of two sub-plans, by position.
 
     Both sides must produce the same number of columns *with the same names*: omniframes'
     columns are named wire outputs, so silently taking the left side's names for a differently
@@ -341,7 +340,7 @@ class Union(PlanNode):
 
 @dataclass(frozen=True)
 class WithColumn(PlanNode):
-    """``with_column()`` — a derived column, evaluated in tier 2/3 — M3."""
+    """``with_column()`` — a derived column, evaluated in tier 2/3."""
 
     child: PlanNode
     name: str
@@ -357,7 +356,7 @@ class WithColumn(PlanNode):
 
 @dataclass(frozen=True)
 class MapPandas(PlanNode):
-    """A user function applied to the materialized frame — always local — M3."""
+    """A user function applied to the materialized frame — always local."""
 
     child: PlanNode
     fn: Callable[..., Any]

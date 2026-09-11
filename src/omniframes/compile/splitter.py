@@ -20,12 +20,12 @@ what makes the result predictable:
   is an error naming the column, never a silent NULL.
 * **A ``Limit`` pins the frontier** (§2.3).  Operations *below* a limit ride the limited remote
   query; operations *above* one run locally over its result.  Both directions are honest about
-  what the limit means, which is why M1 refused the shape rather than guessing.
+  what the limit means; the compiler preserves that operation order.
 * **Mixed aggregation collapses, and only decomposes as a fallback** (docs/SQLTIER.md §4).  A
   governed measure is a legal select item on the OmniSQL path and mixes freely with ad-hoc
   aggregates in one statement, so ``agg(F.measure(...), F.count_distinct(...))`` is ONE tier-2
-  job whenever tier 2 can write it.  When it cannot, the M3 decomposition answers instead: a
-  governed tier-1 query for the measures, a tier-2 ``GROUP BY`` (or M3's unlimited raw scan plus
+  job whenever tier 2 can write it.  When it cannot, aggregate decomposition answers instead: a
+  governed tier-1 query for the measures, a tier-2 ``GROUP BY`` (or an unlimited raw scan plus
   a local aggregate) for the ad-hoc half, and an :class:`~omniframes.compile.local.AlignJoin`
   re-assembling the two on the group keys.  That join stays local on purpose: matching NULL keys
   to each other needs ``IS NOT DISTINCT FROM``, which is not portable across warehouse dialects,
@@ -117,9 +117,9 @@ class SplitOptions:
 def split(plan: nodes.PlanNode, *, options: SplitOptions | None = None) -> ExecutionPlan:
     """Compile ``plan`` into the steps that execute it.
 
-    A plan tier 1 can express entirely produces exactly the M1/M2 result — one
-    :class:`~omniframes.compile.semantic.RemoteStep` and ``root=None`` — byte for byte.
-    Anything else becomes a DAG whose local part ``explain()`` prints in full.
+    A plan that either remote tier can express entirely produces one
+    :class:`~omniframes.compile.semantic.RemoteStep` with ``root=None``. Otherwise it becomes
+    a DAG whose local part ``explain()`` prints in full.
 
     Raises:
         CompileError: the plan is invalid, or needs something no tier implements yet (the
@@ -301,8 +301,8 @@ class _Splitter:
     def _project(self, node: nodes.Project, required: frozenset[str]) -> _Frame:
         if any(isinstance(column.expr, AdHocAgg) for column in node.columns):
             # `select(dim, F.measure(...), F.count_distinct(...))` is the same query as the
-            # equivalent `group_by(dim).agg(...)` — decompose it the same way (docs/HYBRID.md §7
-            # of the M3 scope; DESIGN §2's "selection is the group-by" cuts both ways).
+            # equivalent `group_by(dim).agg(...)` — decompose it the same way (docs/HYBRID.md §2.1;
+            # DESIGN §2's "selection is the group-by" cuts both ways).
             keys = tuple(c for c in node.columns if not isinstance(c.expr, MeasureRef | AdHocAgg))
             aggs = tuple(c for c in node.columns if isinstance(c.expr, MeasureRef | AdHocAgg))
             return self._aggregate(nodes.Aggregate(node.child, keys, aggs), required)
@@ -436,7 +436,7 @@ class _Splitter:
         agg_names: tuple[str, ...],
         produced: Mapping[str, str],
     ) -> _Frame:
-        """The ad-hoc half alone: one tier-2 ``GROUP BY`` when expressible, else M3's raw scan.
+        """The ad-hoc half alone: one tier-2 ``GROUP BY`` when expressible, else a raw scan.
 
         Reached only after the whole node refused tier 2, so the measures are running as their
         own governed query and this half has to be produced beside them.  Even here it is worth

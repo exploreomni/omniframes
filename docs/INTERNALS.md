@@ -42,8 +42,8 @@ arithmetic dunders building the nodes above, `__invert__` → Not, `__and__`/`__
 explicitly to keep Columns usable in identity sets; document it).
 
 `functions.py` (`F`): `col(name)`, `lit(v)`, `measure(name)`, `sum/avg/min/max/count(col_or_name)`,
-`count_distinct(col_or_name)`, `udf` + `map_pandas` (M3). String arguments are accepted anywhere a
-Column is (auto-wrapped via `F.col`).
+`count_distinct(col_or_name)`, and `udf`. `DataFrame.map_pandas()` applies a function to a whole
+frame. String arguments are accepted anywhere a Column is (auto-wrapped via `F.col`).
 
 ## 2. Plan nodes (`src/omniframes/plan/nodes.py`)
 
@@ -55,17 +55,17 @@ Scan(source: ScanSource)                     # leaf
   ScanSource is a union of frozen dataclasses:
     TopicScan(model_name: str, model_id: str, topic: str, base_view: str)
     ViewScan(model_name: str, model_id: str, view: str)
-    SqlScan(model_id: str, sql: str)                       # M4
-    SavedQueryScan(document_id: str, name: str, query: dict)  # M4 (hydrated at read time)
+    SqlScan(model_id: str, sql: str)
+    SavedQueryScan(document_id: str, name: str, query: dict)  # hydrated at read time
 Project(child, columns: tuple[Column, ...])  # select(); may contain dims, measures, ad-hoc aggs
 Filter(child, predicate: Expr)
 Aggregate(child, keys: tuple[Column, ...], aggs: tuple[Column, ...])   # group_by().agg()
 Sort(child, keys: tuple[SortKey, ...])
 Limit(child, n: int | None, offset: int = 0)   # n=None means user asked for unlimited
-Join(left, right, on: tuple[str, ...] | Expr, how: JoinHow)            # M4
-Union(left, right)                                                     # M4
-WithColumn(child, name: str, expr: Expr)                               # M3
-MapPandas(child, fn: Callable, schema_hint: OmniSchema | None)         # M3
+Join(left, right, on: tuple[str, ...] | Expr, how: JoinHow)
+Union(left, right)
+WithColumn(child, name: str, expr: Expr)
+MapPandas(child, fn: Callable, schema_hint: OmniSchema | None)
 ```
 
 `plan/visitor.py`: a small generic `transform(node, fn)` / `walk(node)` utility pair, plus
@@ -83,7 +83,7 @@ alias resolve through the map before compilation. Selecting one field **both bar
 `fields` entry returns one column, so tier 1 declines it (`CannotCompile`) and tier 2 writes
 `x, x AS y`. Asking for the identical column twice (same output name) collapses to one.
 
-### As-built notes (M1) — the implementation is the reference for these
+### Semantic-query implementation notes
 
 - `Limit.n: int | Unset | None` — three states (user n / UNSET sentinel = library default 50 000 /
   None = unlimited), matching the wire trichotomy. `offset()` without `limit()` uses UNSET.
@@ -105,7 +105,7 @@ alias resolve through the map before compilation. Selecting one field **both bar
 - The whoami preflight also guards the first catalog call; `catalog.views()` derives from
   topic-detail payloads (no per-view endpoint exists).
 
-### As-built notes (M4/M5) — the implementation is the reference for these
+### SQL and stored-query implementation notes
 
 - `SqlScan(model_id, sql, model_name="")` — the model **name** rides along purely so `explain()`
   can print `model: <name>` next to `sql: <raw SQL job>`; the wire only ever sees `model_id`.
@@ -168,22 +168,26 @@ Result columns arrive under wire names; `normalize(aliases=...)` renames to alia
 ## 4. Compile pipeline (`compile/`)
 
 ```
-compile_plan(plan: PlanNode, *, catalog: CatalogView) -> ExecutionPlan
+split(plan: PlanNode, *, options: SplitOptions | None = None) -> ExecutionPlan
 ```
 
-- M1 scope: `semantic.py` implements `try_semantic(plan) -> SemanticCompilation | None`:
-  pattern-match Scan→[Filter]→[Project|Aggregate]→[Sort]→[Limit]. Output holds a
-  `querymodel.Query` + alias map + the projected schema order. Non-matching plans raise
-  `CompileError` in M1 ("not yet supported: <reason>"); the splitter (M3) replaces that with
-  tier-3 decomposition. Filters compile via a `predicate_to_filters(expr) -> dict[field, Filter] | None`
-  normalizer: top-level AND splits per field; per-field OR → composite; the grain-filter rule
-  (DESIGN §3) applies; anything non-expressible (cross-field OR, arithmetic, measure-keyed
-  filters, post-agg filters) → not tier-1-able.
+- DataFrame actions call `splitter.split`. At each node it tries `try_semantic`, then
+  `try_sql`, and finally local execution or aggregate decomposition. A successful remote
+  compilation holds a `querymodel.Query`, alias map, and projected column order.
+- `semantic.py` implements `try_semantic(plan) -> SemanticCompilation | None`; unsupported
+  shapes return `None`, while invalid plans raise `CompileError`. Its separate `compile_plan`
+  helper builds a single remote plan and raises on unsupported shapes instead of invoking
+  the splitter. It is not the DataFrame's three-tier entry point.
+- `predicate_to_filters(expr) -> dict[str, Filter]` normalizes tier-1 predicates: top-level
+  AND splits per field; per-field OR becomes a composite; the grain-filter rule (DESIGN §3)
+  applies. Governed measure filters compile to HAVING in tier 1. Cross-field OR, arithmetic,
+  and filters over ad-hoc aggregates require SQL or local execution.
 - Limit policy: user Limit(n) → n; absent → `DEFAULT_FETCH_LIMIT = 50_000`
-  (constant in `dataframe.py`); Limit(None) → wire null.
-- `ExecutionPlan` (in `compile/__init__.py` or `plan.py`): for M1 it is
-  `RemoteStep(envelope: dict, alias_map, tier: 1)`; M3 generalizes to a DAG of
-  RemoteStep/LocalStep. `explain_text(plan, execution_plan)` in `compile/explain.py` renders:
+  (defined in `compile/querymodel.py`); Limit(None) → wire null. Local aggregation inputs
+  use the separate unlimited-by-default decomposition policy (HYBRID §2.1).
+- `ExecutionPlan` (defined in `compile/semantic.py`, re-exported by `compile/__init__.py`)
+  contains remote steps and an optional DAG root of `RemoteStep`/`LocalStep` nodes. A single
+  remote query has `root=None`. `explain_text` in `compile/explain.py` renders the execution:
 
 ```
 == Physical plan ==
@@ -196,7 +200,7 @@ Local [pandas]
   (none — fully pushed down)
 ```
 
-## 5. Session/catalog (M1)
+## 5. Session/catalog
 
 - `OmniSession.builder` → `SessionBuilder`: `.host(str)` / `.base_url(str)`, `.api_key(str)`,
   `.api_key_from_env()` (OMNI_API_KEY), `.branch(str)`, `.timezone(str)`, `.cache(str)`,
@@ -216,7 +220,8 @@ Local [pandas]
   model/topic). Both are three requests on a cold session — whoami, the filtered model lookup,
   and one list call — independent of catalog and topic count. `df.schema` → `session._transport.plan(...)` cached on the DataFrame instance.
 - Actions: `collect() -> pa.Table` (normalized), `to_pandas()`, `to_arrow()`, `show(n=20)`,
-  `count()`, `first()`, `explain(analyze=False)`, `omni_url()` (M5), `with_totals()` (M2).
+  `count()`, `first()`, `explain(analyze=False)`, `omni_url()`. `with_totals()` marks a frame
+  for server-side totals and remains lazy.
   Truncation warning per DESIGN §3.
 
 ## 6. Testing interfaces
@@ -225,6 +230,6 @@ Local [pandas]
   client=httpx.Client(transport=httpx.MockTransport(FakeOmniAPI()), base_url=...))`.
 - Golden tests build DataFrames against a **stub catalog** (no I/O): construct scans directly or
   stub the transport's catalog responses with the fake's payloads.
-- Differential lane (M3+): run the same logical ops via (a) the full pipeline against the fake
+- Differential lane: run the same logical ops via (a) the full pipeline against the fake
   and (b) pure pandas over `tests/data/bench/*.parquet`, compare with the comparator rules
   (DESIGN §5).

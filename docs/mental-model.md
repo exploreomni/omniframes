@@ -47,6 +47,46 @@ The practical consequences:
   an aggregate. That is the semantic layer working, not a bug.
 - **You cannot "un-group".** To get raw rows back, drop the measure.
 
+### Regrouping a selected topic DataFrame
+
+For a topic query with governed measures, `group_by(...).agg(...)` can use a **subset of the
+dimensions in an earlier `select()`**. The group keys and measures become the final selection:
+
+```python
+by_state_and_user = orders.select(
+    "users.state",
+    "users.id",
+    F.measure("order_items.total_sale_price"),
+)
+state_revenue = by_state_and_user.group_by("users.state").agg(
+    F.measure("order_items.total_sale_price")
+)
+
+direct_state_revenue = orders.select("users.state", F.measure("order_items.total_sale_price"))
+assert (
+    state_revenue.sort("users.state")
+    .to_arrow()
+    .equals(direct_state_revenue.sort("users.state").to_arrow())
+)
+```
+
+The final query sends only `users.state` and `order_items.total_sale_price`. `users.id` drops
+out, and Omni evaluates the governed measure at state grain using its model definition. There
+is no intermediate per-user result to sum locally. This matters for measures such as averages
+and distinct counts, whose values cannot generally be summed across groups. The original
+`by_state_and_user` frame remains unchanged.
+
+After an explicit `select()`, every grouping field and governed measure used by this chain
+must be available from that selection. For example, grouping `by_state_and_user` by
+`users.age`, or asking it for `F.measure("order_items.count")`, raises `CompileError` when the
+plan is compiled (by `explain()` or an action): the field is "not available after the previous
+select()". Include the needed fields in the earlier selection, or start the new query from
+`orders`.
+
+This describes a `select(...).group_by(...).agg(F.measure(...))` chain on a topic source.
+Ad-hoc aggregates such as `F.sum(...)` use the SQL or local execution paths described below;
+operations that require an intermediate result, such as `map_pandas()`, also change the plan.
+
 ---
 
 ## 2. Governed measures vs. ad-hoc aggregations

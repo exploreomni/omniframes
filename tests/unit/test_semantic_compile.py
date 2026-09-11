@@ -779,9 +779,7 @@ def test_a_measure_filter_compiles_the_same_above_and_below_the_aggregate() -> N
 def test_ad_hoc_aggregations_in_an_aggregate_name_the_hybrid_engine() -> None:
     plan = Aggregate(SCAN, (F.col("users.state"),), (F.count_distinct("users.id"),))
 
-    with pytest.raises(
-        CannotCompile, match=r"ad-hoc aggregations require the hybrid engine \(M3\)"
-    ):
+    with pytest.raises(CannotCompile, match="ad-hoc aggregations require the hybrid engine"):
         compile_semantic(plan)
 
 
@@ -836,11 +834,14 @@ def test_totals_are_absent_unless_asked_for() -> None:
             "hybrid engine",
         ),
         # A join is not a tier-1 shape and never will be — the query API takes one query — so
-        # tier 1 refuses it and the splitter (M4) picks it up as a local operator.
+        # tier 1 refuses it and the splitter picks it up as a local operator.
         (Join(selected("users.state"), SCAN, ("users.id",), JoinHow.LEFT), "local operation"),
         (Union(selected("users.state"), selected("users.state")), "local operation"),
-        (WithColumn(selected("users.state"), "x", F.lit(1).expr), "M3"),
-        (MapPandas(selected("users.state"), lambda frame: frame), "M3"),
+        (
+            WithColumn(selected("users.state"), "x", F.lit(1).expr),
+            "computes client-side or in a SQL job",
+        ),
+        (MapPandas(selected("users.state"), lambda frame: frame), "always runs locally"),
         (Project(SCAN, (F.count_distinct("users.id"),)), "no field name on the wire"),
         (Project(SCAN, (F.col("users.age") + 1,)), "no field name on the wire"),
         (Limit(Sort(selected("users.state"), (SortKey(FieldRef("users.state")),)), 5), None),
@@ -880,7 +881,9 @@ def test_limit_applied_twice_is_refused() -> None:
 def test_compile_plan_reports_tier_limits_as_not_yet_supported() -> None:
     plan = Aggregate(SCAN, (F.col("users.state"),), (F.count_distinct("users.id"),))
 
-    with pytest.raises(CompileError, match=r"not yet supported: .*M3"):
+    with pytest.raises(
+        CompileError, match=r"not yet supported: .*ad-hoc aggregations require the hybrid engine"
+    ):
         compile_plan(plan)
 
 

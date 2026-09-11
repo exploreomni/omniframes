@@ -29,8 +29,9 @@ endpoints, `POST /api/v1/query/run`, `GET /api/v1/query/wait`, the saved-query e
   warehouse, an **absent** key parses it as OmniSQL and resolves `${topic}` / `${view.field}`
   against the bench model. A client that puts the wrong marker on a statement fails offline
   instead of lying live.
-- **Gaps are refused loudly**, never approximated. The fake implements what the current
-  milestone exercises and grows with it; everything else is a `PLAN` job error or a 400.
+- **Unsupported query shapes are refused loudly**, never approximated. The fake implements
+  the behaviors exercised by the tests. Its [known gaps](bench_omni_model.md#known-gaps-in-the-offline-twin)
+  distinguish rejected features from options that are accepted but have no effect.
 
 Wiring it up is three lines — the real `HttpTransport` runs on top of it, so nothing about the
 client is stubbed out:
@@ -100,7 +101,7 @@ uv run pytest tests/unit/test_splitter.py::test_name
 uv run python scripts/live_smoke.py  # the live probe (needs credentials); not a pytest lane
 ```
 
-The milestone gate — what CI runs, and what must pass before anything is called done:
+The validation gate enforced by CI:
 
 ```bash
 uv run ruff format --check && uv run ruff check && uv run mypy && uv run pytest -m "not live"
@@ -128,7 +129,7 @@ notebook that has silently rotted fails the build. Commit it with **outputs clea
 
 ## Adding to the fake
 
-The fake grows with the milestone that needs it. Two rules:
+Extend the fake alongside the features and tests that need new wire behavior. Two rules:
 
 1. **New wire behavior must cite a source location** in [CONTRACT_NOTES.md](CONTRACT_NOTES.md) —
    read out of the Omni monorepo, not out of the public OpenAPI spec, which is wrong in several

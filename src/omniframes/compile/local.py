@@ -716,7 +716,7 @@ class AlignJoin(LocalOp):
     Both inputs aggregate **the same underlying rows**, one group per row, so their group keys
     line up one-to-one — including the NULL-key group, which must produce ONE output row.  That
     is the opposite of SQL join semantics, which is exactly why this operator exists and why the
-    user-facing ``Join`` (M4) must not reuse it: pandas' outer merge matches NA keys, giving the
+    user-facing ``Join`` must not reuse it: pandas' outer merge matches NA keys, giving the
     alignment for free with no sentinel values.
     """
 
