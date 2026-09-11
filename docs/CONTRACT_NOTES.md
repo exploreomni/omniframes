@@ -333,13 +333,14 @@ All live-confirmed 2026-08-14 against omni.demo.exploreomni.dev (Postgres connec
 ~20-case probe battery; server-source pins in §3.5. This is the delivery mechanism for tier 2.
 
 **Envelope**: `userEditedSQL: "<omnisql>"` + `modelId`, with `rewriteSql` **absent** (not
-`false`). The server parses the text as OmniSQL and plans a **governed model job**: joins come
-from the topic's relationships (pruned to the views actually referenced), measures expand to
-their governed SQL, row-level policies apply.
+`false`). The server parses the text as OmniSQL and plans a **governed model job**: measures
+expand to their governed SQL and row-level policies apply. Topic binding has the limitation below.
 
 **Reference syntax**:
-- `${topic}` in FROM position — brings the topic's join graph. (`${view}` also resolves; the
-  view-vs-topic precedence when names differ is unverified — Omniframes always names its topic.)
+- `${name}` in FROM position resolves a model view. The compiler currently emits the topic
+  name, and the successful probes used matching topic/view names. The WWI suite records a
+  binding failure when they differ; topic-specific resolution is not established on this
+  endpoint — §6 item 13.
 - `${view.field}` anywhere in an expression: select items, WHERE, HAVING, ORDER BY, function
   args, arithmetic. Bracketed grain refs work: `${order_items.created_at[month]}`.
 - `${view.measure}` — a governed measure ref, expanded server-side (e.g.
@@ -522,3 +523,13 @@ body sections above):
     (docs/SQLTIER.md §5). What is still open is the check against a real org: that the pair
     arrives in the shape assumed here for a grain the model formats, on both the semantic and
     the OmniSQL path, and that `summary.fields` collapses the same way.
+13. **Topic names distinct from view names.** The WWI integration suite records
+    `model has no view 'wwi_sales'` for tier-2 topic aggregation and retains an expected failure.
+    Source checked at `9a388ce368d3e3dc89f9e330bbd258904e26e648`: under
+    `services/query-manager/src/main/kotlin/com/omnianalytics/`,
+    `semantics/parse/OmniSqlParser.kt:79-80,886-896` gates topic lookup behind
+    `enableTopicResolution`; `querymanager/QueryManagerService.kt:85` defaults `resolveTopics`
+    to false, and `querymanager/execution/OmniJobPlanner.kt:2755-2762` passes that flag to the
+    parser. Establish endpoint support for topic resolution and preservation of topic joins and
+    policies before changing the compiler's FROM binding; substituting the base view alone
+    would not establish those semantics.

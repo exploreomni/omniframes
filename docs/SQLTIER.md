@@ -2,7 +2,7 @@
 
 Authoritative design for the implemented OmniSQL compiler (historical rationale at the bottom).
 Read with CONTRACT_NOTES §3.5/§3.6 (the wire truth, live-pinned 2026-08-14), §2.7 (grain
-`__raw` sidecars), §6 items 11–12 (open residue), and HYBRID.md (the splitter/local engine
+`__raw` sidecars), §6 items 11–13 (open residue), and HYBRID.md (the splitter/local engine
 it integrates with). Every DECISION is marked with its rationale.
 
 Tier 2 avoids the **unlimited raw scan** feeding a local aggregate by pushing supported
@@ -11,6 +11,9 @@ statement** — `userEditedSQL` with `rewriteSql` ABSENT — that the server par
 the model (joins from the topic's relationships, measures expanded to their governed SQL,
 row-level policies applied), and plans as a governed model job. There is no reference core, no
 `staticQueryReferences`, no second query object. The statement IS the plan.
+
+Topic binding when topic and view names differ remains a known failure; see CONTRACT_NOTES §6
+item 13 before relying on topic-specific joins or policies on this path.
 
 ```sql
 SELECT ${users.state}, ${order_items.sale_price_sum},
