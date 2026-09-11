@@ -1,6 +1,6 @@
 """Invariant tests for the checked-in bench dataset.
 
-Every invariant listed in ``docs/BENCH_DATASET.md`` § "Invariants tests may rely on" is asserted
+Every invariant listed in ``internal-docs/BENCH_DATASET.md`` § "Invariants tests may rely on" is asserted
 here against the artifacts in ``tests/data/bench/`` — the other lanes (differential, wire, golden,
 live) build on these guarantees, so a violation here should fail loudly and early.
 

@@ -59,7 +59,7 @@ BASE_URL = "https://bench.example.omni.co"
 BENCH_DIR = Path(__file__).resolve().parents[1] / "data" / "bench"
 OTHER_MODEL_ID = "11111111-2222-4333-8444-555555555555"
 
-#: The six governed measures of the bench model (docs/bench_omni_model.md §5).
+#: The six governed measures of the bench model (internal-docs/bench_omni_model.md §5).
 TOTAL_SALE_PRICE = "order_items.total_sale_price"
 ORDER_ITEMS_COUNT = "order_items.count"
 TOTAL_QUANTITY = "order_items.total_quantity"
@@ -197,7 +197,7 @@ NO_REWRITE_MARKERS: dict[str, dict[str, Any]] = {
 
 #: A raw-SQL query written against the fake's **warehouse schema**: the three bench tables are
 #: registered in DuckDB under their bare names, with no schema qualifier
-#: (docs/bench_omni_model.md §1 / :mod:`tests.fakes.sqljobs`).
+#: (internal-docs/bench_omni_model.md §1 / :mod:`tests.fakes.sqljobs`).
 REVENUE_SQL = (
     "SELECT u.state AS state,\n"
     "       SUM(oi.sale_price) AS total_sale_price,\n"
@@ -961,7 +961,7 @@ def test_relative_date_literals_are_refused_rather_than_guessed(client: httpx.Cl
 
 
 # --------------------------------------------------------------------------------------
-# Governed measures (docs/bench_omni_model.md §5; grouping semantics per DESIGN.md §2)
+# Governed measures (internal-docs/bench_omni_model.md §5; grouping semantics per DESIGN.md §2)
 # --------------------------------------------------------------------------------------
 
 
@@ -1723,7 +1723,7 @@ def test_column_totals_append_a_grand_total_row(
 
 
 def test_column_totals_are_pre_limit(client: httpx.Client, known_answers: dict[str, Any]) -> None:
-    """The totals row aggregates the post-filter, PRE-limit rows (docs/bench_omni_model.md)."""
+    """The totals row aggregates the post-filter, PRE-limit rows (internal-docs/bench_omni_model.md)."""
     expected = one_answer(known_answers, "grand_totals")
     returned = rows(
         run(

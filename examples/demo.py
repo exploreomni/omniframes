@@ -46,7 +46,7 @@ def _(mo):
     ```
 
     That parity is the point: the offline fake serves exactly the model documented in
-    `docs/bench_omni_model.md`, so an expectation that holds here holds live.
+    `internal-docs/bench_omni_model.md`, so an expectation that holds here holds live.
     """)
     return
 

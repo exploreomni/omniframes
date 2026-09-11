@@ -1,6 +1,6 @@
 """Deterministic generator for the omniframes bench dataset.
 
-Spec: ``docs/BENCH_DATASET.md``. One synthetic ecommerce dataset backs every test lane
+Spec: ``internal-docs/BENCH_DATASET.md``. One synthetic ecommerce dataset backs every test lane
 (FakeOmniAPI tables, the differential lane's ground truth, the demo notebook) and is meant to be
 loadable into a real warehouse behind a real Omni model.
 

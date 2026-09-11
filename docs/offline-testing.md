@@ -30,7 +30,7 @@ endpoints, `POST /api/v1/query/run`, `GET /api/v1/query/wait`, the saved-query e
   against the bench model. A client that puts the wrong marker on a statement fails offline
   instead of lying live.
 - **Unsupported query shapes are refused loudly**, never approximated. The fake implements
-  the behaviors exercised by the tests. Its [known gaps](bench_omni_model.md#known-gaps-in-the-offline-twin)
+  the behaviors exercised by the tests. Its [known gaps](https://github.com/exploreomni/omniframes/blob/main/internal-docs/bench_omni_model.md#known-gaps-in-the-offline-twin)
   distinguish rejected features from options that are accepted but have no effect.
 
 Wiring it up is three lines — the real `HttpTransport` runs on top of it, so nothing about the
@@ -75,8 +75,8 @@ so join selectivity stays put).
 
 Full specifications:
 
-- [Bench dataset](BENCH_DATASET.md) — schema, edge cases, invariants tests may rely on.
-- [Bench Omni model](bench_omni_model.md) — the governed model over it, view by view, plus the
+- [Bench dataset](https://github.com/exploreomni/omniframes/blob/main/internal-docs/BENCH_DATASET.md) — schema, edge cases, invariants tests may rely on.
+- [Bench Omni model](https://github.com/exploreomni/omniframes/blob/main/internal-docs/bench_omni_model.md) — the governed model over it, view by view, plus the
   offline ↔ live parity checklist and the list of what the fake still refuses.
 
 ## The test lanes
@@ -137,4 +137,4 @@ Extend the fake alongside the features and tests that need new wire behavior. Tw
    gets a `LIVE-VALIDATE` entry there, not a guess.
 2. **Refuse what you cannot vouch for.** A fake that approximates an unpinned behavior teaches
    the client a shape the real server never sends. Every offline-only choice the fake *does*
-   make is written down in [bench_omni_model.md](bench_omni_model.md) §5.3 and §6.7.
+   make is written down in [bench_omni_model.md](https://github.com/exploreomni/omniframes/blob/main/internal-docs/bench_omni_model.md) §5.3 and §6.7.

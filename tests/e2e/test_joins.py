@@ -35,7 +35,7 @@ BENCH_DIR = Path(__file__).resolve().parents[1] / "data" / "bench"
 REVENUE = "order_items.total_sale_price"
 ORDER_COUNT = "order_items.count"
 
-#: docs/BENCH_DATASET.md: the fact table, and the ~1 % of it whose ``user_id`` has no user row.
+#: internal-docs/BENCH_DATASET.md: the fact table, and the ~1 % of it whose ``user_id`` has no user row.
 FACT_ROWS = 10_000
 ORPHAN_ROWS = 113
 MATCHED_ROWS = FACT_ROWS - ORPHAN_ROWS

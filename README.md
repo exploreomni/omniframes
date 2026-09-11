@@ -100,6 +100,9 @@ bench dataset — no credentials, no network. See
 lanes. Checks against a live Omni org are a standalone script, `scripts/live_smoke.py`, run with
 `OMNI_BASE_URL` and `OMNI_API_KEY` set — not a pytest lane.
 
+The bench dataset and Omni model specifications are in the
+[internal repository docs](internal-docs/README.md).
+
 ## Releasing
 
 The release version has one source of truth: `src/omniframes/_version.py`. Update it and the
