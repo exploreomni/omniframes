@@ -13,7 +13,7 @@ import omniframes as of
 from omniframes import functions as F
 
 session = (
-    of.OmniSession.builder.host("acme.omni.co")
+    of.OmniSession.builder.host("acme.omniapp.co")
     .api_key_from_env()  # reads OMNI_API_KEY
     .get_or_create()
 )

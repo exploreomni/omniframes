@@ -6,7 +6,7 @@
 
     session = (
         OmniSession.builder
-        .host("acme.omni.co")
+        .host("acme.omniapp.co")
         .api_key_from_env()          # OMNI_API_KEY
         .get_or_create()
     )
@@ -102,7 +102,7 @@ class SessionBuilder:
         return f"SessionBuilder(base_url={self._base_url!r})"
 
     def base_url(self, base_url: str) -> SessionBuilder:
-        """The org URL. ``acme.omni.co``, ``https://acme.omni.co`` and ``…/api/v1`` all work."""
+        """The org URL. ``acme.omniapp.co``, ``https://acme.omniapp.co`` and ``…/api/v1`` all work."""
         self._base_url = base_url
         return self
 
@@ -224,7 +224,7 @@ class SessionBuilder:
             base_url = self._base_url or os.environ.get(BASE_URL_ENV)
             if not base_url:
                 raise CompileError(
-                    f"no Omni host configured: call .host('acme.omni.co') or set {BASE_URL_ENV}"
+                    f"no Omni host configured: call .host('acme.omniapp.co') or set {BASE_URL_ENV}"
                 )
             api_key = self._api_key or os.environ.get(API_KEY_ENV)
             if not api_key:

@@ -6,7 +6,7 @@ and the offline-testing guide are all treated as one executable script per file 
 in document order, sharing a namespace, exactly as a reader working down the page would type
 them.
 
-The samples are written for a real org (``host("acme.omni.co")``, ``api_key_from_env()``, the
+The samples are written for a real org (``host("acme.omniapp.co")``, ``api_key_from_env()``, the
 model ``ecommerce``), so this module supplies the org: ``SessionBuilder.get_or_create`` is
 patched to hand back a session wired to an in-process :class:`FakeOmniAPI` serving the bench
 model **under the name the docs use**.  A sample that builds its own transport — the
@@ -34,7 +34,7 @@ from omniframes.transport import HttpTransport
 from tests.fakes import DEFAULT_TOKEN, FakeOmniAPI
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-BASE_URL = "https://bench.example.omni.co"
+BASE_URL = "https://bench.omniapp.co"
 
 #: The model name the user-facing samples use.  The fake serves the bench model under it, so the
 #: docs can read the way a real org does instead of naming a test fixture.

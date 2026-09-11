@@ -21,7 +21,7 @@ from omniframes.errors import (
 from omniframes.session import API_KEY_ENV, BASE_URL_ENV, SessionBuilder, _status_of
 from omniframes.transport import HttpTransport
 
-BASE_URL = "https://bench.example.omni.co"
+BASE_URL = "https://bench.omniapp.co"
 BRANCH_ID = "9c3b1e5e-2f4a-4d1b-9a7e-6b0f2d8c4a11"
 
 
@@ -66,9 +66,9 @@ def test_the_builder_is_fresh_every_time() -> None:
 
 def test_host_is_an_alias_of_base_url_and_normalizes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(API_KEY_ENV, DEFAULT_TOKEN)
-    session = OmniSession.builder.host("acme.omni.co/api/v1").api_key_from_env().get_or_create()
+    session = OmniSession.builder.host("acme.omniapp.co/api/v1").api_key_from_env().get_or_create()
 
-    assert repr(session).count("https://acme.omni.co") == 1
+    assert repr(session).count("https://acme.omniapp.co") == 1
     session.close()
 
 
@@ -99,7 +99,7 @@ def test_missing_configuration_is_reported_before_any_call(
     with pytest.raises(CompileError, match=BASE_URL_ENV):
         OmniSession.builder.get_or_create()
     with pytest.raises(CompileError, match=API_KEY_ENV):
-        OmniSession.builder.host("acme.omni.co").get_or_create()
+        OmniSession.builder.host("acme.omniapp.co").get_or_create()
 
 
 def test_cache_accepts_the_real_policy_values_only(handler: FakeOmniAPI) -> None:

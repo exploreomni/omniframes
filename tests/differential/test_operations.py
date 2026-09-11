@@ -50,7 +50,7 @@ from tests.fakes import (
     FakeOmniAPI,
 )
 
-BASE_URL = "https://bench.example.omni.co"
+BASE_URL = "https://bench.omniapp.co"
 REVENUE = "order_items.total_sale_price"
 
 ID = "order_items.id"

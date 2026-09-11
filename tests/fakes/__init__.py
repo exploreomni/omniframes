@@ -8,7 +8,7 @@ executing queries through DuckDB so the answers are real::
     handler = FakeOmniAPI()
     client = httpx.Client(
         transport=httpx.MockTransport(handler),
-        base_url="https://bench.example.omni.co",
+        base_url="https://bench.omniapp.co",
     )
 
 The model it serves is mirrored, YAML-side, in ``docs/bench_omni_model.md`` so the live lane can

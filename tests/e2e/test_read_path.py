@@ -30,7 +30,7 @@ from tests.fakes import (
     RecordedRequest,
 )
 
-BASE_URL = "https://bench.example.omni.co"
+BASE_URL = "https://bench.omniapp.co"
 BENCH_DIR = Path(__file__).resolve().parents[1] / "data" / "bench"
 BRANCH_ID = "9c3b1e5e-2f4a-4d1b-9a7e-6b0f2d8c4a11"
 

@@ -42,9 +42,11 @@ Once the package is published, this becomes `uv add omniframes` / `pip install o
 Omniframes reads the same two environment variables as the official `omni-python-sdk`:
 
 ```bash
-export OMNI_BASE_URL="https://acme.omni.co"
+export OMNI_BASE_URL="https://acme.omniapp.co"
 export OMNI_API_KEY="…"   # Settings → API keys, in Omni
 ```
+
+Use your organization’s `<example-slug>.omniapp.co` hostname; replace `acme` with your own slug.
 
 !!! danger "Never hard-code the key"
     Put it in the environment or a secret manager — never in a notebook cell, a committed file,
@@ -86,7 +88,7 @@ import omniframes as of
 from omniframes import functions as F
 
 session = (
-    of.OmniSession.builder.host("acme.omni.co")
+    of.OmniSession.builder.host("acme.omniapp.co")
     .api_key_from_env()  # OMNI_API_KEY; .api_key("…") also exists but prefer the env
     .get_or_create()
 )

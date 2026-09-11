@@ -25,7 +25,7 @@ from omniframes.errors import CompileError
 from omniframes.transport import HttpTransport
 from omniframes.types import OmniDataType
 
-BASE_URL = "https://bench.example.omni.co"
+BASE_URL = "https://bench.omniapp.co"
 
 
 @pytest.fixture

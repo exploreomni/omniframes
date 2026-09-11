@@ -11,7 +11,7 @@ entries get closed: it drives the transport end to end against a live org and pr
 
 Usage::
 
-    export OMNI_BASE_URL=acme.omni.co        # or https://acme.omni.co/api/v1 — both work
+    export OMNI_BASE_URL=acme.omniapp.co        # or https://acme.omniapp.co/api/v1 — both work
     export OMNI_API_KEY=...                  # never printed, not even on failure
     export OMNI_MODEL_ID=...                 # optional; defaults to the first model returned
     export OMNI_TOPIC=...                    # optional; defaults to the first visible topic
@@ -57,7 +57,7 @@ HIGH_LIMIT_PROBE: Final = 75_001
 MISSING_ENV_MESSAGE: Final = """\
 live_smoke needs credentials for a real Omni org and found none, so there is nothing to do.
 
-    export OMNI_BASE_URL=acme.omni.co   # your Omni host (a full https URL works too)
+    export OMNI_BASE_URL=acme.omniapp.co   # your Omni host (a full https URL works too)
     export OMNI_API_KEY=omni_osk_...    # org API key or personal access token
     export OMNI_MODEL_ID=<uuid>         # optional: which model to probe
     export OMNI_TOPIC=<topic name>      # optional: which topic to probe
