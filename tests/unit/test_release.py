@@ -152,7 +152,11 @@ def test_existing_branch_is_not_overwritten(tmp_path, monkeypatch):
     assert not any(args[1] in {"switch", "commit", "push"} for args in calls)
 
 
-def test_preparation_creates_reviewable_pr_but_never_tags(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "coauthor",
+    ["Codex <noreply@openai.com>", "Claude Sonnet <noreply@anthropic.com>"],
+)
+def test_preparation_creates_reviewable_pr_but_never_tags(tmp_path, monkeypatch, coauthor):
     release_checkout(tmp_path, monkeypatch)
     (tmp_path / release.VERSION_FILE).write_text('__version__ = "0.1.0.dev0"\n')
     (tmp_path / "CHANGELOG.md").write_text("# Changelog\n\n## 0.1.0 (unreleased)\n\nOverview.\n")
@@ -171,16 +175,14 @@ def test_preparation_creates_reviewable_pr_but_never_tags(tmp_path, monkeypatch)
             messages.append(input_text)
         if args[:3] == ("gh", "pr", "create"):
             body = Path(args[args.index("--body-file") + 1]).read_text()
-            assert "Codex <noreply@openai.com>" in body
+            assert coauthor in body
         return ""
 
     monkeypatch.setattr(release, "run", fake_run)
-    release.prepare("0.1.0", "Codex <noreply@openai.com>")
+    release.prepare("0.1.0", coauthor)
     assert release.read_version((tmp_path / release.VERSION_FILE).read_text()) == "0.1.0"
     assert "New API" in release.release_notes((tmp_path / "CHANGELOG.md").read_text(), "0.1.0")
-    assert messages == [
-        "chore(release): prepare 0.1.0\n\nCo-Authored-By: Codex <noreply@openai.com>\n"
-    ]
+    assert messages == [f"chore(release): prepare 0.1.0\n\nCo-Authored-By: {coauthor}\n"]
     assert any(args[:3] == ("gh", "pr", "create") for args in calls)
     assert all(args[2].startswith("--") for args in calls if args[:2] == ("git", "tag"))
     assert ("git", "push", "--set-upstream", "origin", "codex/release-0.1.0") in calls
