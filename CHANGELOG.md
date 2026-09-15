@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.1 (2026-09-15)
+
+<!-- Release notes generated using configuration in .github/release.yml at 6fcd2ae47e0bfab2f584d4c77ae0af684c19b3dd -->
+
+### What's Changed
+#### Maintenance
+* ci(docs): publish versioned documentation to github pages by @dspangen in https://github.com/exploreomni/omniframes/pull/24
+
+
+**Full Changelog**: https://github.com/exploreomni/omniframes/compare/v0.1.0...v0.1.1
+
 ## 0.1.0 (2026-09-15)
 
 Initial release.
