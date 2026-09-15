@@ -1,0 +1,1826 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A PySpark-style DataFrame library for Omni — dataframe code in, governed semantic queries out.">
+      
+      
+      
+        <link rel="canonical" href="https://exploreomni.github.io/omniframes/0.1.1/CONTRACT_NOTES/">
+      
+      
+        <link rel="prev" href="../releasing/">
+      
+      
+        <link rel="next" href="../DESIGN/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Wire contract - Omniframes</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CIBM+Plex+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"IBM Plex Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#omni-query-api-contract-notes" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Omniframes" class="md-header__button md-logo" aria-label="Omniframes" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Omniframes
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Wire contract
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/exploreomni/omniframes" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    exploreomni/omniframes
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Omniframes" class="md-nav__button md-logo" aria-label="Omniframes" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Omniframes
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/exploreomni/omniframes" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    exploreomni/omniframes
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mental-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mental model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../offline-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Offline testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design notes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design notes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wire contract
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wire contract
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-authentication-preflight" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Authentication &amp; preflight
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Authentication &amp; preflight">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#error-envelopes-a-client-must-handle-all-three" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error envelopes (a client must handle all three)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-post-apiv1queryrun" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. POST /api/v1/query/run
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. POST /api/v1/query/run">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-request-envelope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 Request envelope
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-ndjson-response-default-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 NDJSON response (default mode)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 summary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-planonly-true" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 planOnly: true
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-resulttype-mode-we-use-it-only-for-sessionask-parity-not-for-frames" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.5 resultType mode (we use it only for session.ask parity; not for frames)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#26-arrow-decoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.6 Arrow decoding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#27-result-normalization-before-any-frame-reaches-the-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.7 Result normalization (before any frame reaches the user)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-query-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The query object
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. The query object">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 Filters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-time-grains" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 Time grains
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-calculations-effectively-unavailable-on-this-endpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 Calculations — effectively unavailable on this endpoint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-raw-sql-jobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4 Raw SQL jobs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#35-staticqueryreferences-and-how-usereditedsql-actually-composes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.5 staticQueryReferences — and how userEditedSQL actually composes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#36-the-omnisql-path-usereditedsql-with-rewritesql-omitted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.6 The OmniSQL path (userEditedSQL with rewriteSql omitted)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-catalog-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Catalog endpoints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-public-docs-discrepancies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Public-docs discrepancies
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-live-validate-register" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. LIVE-VALIDATE register
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../DESIGN/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../INTERNALS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../SQLTIER/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQL tier (tier 2)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../HYBRID/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hybrid engine (tier 3)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-authentication-preflight" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Authentication &amp; preflight
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Authentication &amp; preflight">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#error-envelopes-a-client-must-handle-all-three" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error envelopes (a client must handle all three)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-post-apiv1queryrun" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. POST /api/v1/query/run
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. POST /api/v1/query/run">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-request-envelope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 Request envelope
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-ndjson-response-default-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 NDJSON response (default mode)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 summary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-planonly-true" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 planOnly: true
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-resulttype-mode-we-use-it-only-for-sessionask-parity-not-for-frames" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.5 resultType mode (we use it only for session.ask parity; not for frames)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#26-arrow-decoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.6 Arrow decoding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#27-result-normalization-before-any-frame-reaches-the-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.7 Result normalization (before any frame reaches the user)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-query-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The query object
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. The query object">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 Filters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-time-grains" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 Time grains
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-calculations-effectively-unavailable-on-this-endpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 Calculations — effectively unavailable on this endpoint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-raw-sql-jobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4 Raw SQL jobs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#35-staticqueryreferences-and-how-usereditedsql-actually-composes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.5 staticQueryReferences — and how userEditedSQL actually composes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#36-the-omnisql-path-usereditedsql-with-rewritesql-omitted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.6 The OmniSQL path (userEditedSQL with rewriteSql omitted)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-catalog-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Catalog endpoints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-public-docs-discrepancies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Public-docs discrepancies
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-live-validate-register" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. LIVE-VALIDATE register
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="omni-query-api-contract-notes">Omni Query API — contract notes<a class="headerlink" href="#omni-query-api-contract-notes" title="Permanent link">&para;</a></h1>
+<p><strong>This document is the source of truth for everything Omniframes puts on the wire.</strong> It was
+produced by reading the Omni monorepo server source (checkout <code>~/omni/omni</code>, commit
+<code>86569cd50c6197836ed66365ccc2258b213ea2de</code>, 2026-08-14 — §4's model filters and flattened view
+list re-verified at <code>916a42204fca897542433ede1d6f8bc074cd4fd0</code>, 2026-08-25), NOT the published
+OpenAPI spec — the
+public spec is wrong in several load-bearing places (see <a href="#5-public-docs-discrepancies">Public-docs discrepancies</a>).
+File references below are paths within that monorepo.</p>
+<p>Anything marked <strong><code>LIVE-VALIDATE</code></strong> is derived from source but not yet confirmed against a live
+org; the register at the bottom lists them all.</p>
+<hr />
+<h2 id="1-authentication-preflight">1. Authentication &amp; preflight<a class="headerlink" href="#1-authentication-preflight" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>Authorization: Bearer &lt;token&gt;</code>. Token = org API key or personal access token (PAT), format
+  <code>omni_osk_</code> + 50 base62 chars + 6-char CRC. Env convention (shared with the official
+  <code>omni-python-sdk</code>): <code>OMNI_API_KEY</code>, <code>OMNI_BASE_URL</code>.</li>
+<li>Malformed header → <strong>400</strong> <code>"Bad authorization header, must be formatted as Bearer &lt;token&gt;"</code>.</li>
+<li>Invalid token → <strong>403</strong> (<code>{"error": {"code": 403, "message": "Invalid bearer token"}}</code>) — NOT
+  401, despite the OpenAPI spec.</li>
+<li>An <strong>org key acts as its creator</strong> (permissions-wise). A PAT additionally re-checks
+  <code>canUserCreateApiKeys</code> per request — a demoted PAT gets 403
+  <code>"User no longer has the required permissions to use this API key"</code>.</li>
+<li><strong>Impersonation:</strong> <code>?userId=&lt;membershipId&gt;</code> (query param preferred; body field is legacy;
+  providing both → 400). It's a <strong>membership id</strong>, not a user id. Org keys may impersonate any
+  membership (unknown → 404 <code>"User with id &lt;x&gt; does not exist"</code>); PATs may only pass their own
+  (else 403 <code>"User-scoped API keys can only be used to act on behalf of the authenticated user."</code>).</li>
+<li><strong><code>GET /api/v1/whoami</code></strong> — the connect-time preflight. Works even when the <code>query-api</code> feature
+  flag is off (it skips that check), so it's the right first call. Optional <code>?modelId=&lt;uuid|csv&gt;</code>.
+  <strong>Model-filtered calls 404</strong> (<code>"Model(s) not found: &lt;id&gt;"</code>) for any requested model without a
+  <em>resolved role row</em> — deliberately indistinguishable from a nonexistent model
+  (<code>api.v1.whoami/get-handler.server.ts:115-118</code>). <code>GET /models</code> freely lists models (branch
+  models, schema models) that trip this, so never treat the model list as whoami-resolvable;
+  live-confirmed 2026-08-14 (first listed model of the demo org 404s while its topics and
+  queries work fine). Omniframes only ever calls whoami unfiltered.
+  Response: <code>{user: {id, membershipId}, keyScope: "user"|"organization", orgRole,
+  rolesByModel: {&lt;modelId&gt;: {roleName, baseRole, connectionId, permissions: [...]}}}</code> with
+  <code>rolesByModelTruncated: true</code> when &gt;200 models. Relevant permissions: <code>QUERY_TOPICS</code> (topic
+  queries), <code>QUERY_FULL_MODEL</code> (bare-view queries), <code>QUERY_SQL</code>, <code>VIEW_SQL</code> (unredacted SQL/errors).</li>
+<li><strong><code>query-api</code> feature flag off</strong> → 403 <code>{"detail": "Feature not enabled", "status": 403}</code> on
+  query endpoints. Missing <code>QUERY_TOPICS</code> → 403 <code>{"detail": "Permission denied", "status": 403}</code>.</li>
+<li><strong>Rate limiting</strong> is at the AWS WAF: 60 req/min keyed on the exact <code>Authorization</code> header value
+  (elevated tiers exist per-org). Blocked → <strong>429</strong> with header <code>X-Omni-Waf-Action: block</code>.
+  All clients sharing a key share one bucket. For idempotent GETs, Omniframes honors a numeric
+  <code>Retry-After</code> value verbatim within its per-request cumulative wait budget; POST 429s remain
+  attempt-bounded.</li>
+</ul>
+<h3 id="error-envelopes-a-client-must-handle-all-three">Error envelopes (a client must handle all three)<a class="headerlink" href="#error-envelopes-a-client-must-handle-all-three" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Shape</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>{"detail": "&lt;msg&gt;", "status": &lt;code&gt;}</code></td>
+<td>Remix route errors (validation, forbidden, etc.)</td>
+</tr>
+<tr>
+<td><code>{"error": {"code": &lt;code&gt;, "message": "&lt;msg&gt;"}}</code></td>
+<td>Express auth middleware (bad/expired token)</td>
+</tr>
+<tr>
+<td><code>{"error": "&lt;msg&gt;", "success": false}</code></td>
+<td><code>/models</code> cursor-parse failure</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="2-post-apiv1queryrun">2. <code>POST /api/v1/query/run</code><a class="headerlink" href="#2-post-apiv1queryrun" title="Permanent link">&para;</a></h2>
+<h3 id="21-request-envelope">2.1 Request envelope<a class="headerlink" href="#21-request-envelope" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>{
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  &quot;query&quot;: { /* §3 — REQUIRED */ },
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  &quot;branchId&quot;: &quot;&lt;uuid&gt;&quot;,          // optional; TOP-LEVEL ONLY (inside query → hard 400)
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>  &quot;cache&quot;: &quot;SkipRequery&quot;,        // Standard | SkipRequery | SkipCache | SkipCacheAndRebuildExtracts
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>                                 // default SkipRequery. The OpenAPI values (disabled|normal|...) 400.
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>  &quot;resultType&quot;: &quot;csv&quot;|&quot;json&quot;|&quot;xlsx&quot;,  // switches to single-document mode (§2.5)
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>  &quot;formatResults&quot;: true,         // only valid WITH resultType
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>  &quot;planOnly&quot;: false,             // schema/plan without execution (§2.4)
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>  &quot;timezone&quot;: &quot;America/Los_Angeles&quot;, // 400 unless the connection enables user-specific timezones
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>                                     // (&quot;The timezone parameter requires user-specific timezones
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>                                     //  to be enabled on the connection.&quot;) — live-confirmed 2026-08-14
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>  &quot;userId&quot;: &quot;&lt;membershipId&gt;&quot;,    // legacy body location; prefer ?userId= query param
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>  &quot;workbookUrl&quot;: false           // true → response header X-Omni-Workbook-Url
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>}
+</code></pre></div>
+<p>400-refinements: <code>planOnly</code>+<code>resultType</code>; <code>planOnly</code>+<code>workbookUrl</code>;
+<code>workbookUrl</code>+non-empty <code>query.staticQueryReferences</code>; <code>formatResults</code> without <code>resultType</code>;
+<code>query.limit: null</code> + non-empty <code>query.pivots</code> without <code>resultType</code>; <code>userId</code> in both places.</p>
+<p>Only <code>query.fields</code> (array of strings), <code>query.modelId</code> (uuid) and <code>query.limit</code> (positive or
+null) are schema-validated server-side. Everything else passes through to the Kotlin planner
+(snake_case Jackson, unknown keys <strong>silently dropped</strong> — misspelled fields don't error).</p>
+<h3 id="22-ndjson-response-default-mode">2.2 NDJSON response (default mode)<a class="headerlink" href="#22-ndjson-response-default-mode" title="Permanent link">&para;</a></h3>
+<p><code>200</code>, <code>Content-Type: text/ndjson</code> (not <code>application/x-ndjson</code>). One JSON object per <code>\n</code>;
+trailing separator after every line. Parse tolerantly: a mid-stream upstream failure appends a
+final <strong>unterminated</strong> line <code>{"message": "...", "reason": "..."}</code>.</p>
+<p>Line sequence:</p>
+<ol>
+<li><strong>Header</strong>: <code>{"jobs_submitted": {"&lt;job-uuid&gt;": "&lt;client-result-id or null&gt;"}}</code>.
+   (The upstream <code>omni_job_ids</code> header is NOT forwarded — job ids come from this line only.)</li>
+<li><strong>Job lines</strong> — exactly one per job, emitted when the job reaches a terminal state within the
+   wait window. Fields (snake_case, nulls omitted):</li>
+<li>Success: <code>{"job_id", "status": "COMPLETE", "client_result_id", "summary": {…§2.3},
+     "cache_metadata": {…}, "query": {…}, "result": "&lt;base64 Arrow IPC stream&gt;",
+     "stream_stats": {"server_stream": &lt;ms&gt;}}</code>. Requery variants may add <code>requery_sql</code>,
+     <code>requery_table_name</code>, <code>requery_fallback_sql</code>, <code>column_name_mapping</code> — a line with
+     <code>requery_sql</code> and NO <code>result</code> means client-side materialization is expected; we treat that
+     as an error (should not happen on the API path, guard anyway).</li>
+<li>Error: <code>{"job_id", "status": "ERROR"|"FAILED", "error_type", "error_message",
+     "kill_reason"?, "summary"?, "error"?, "query"?}</code>.
+     <code>client_result_id</code> may be the <strong>literal string <code>"null"</code></strong>.
+     <code>error_type</code> ∈ KILL, QUERY, FORBIDDEN, UNKNOWN, INTERNAL, REQUERY, UPLOADED_TABLE_GONE,
+     CONTEXTUAL, CALCS_FAILED, PLAN, REDIRECT, OAUTH_AUTHENTICATION_REQUIRED, OFFLINE,
+     PLAN_PK_REQUIRED_DUE_TO_JOIN_FANOUT, PLAN_CALC_REQUIRES_SORT, DBT_RENDER_FAILED,
+     RATE_LIMITED. Without <code>VIEW_SQL</code> permission, <code>error_message</code> is replaced with
+     <code>"Query failed. Error details are only visible to users with permission to view SQL."</code> and
+     SQL fields in <code>summary</code> are blanked.</li>
+<li><code>/query/wait</code> may also emit <code>{"job_id", "status": "FAILED", "error_message": "Unable to find job"}</code>
+     for unknown job ids.</li>
+<li><strong><code>status</code> is an OPEN enum</strong> (COMPLETE, ERROR, FAILED observed terminal; ADDED, EXECUTING,
+     PLANNING, PLANNING_COMPLETE, PLANNED exist). Treat unknown statuses as non-terminal.</li>
+<li><strong>Gotcha:</strong> <code>status: "COMPLETE"</code> whose <code>summary.display_sql</code> contains
+     <code>"Failed to plan query"</code> is a REAL FAILURE. Check for it.</li>
+<li><strong>Footer</strong>: <code>{"remaining_job_ids": [...], "timed_out": "true"|"false"}</code> — <code>timed_out</code> is a
+   <strong>string</strong>, and is <code>"true"</code> iff <code>remaining_job_ids</code> is non-empty.</li>
+</ol>
+<p><strong>Polling loop:</strong> run's server-side wait window is ~10 s; <code>/query/wait</code> slices are ~30 s. Loop:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>lines = POST /query/run
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>while footer.remaining_job_ids:
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    check client deadline; sleep briefly if the remaining set didn&#39;t shrink
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    lines += GET /api/v1/query/wait?jobIds=&lt;comma-joined ids&gt;
+</code></pre></div>
+<p><code>/query/wait</code> params: <code>jobIds</code> (comma-separated, preferred) or legacy <code>job_ids</code> (JSON array or
+csv). No <code>wait_time_ms</code> on the public endpoint. Response = same NDJSON minus the header line.
+A poll that times out returns only a footer. Job lines appear exactly once — accumulate across
+run+wait responses. No per-model authz on wait (org-scoped + unguessable job ids).</p>
+<h3 id="23-summary">2.3 <code>summary</code><a class="headerlink" href="#23-summary" title="Permanent link">&para;</a></h3>
+<p><code>summary.fields: Record&lt;fieldName, Field&gt;</code> is the <strong>authoritative schema</strong> for interpreting the
+decoded Arrow — <code>data_type</code> per field: <code>ARRAY | BOOLEAN | INTERVAL | JSON | NUMBER |
+OTHER_UNGROUPABLE | STRING | TIMESTAMP | UNKNOWN</code>. Also per field: <code>field_name</code>,
+<code>fully_qualified_name</code>, <code>view_name</code>, <code>is_dimension</code>, <code>is_calc</code>, <code>label</code>, <code>format</code>, <code>date_type</code>,
+<code>aggregate_type</code>, <code>filter_only_field</code>, <code>hidden</code>.</p>
+<p>Other summary keys: <code>display_sql</code>, <code>omni_sql</code>, <code>omni_sql_parse_failed</code>, <code>cache_type</code>
+(<code>EXACT | EXACT_STALE | PARTIAL | CUBE_REQUERY | EXTRACT_REQUERY | MISS | UNKNOWN</code>),
+<code>stage_summaries[] {succeeded, warnings[]}</code>, <code>stats</code>, <code>plan_stats</code>, <code>missing_fields: string[]</code>,
+<code>invalid_calculations: Record&lt;calcName, error&gt;</code>, <code>locale_options</code>.</p>
+<p><strong><code>missing_fields</code> non-empty means the server dropped fields you asked for</strong> (bad name, bad
+grain). Surface this as an error client-side — the query "succeeds" otherwise.</p>
+<h3 id="24-planonly-true">2.4 <code>planOnly: true</code><a class="headerlink" href="#24-planonly-true" title="Permanent link">&para;</a></h3>
+<p>Job line has <code>status: "PLANNED"</code>, <code>summary</code> (incl. <code>fields</code> — this is how <code>df.schema</code> works
+without execution) and <code>query</code>, but NO <code>result</code> / <code>cache_metadata</code>.</p>
+<h3 id="25-resulttype-mode-we-use-it-only-for-sessionask-parity-not-for-frames">2.5 <code>resultType</code> mode (we use it only for <code>session.ask</code> parity; not for frames)<a class="headerlink" href="#25-resulttype-mode-we-use-it-only-for-sessionask-parity-not-for-frames" title="Permanent link">&para;</a></h3>
+<p>Single document, <code>text/csv</code> / <code>application/json</code> / <code>application/vnd.ms-excel</code>. Timeout is
+<strong>HTTP 408</strong> with <code>{"detail": "Query timed out", "remaining_job_ids": [...], "timed_out": true}</code> —
+boolean here, unlike the NDJSON footer. <code>json</code> rows are keyed by <strong>display label</strong> (deduplicated),
+not field name.</p>
+<h3 id="26-arrow-decoding">2.6 Arrow decoding<a class="headerlink" href="#26-arrow-decoding" title="Permanent link">&para;</a></h3>
+<p><code>result</code> is base64 of an <strong>Arrow IPC stream</strong> (not file):
+<code>pyarrow.ipc.open_stream(io.BytesIO(base64.b64decode(result))).read_all()</code>.</p>
+<h3 id="27-result-normalization-before-any-frame-reaches-the-user">2.7 Result normalization (before any frame reaches the user)<a class="headerlink" href="#27-result-normalization-before-any-frame-reaches-the-user" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Strip reserved columns</strong> matching: <code>^\$omni_</code>, <code>^__omni_</code>, <code>__omni_sort(_\d+)?$</code>,
+  <code>__omni_summ(_\d+)?$</code>.</li>
+<li><strong>Totals rows</strong> are flagged by indicator columns <code>$omni_column_total_indicator</code> /
+  <code>__omni_column_total_indicator</code> (+ <code>…row_total_indicator</code> variants). Values: <code>column_total</code>,
+  <code>row_total</code>, <code>::total::</code> (grand total), <code>column_subtotal::&lt;fieldName&gt;</code>. There is <strong>no</strong>
+  <code>row_type</code> column on <code>/query/run</code> — derive it. Totals rows are removed by default and exposed
+  via <code>with_totals()</code>.</li>
+<li><strong><code>&lt;field&gt;__omni_summ</code> sidecars</strong> (lowercased field name) carry totals values for raw-SQL
+  queries with <code>column_totals</code> — on a totals row read the sidecar, falling back to the base column.
+  Only the first occurrence wins when <code>_\d+</code>-suffixed duplicates exist.</li>
+<li><code>column_name_mapping</code> appears only on requery lines; inert for us.</li>
+<li><strong>Grain <code>__raw</code> sidecars (live-observed 2026-08-14, tier 1 AND OmniSQL alike).</strong> When the
+  model formats a grain, selecting <code>field[grain]</code> yields TWO columns: <code>field[grain]__raw</code>
+  (<code>DATE_TRUNC</code> value, <code>TIMESTAMP</code>, at the item's original select position) and <code>field[grain]</code>
+  (formatted <code>STRING</code>, e.g. <code>TO_CHAR(..., 'YYYY-MM')</code>, appended after the other columns).
+  <code>__raw</code> does NOT match the reserved-column regexes above. Normalization reconciles the pair —
+  <code>__raw</code> wins, under the plain name, and the formatted column is dropped (docs/SQLTIER.md §5);
+  FakeOmniAPI emits the pair for the bench model's formatted month grain on both paths.</li>
+</ul>
+<hr />
+<h2 id="3-the-query-object">3. The query object<a class="headerlink" href="#3-the-query-object" title="Permanent link">&para;</a></h2>
+<p>The server applies these defaults when keys are absent (<code>createQuery</code>): <code>limit: 1000</code>,
+<code>column_limit: 50</code>, <code>version: &lt;latest&gt;</code>, <code>table: ''</code>, empty collections for the rest.
+<strong>Omniframes always sends explicit values for everything it controls.</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>{
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  &quot;modelId&quot;: &quot;&lt;uuid&gt;&quot;,                  // REQUIRED (camelCase in JSON)
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  &quot;table&quot;: &quot;order_items&quot;,              // base view; may be &quot;&quot; when join_paths_from_topic_name set
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>  &quot;join_paths_from_topic_name&quot;: &quot;order_items_topic&quot;,  // the TOPIC — governed join paths
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>  &quot;fields&quot;: [&quot;users.state&quot;, &quot;order_items.total_sale_price&quot;, &quot;order_items.created_at[month]&quot;],
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>  &quot;filters&quot;: { &quot;&lt;fieldName&gt;&quot;: { /* §3.1 */ } },       // implicitly AND across fields
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>  &quot;sorts&quot;: [ { &quot;column_name&quot;: &quot;order_items.created_at[month]&quot;,  // EXACT field name incl. bracket
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>               &quot;sort_descending&quot;: true,
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>               &quot;null_sort&quot;: &quot;OMNI_DEFAULT&quot; } ],       // LAST | FIRST | DIALECT_DEFAULT | OMNI_DEFAULT
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>  &quot;limit&quot;: 50000,                       // ALWAYS explicit. null = unlimited. &gt;50000 = high-limit mode.
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>  &quot;offset&quot;: 0,
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>  &quot;pivots&quot;: [],                         // pivot fields must ALSO be in fields
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>  &quot;calculations&quot;: [],                   // §3.3 — requires client-built sql_expression; avoid
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>  &quot;fill_fields&quot;: [],
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>  &quot;column_totals&quot;: {},                  // Record&lt;field | &quot;::total::&quot;, {&quot;type&quot;: &quot;aggregation&quot;}&gt;
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>  &quot;row_totals&quot;: {},
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>  &quot;userEditedSQL&quot;: &quot;&quot;,                  // §3.4
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>  &quot;default_group_by&quot;: true,
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>  &quot;version&quot;: 9                          // ALWAYS send 9 (QUERY_VERSION_CALC_PUSHDOWN)
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>}
+</code></pre></div>
+<p>Also available: <code>staticQueryReferences</code> (§3.5), <code>sqlSortsEnabled</code> (§3.4), <code>column_limit</code>,
+<code>custom_summary_types</code>, <code>join_via_map</code>, <code>controls</code> (cross-field OR — see §3.1), period-over-period
+machinery (out of scope for 0.1).</p>
+<h3 id="31-filters">3.1 Filters<a class="headerlink" href="#31-filters" title="Permanent link">&para;</a></h3>
+<p>Keyed by field name; discriminated on <code>type</code>. Common optional keys on every arm:
+<code>is_negative: bool|null</code>, <code>cancel_query_filter</code>, <code>ignore_if_unjoinable</code>.</p>
+<table>
+<thead>
+<tr>
+<th>type</th>
+<th>Shape</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>string</code></td>
+<td><code>{kind: CONTAINS\|ENDS_WITH\|STARTS_WITH\|EQUALS\|IS_EMPTY\|SQL_LIKE, values: string[], case_insensitive?}</code>. EQUALS + many values → IN; others OR. IS_EMPTY takes <code>values: []</code>.</td>
+</tr>
+<tr>
+<td><code>number</code></td>
+<td><code>{kind: LESS_THAN\|GREATER_THAN\|EQUALS\|BETWEEN, values: string[], is_inclusive?}</code>. <strong>Values are STRINGS</strong> (<code>"42"</code>) — the raw path has no number→string transform. <code>is_inclusive</code> makes GT/LT into ≥/≤. BETWEEN = <code>[lower, upper]</code>, <strong>upper exclusive</strong>.</td>
+</tr>
+<tr>
+<td><code>date</code></td>
+<td><code>{kind, left_side?, right_side?}</code>. Kinds: BETWEEN, ON_OR_AFTER, BEFORE, TIME_FOR_INTERVAL_DURATION, TIME_FOR_UNIT_DURATION, QUERY_OFFSET, IS_ON_DAY_OF_WEEK, IS_ON_DAY_OF_MONTH, IS_ON_DAY_OF_QUARTER, IS_ON_DAY_OF_YEAR, IS_IN_MONTH_OF_YEAR, IS_IN_QUARTER_OF_YEAR, IS_IN_WEEK_OF_YEAR, IS_AT_HOUR_OF_DAY. Mappings: single unit ("2023-03", "last quarter") → TIME_FOR_UNIT_DURATION via <code>left_side</code>; relative range ("last 30 days") → TIME_FOR_INTERVAL_DURATION <code>left_side: "30 days ago"</code>, <code>right_side: "30 days"</code>; absolute range → BETWEEN (end exclusive); ON_OR_AFTER uses <code>left_side</code>; BEFORE uses <code>right_side</code> (exclusive). Literal grammar: <code>"YYYY-MM-DD HH:MM:SS"</code> (truncatable), <code>"2012 Q3"</code>, <code>"FY2012"</code>, <code>"N [complete] &lt;unit&gt; ago"</code>, <code>"today"/"yesterday"/"tomorrow"</code>, <code>"this/last/next &lt;period&gt;"</code>.</td>
+</tr>
+<tr>
+<td><code>boolean</code></td>
+<td><code>{is_negative: false}</code> = is true, <code>{is_negative: true}</code> = is false, <code>is_negative</code> omitted/null = no-op placeholder. <code>treat_nulls_as_false?</code>.</td>
+</tr>
+<tr>
+<td><code>null</code></td>
+<td><code>{is_negative?}</code> — IS NULL / IS NOT NULL.</td>
+</tr>
+<tr>
+<td><code>composite</code></td>
+<td><code>{conjunction: "AND"\|"OR", filters: [&lt;any non-composite or composite&gt;], is_negative?}</code> — recursive, <strong>no depth cap on this endpoint</strong> (the cap of 4 applies only to document writes). Composites nest within ONE field's entry.</td>
+</tr>
+<tr>
+<td><code>query</code></td>
+<td><code>{field_name, query_id, is_negative?, disregard_limit?}</code> — <code>query_id</code> is a <code>staticQueryReferences</code> key; <code>field_name</code> required.</td>
+</tr>
+<tr>
+<td><code>user_attribute</code></td>
+<td><code>{user_attribute_name}</code></td>
+</tr>
+</tbody>
+</table>
+<p>Cross-field OR requires the <code>controls</code> array (<code>MULTI_FIELD_FILTER</code>) — <strong>out of scope for 0.1</strong>
+(tier 2/3 handles cross-field OR instead).</p>
+<p><strong>Measure filters → HAVING (source-pinned; live-confirmed 2026-08-14</strong> — <code>display_sql</code> came back
+with <code>HAVING COUNT(*) &gt; 0</code> and correct rows<strong>).</strong> A <code>filters</code> entry keyed by a MEASURE field name
+compiles to a genuine <code>HAVING</code> over the aggregate on the semantic path
+(<code>QueryToRelContext.partitionFilters</code> branches on the model field type; the filter is translated
+against <code>meas.toAggregateExpression(...)</code> and applied post-<code>aggregate</code> —
+<code>AlgebraFromApi.kt:3181-3199</code>; proven by cross-dialect SQL snapshots in <code>TestSqlGenCore.kt</code>
+"filters on measures uber-test"). Details that matter to the compiler:
+- A measure filtered but not selected is force-added to the aggregate and projected away — it
+  never appears as a result column.
+- Exactly ONE filter entry per measure (server keys them in a map) — multiple conditions on the
+  same measure must be a <code>composite</code> in that one entry (our normalizer already does this).
+- Dimension filters stay WHERE-side (pre-aggregation). No version gating on any of this.
+- <strong>Raw-SQL jobs: measure filters are silently SKIPPED</strong> (the SQL wrapper view has an empty
+  measures map — <code>OmniJobPlanner.kt:2798-2803</code>). Tier-2 SQL must express HAVING in the SQL text
+  itself, never via the job's <code>filters</code> map.
+- Nonexistent filter key → hard error <code>No such field "&lt;name&gt;"</code> (unless <code>ignore_if_unjoinable</code>).</p>
+<p><strong>Grain-filter rule:</strong> timestamp-producing grains (<code>month</code>, <code>week</code>, <code>date</code>, <code>hour</code>, …) are
+filtered on the <strong>bare field name</strong> (no bracket) with a date filter; number-producing grains
+(<code>hour_of_day</code>, <code>day_of_week_num</code>, <code>month_num</code>, …) are filtered on the <strong>bracketed name</strong> with a
+number filter. Getting this wrong yields missing-field or wrong semantics.</p>
+<h3 id="32-time-grains">3.2 Time grains<a class="headerlink" href="#32-time-grains" title="Permanent link">&para;</a></h3>
+<p><code>field[grain]</code>, case-insensitive, canonical lowercase. Date grains: <code>year, quarter, month, week,
+date, hour, minute, second, millisecond, quarter_of_year, week_of_year, day_of_week_name,
+day_of_week_num, month_name, month_num, hour_of_day, day_of_month, day_of_year, day_of_quarter,
+fiscal_year, fiscal_quarter, epoch, time_of_day</code>. Duration dimensions accept <code>seconds, minutes,
+hours, days, weeks, months, quarters, years</code>. Invalid grain → the field lands in
+<code>summary.missing_fields</code> (no hard error!).</p>
+<h3 id="33-calculations-effectively-unavailable-on-this-endpoint">3.3 Calculations — effectively unavailable on this endpoint<a class="headerlink" href="#33-calculations-effectively-unavailable-on-this-endpoint" title="Permanent link">&para;</a></h3>
+<p><code>{calc_name, sql_expression}</code> where <code>sql_expression</code> is a serialized parse tree the client must
+build (<code>{type: field|literal|call|…}</code> with operators like <code>Omni.OMNI_FX_MULTIPLY</code>).
+<code>original_formula</code> alone does NOT work here — formula parsing happens only on document-write
+paths, and Kotlin requires <code>sql_expression</code>. Calcs are <strong>post-limit row operations</strong>, not in-DB
+aggregation. Consequence: <strong>Omniframes does not emit calculations in 0.1</strong>; ad-hoc expressions
+and aggregations ride tier 2 (SQL) or tier 3 (local). <code>calc_name</code> must also appear in <code>fields</code>
+if we ever emit one.</p>
+<h3 id="34-raw-sql-jobs">3.4 Raw SQL jobs<a class="headerlink" href="#34-raw-sql-jobs" title="Permanent link">&para;</a></h3>
+<p>Set <code>userEditedSQL: "&lt;sql&gt;"</code> <strong>and</strong> <code>rewriteSql: false</code> (else the text is parsed as OmniSQL
+and planned as a governed model job — §3.5). <code>sqlSortsEnabled: true</code> makes the server apply <code>sorts</code> / <code>calculations</code> /
+<code>column_totals</code> on top of the SQL result; when false those are stripped. The connection is
+resolved server-side from <code>modelId</code>. <code>resultType</code>/NDJSON behavior is identical.</p>
+<h3 id="35-staticqueryreferences-and-how-usereditedsql-actually-composes">3.5 <code>staticQueryReferences</code> — and how <code>userEditedSQL</code> actually composes<a class="headerlink" href="#35-staticqueryreferences-and-how-usereditedsql-actually-composes" title="Permanent link">&para;</a></h3>
+<p><code>Record&lt;refKey, &lt;full query object&gt; &amp; {"model_id": "&lt;uuid&gt;"}&gt;</code> (note the extra <strong>snake_case</strong>
+<code>model_id</code> inside each referenced query). The only way an external client passes query
+references; they become <code>query_references</code> on the job (single job per call — references fold
+into one plan). Consumed by <strong>exactly two</strong> things:
+1. <code>type: "query"</code> filters (<code>query_id</code> = refKey);
+2. XLOOKUP-family calc operators (<code>used_query_references</code> in a parse response is populated
+   <em>only</em> from calculation expressions — <code>QueryParseResponse.kt</code> <code>usedQueryRefs =
+   calculations.flatMap { collectLookupQueryIds(...) }</code>; reference translation feeds
+   filter-by-query and lookups — <code>OmniJobPlanner.kt</code> <code>translateQueryReferences</code>).</p>
+<p><strong>A refKey can NOT be referenced as a table in <code>userEditedSQL</code>.</strong> Live-refuted 2026-08-14
+(omni.demo.exploreomni.dev): bare and double-quoted spellings pass through to the warehouse
+verbatim (<code>relation "&lt;key&gt;" does not exist</code> from Postgres); the <code>${refKey}</code> spelling fails
+OmniSQL substitution (<code>No such view "&lt;key&gt;"</code>). There is no server mechanism for it on
+<code>/query/run</code>.</p>
+<p><strong>How <code>userEditedSQL</code> is actually processed</strong> (<code>OmniJobPlanner.kt:502-534</code>):
+- <code>rewriteSql: false</code> <strong>or</strong> a line matching <code>^\s*--\s*DO NOT PARSE\s*$</code> in the SQL
+  (<code>OmniSqlParser.doNotParseRegex</code>), with no sorts/calcs on the job → <strong>verbatim raw SQL job</strong>:
+  the text goes to the warehouse untouched. <code>staticQueryReferences</code>, the <code>filters</code> map's measure
+  entries, and all semantic constructs are ignored on this path.
+- Otherwise the SQL is parsed as <strong>OmniSQL</strong>: <code>${view}</code> in FROM position and
+  <code>${view.field}</code> in expressions resolve against the model, and the job is planned as a governed
+  model job (parse failure falls back to a raw SQL job via <code>PlannerFailedException</code>; an
+  unresolvable <code>${…}</code> ref is a hard error, not a fallback). Live-confirmed 2026-08-14: plain
+  SELECTs and ad-hoc aggregates (<code>COUNT(DISTINCT ${view.field})</code> + GROUP BY/ORDER BY/LIMIT)
+  compile to governed SQL; result columns come back semantically scoped (<code>view.field</code>; an
+  SQL alias <code>n</code> surfaces as <code>&lt;base_view&gt;.n</code>). <strong>This — not <code>staticQueryReferences</code> — is the
+  composition mechanism for tier-2-style outer SQL.</strong></p>
+<p>Constraint: rejected with <code>workbookUrl: true</code>.</p>
+<h3 id="36-the-omnisql-path-usereditedsql-with-rewritesql-omitted">3.6 The OmniSQL path (<code>userEditedSQL</code> with <code>rewriteSql</code> omitted)<a class="headerlink" href="#36-the-omnisql-path-usereditedsql-with-rewritesql-omitted" title="Permanent link">&para;</a></h3>
+<p>All live-confirmed 2026-08-14 against omni.demo.exploreomni.dev (Postgres connection) with a
+~20-case probe battery; server-source pins in §3.5. This is the delivery mechanism for tier 2.</p>
+<p><strong>Envelope</strong>: <code>userEditedSQL: "&lt;omnisql&gt;"</code> + <code>modelId</code>, with <code>rewriteSql</code> <strong>absent</strong> (not
+<code>false</code>). The server parses the text as OmniSQL and plans a <strong>governed model job</strong>: joins resolve
+against the model (pruned to the views actually referenced), measures expand to
+their governed SQL, row-level policies apply.</p>
+<p><strong>Reference syntax</strong>:
+- <code>${view}</code> in FROM position resolves a <strong>view</strong>, not a topic. For a topic scan, Omniframes
+  emits the catalog's <code>base_view_name</code>; a topic named <code>wwi_sales</code> with base view
+  <code>wwi_sales_fact</code> must use <code>FROM ${wwi_sales_fact}</code>. Live-confirmed 2026-09-15 by the WWI
+  Querier permission tests (the previous topic-name spelling failed).
+  Source re-verified at monorepo <code>c7e09003514915d45161c7c81a09143bbc6cedcf</code>:
+  <code>services/query-manager/src/main/kotlin/com/omnianalytics/semantics/parse/OmniSqlParser.kt:978-988</code>
+  (<code>resolveFromRefForTypeInference</code>) resolves views unless <code>enableTopicResolution</code> is enabled;
+  <code>services/query-manager/src/main/kotlin/com/omnianalytics/querymanager/QueryManagerService.kt:98</code>
+  defaults <code>SqlQueryJobDescription.resolveTopics</code> to false;
+  <code>services/query-manager/src/main/kotlin/com/omnianalytics/querymanager/execution/OmniJobPlanner.kt:2963-2969</code>
+  passes that flag to the parser. This API path does not opt in. The earlier same-name
+  topic/view probe could not distinguish those bindings.
+  Tier 2 therefore uses model-level view/join resolution; this does <strong>not</strong> establish that
+  topic-specific join overrides or topic filters are preserved.
+- <code>${view.field}</code> anywhere in an expression: select items, WHERE, HAVING, ORDER BY, function
+  args, arithmetic. Bracketed grain refs work: <code>${order_items.created_at[month]}</code>.
+- <code>${view.measure}</code> — a governed measure ref, expanded server-side (e.g.
+  <code>COALESCE(SUM("sale_price"), 0)</code>), <strong>freely mixable with ad-hoc aggregates in one
+  statement</strong>: <code>SELECT ${users.country}, ${order_items.sale_price_sum}, COUNT(DISTINCT
+  ${users.id}) FROM ${order_items} GROUP BY 1</code> works. Without GROUP BY a measure-only select
+  is a grand total.</p>
+<p><strong>Result naming (probed exhaustively 2026-08-14; two regimes)</strong>:
+- <strong>Bare refs</strong> (<code>${view.field}</code>, <code>${view.measure}</code>, bare grain refs): SQL aliases are
+  <strong>ignored</strong> and duplicate selections are <strong>deduplicated</strong> — one column per distinct field,
+  named exactly <code>view.field</code>, regardless of aliasing or how many times it appears. This is
+  tier-1 semantics: renames are the client's job.
+- <strong>Expression items</strong> (anything that isn't a bare ref — arithmetic, functions, aggregates,
+  literals): the SQL alias <strong>is</strong> honored and duplicates survive, surfacing as
+  <code>&lt;scope_view&gt;.&lt;alias&gt;</code> (unaliased <code>COUNT(*)</code> → <code>count</code>; literal-only items scope to the FROM
+  ref's base view). The <code>scope_view</code> prefix is <strong>not reliably predictable</strong> for multi-view
+  expressions — first-ref-wins is refuted (<code>${users.age}+${products.cost}</code> → <code>users.…</code> but
+  <code>COALESCE(${products.brand}, ${users.country})</code> → <code>users.…</code> and
+  <code>${order_items.sale_price_sum}/COUNT(DISTINCT ${users.id})</code> → <code>users.…</code>); clients must
+  match expression columns by alias suffix, never by predicting the prefix.</p>
+<p><strong>Verified constructs</strong>: GROUP BY (positional), HAVING over ad-hoc aggregates AND over
+<code>${measure}</code> refs (expanded inline, probe L4), ORDER BY with <code>NULLS LAST</code> — including ORDER BY
+a non-selected field (the server wraps the statement in a subquery with <code>omni_sort_expr_n</code>
+sidecars that do NOT leak into the result, probe L5) — <code>LIMIT</code>/<code>OFFSET</code>, functions (<code>UPPER</code>,
+<code>CAST</code>, <code>COALESCE</code>, <code>NULLIF</code>), arithmetic including measure arithmetic
+(<code>${m1}/NULLIF(${m2},0)</code>, <code>${m}/COUNT(DISTINCT ${f})</code>, probe L3), <code>LIKE … ESCAPE '!'</code> (parsed
+and re-rendered with the warehouse's escape char, probe L2), <code>''</code>-doubled string literals,
+CTEs (accepted and <strong>flattened</strong> — a CTE + outer WHERE on an aggregate is rewritten into
+HAVING on one statement). <code>planOnly</code> works; <code>summary.fields</code> carries the scoped names/types.</p>
+<p><strong>Hard constraints — silent rewrites observed</strong>:
+- The <strong>query-object <code>limit</code> is IGNORED</strong> on this path, and a statement without <code>LIMIT</code> runs
+  unlimited. <code>LIMIT</code>/<code>OFFSET</code> must always be in the SQL text.
+- <code>SELECT DISTINCT</code> is <strong>silently stripped</strong>. Never emit it (dedup stays local).
+- WHERE predicates mixing a bare field ref AND a grain ref of the same field are <strong>merged with
+  predicate loss</strong> (observed: the tighter bound dropped). Plain same-column compound ranges are
+  SAFE — <code>(${f} &gt;= x AND ${f} &lt; y)</code> survives with both bounds intact (probe L1). Rule: never
+  reference a field's grain variant in WHERE alongside (or instead of) the bare field;
+  bare-ref-only conjuncts compose fine.
+- String literals: backslash is not an escape (passes verbatim); the server re-renders the
+  statement per warehouse dialect, so client-side dialect knowledge is unnecessary here (the
+  tier-2 <code>sql_dialect</code>/backslash-refusal machinery is obsolete on this path; it remains relevant
+  only to verbatim <code>read.sql</code>).
+- Grain select items split into <code>__raw</code> + formatted pairs exactly as tier 1 does (§2.7).</p>
+<p><strong>Errors</strong>: unknown FROM ref → <code>Could not substitute Omni SQL … No such view "&lt;name&gt;"</code>;
+unknown field → <code>… Field "&lt;name&gt;" not found … No such field "&lt;name&gt;"</code>. Both arrive as normal
+job-error lines.</p>
+<p><code>LIVE-VALIDATE</code> residue for this path is tracked in §6 item 11.</p>
+<hr />
+<h2 id="4-catalog-endpoints">4. Catalog endpoints<a class="headerlink" href="#4-catalog-endpoints" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong><code>GET /api/v1/models</code></strong> — cursor-paginated: <code>?pageSize=</code> (1..100, default 20), <code>?cursor=</code>
+  (opaque — echo back exactly), <code>?modelKind=SHARED|...</code>, <code>?name=</code>, <code>?modelId=</code>,
+  <code>?sortField/sortDirection</code>.
+  <code>?name=</code> and <code>?modelId=</code> are <strong>exact</strong> matches, not substring — but <code>?name=</code> is
+  <strong>case-insensitive</strong>: it compares against <code>OmniModel.name</code>, a Postgres <code>CITEXT</code> column
+  (<code>packages/db-models/prisma/schema.prisma:1391</code>). <code>buildWhereClause</code> hands Prisma
+  <code>...(name &amp;&amp; {name})</code> / <code>...(modelId &amp;&amp; {id: modelId})</code>
+  (<code>packages/bi-app/app/routes/api.unstable.models/get-handler.server.ts:56,58</code>, re-exported at
+  <code>api.v1.models.ts</code>). <code>modelId</code> is declared <code>z.uuid()</code> on a <code>.strict()</code> schema
+  (<code>packages/bi-app/app/types/api/models/schema.ts:2260</code>), so a <strong>non-UUID <code>modelId</code> is a 400,
+  not an empty page</strong> — only send it for an input matching zod's <em>canonical</em> UUID grammar
+  (dashed form, version nibble 1-8, variant nibble 8/9/a/b, plus the nil and max UUIDs;
+  <code>node_modules/zod/v4/core/regexes.js</code>). Python's <code>uuid.UUID()</code> is looser — it also accepts
+  un-hyphenated, <code>{...}</code>-braced and <code>urn:uuid:</code>-prefixed forms — and anything it accepts that the
+  server rejects becomes a 400 in place of the whole fallback chain. Both filters make model resolution
+  a single request instead of a full cursor walk.
+  <strong>A filter is only applied when the server considers it truthy.</strong> <code>name</code> is
+  <code>z.string().optional()</code> with no min-length, so <code>?name=</code> passes validation and <code>...(name &amp;&amp;
+  {name})</code> then drops it — the reply is page one of the <em>whole catalog</em>, not an empty page. A
+  filtered reply must therefore be checked against the filter that was sent; treating
+  <code>records[0]</code> as the answer silently resolves an arbitrary model. (<code>modelId</code> differs: <code>z.uuid()</code>
+  rejects the empty string outright, so it 400s rather than being dropped.)
+  Response <code>{pageInfo: {hasNextPage, nextCursor, pageSize, totalRecords}, records: [{id, name,
+  modelKind, connectionId, baseModelId, createdAt, updatedAt, deletedAt}]}</code>. The <strong>strict</strong>
+  param schema 400s on unknown query params.</li>
+<li><strong><code>GET /api/v1/models/{modelId}/topic</code></strong> — list: <code>{success, topics: [{name, base_view_name,
+  label, description, group_label, hidden}]}</code>. Optional <code>?branch_id=</code>.</li>
+<li><strong><code>GET /api/v1/models/{modelId}/topic/{topicName}</code></strong> — detail; THE field-metadata endpoint:
+  <code>{success, topic: {..., views: [{name, label, dimensions: Field[], measures: Field[],
+  filter_only_fields: Field[]}], relationships: [{join_type, type, sql, left_view_name,
+  right_view_name, ...}]}}</code>. Relationship cardinality is carried in <code>type</code> (for example,
+  <code>MANY_TO_ONE</code>), not <code>relationship_type</code>. 404 <code>"Topic &lt;name&gt; not found"</code>.</li>
+<li><strong><code>GET /api/v1/models/{modelId}/view</code></strong> — flattened &amp; lossy: <code>{success, views: [{name, label,
+  description, hidden, fields: [{name, type: "dimension"|"measure"|"filter"}]}]}</code>. The <code>type</code>
+  values are <strong>lowercase</strong> — <code>VIEW_FIELD_TYPE</code> is <code>{DIMENSION: 'dimension', FILTER: 'filter',
+  MEASURE: 'measure'}</code> (<code>packages/bi-app/app/types/api/models/view-field-type.ts</code>), so the
+  uppercase spelling is the TS constant's name, not what goes on the wire. Field <strong>names and
+  kinds only, no data types</strong> — the loader calls <code>getComposedModel</code> with
+  <code>excludeFieldProps: ['expr']</code> and maps <code>dimensions</code>/<code>measures</code>/<code>filter_only_fields</code> down to
+  <code>{name, type}</code> (<code>packages/bi-app/app/routes/api.unstable.model.$modelId.view.ts</code>, re-exported
+  at <code>api.v1.models.$modelId.view.ts</code>). Scope: <strong>every view of the composed model</strong> with
+  <code>ignored</code> filtered out — <code>hidden</code> views are included, and views no topic reaches are too, so
+  this is a <em>superset</em> of what the topic-detail walk returns. Accepts <code>?branch_id=</code>.
+  There is <strong>no per-view detail GET</strong> — <code>api.v1.models.$modelId.view.$viewName.ts</code> exports only
+  an <code>action</code>, no <code>loader</code>; full field metadata comes from the topic-detail endpoint only.</li>
+<li><strong><code>GET /api/v1/documents/{identifier}/queries</code></strong> — <code>{queries: [{id, name, query, url}]}</code>;
+  the <code>query</code> blob is a stored query (verify/inject <code>modelId</code> before running). 404 when the
+  document has no dashboard.</li>
+<li><strong><code>POST /api/v1/ai/generate-query</code></strong> — <code>{modelId, prompt, currentTopicName?, runQuery?: bool
+  (default true!), userId?}</code> → <code>{query, topic, baseView, error}</code>. Omniframes always sends
+  <code>runQuery: false</code> and executes the returned query through its own pipeline. 400 when no query
+  could be generated; 402 on AI-credit shutoff. Requires the <code>query-api</code> flag only when
+  <code>runQuery</code> isn't false.</li>
+</ul>
+<p>Field object (topic detail &amp; <code>summary.fields</code>): <code>field_name</code>, <code>fully_qualified_name</code>,
+<code>view_name</code>, <code>data_type</code> (§2.3 enum), <code>is_dimension</code>, <code>label</code>, <code>aggregate_type</code>, <code>date_type</code>,
+<code>format</code>, <code>sql</code> (redacted without VIEW_SQL), <code>hidden</code>, <code>filter_only_field</code>.</p>
+<hr />
+<h2 id="5-public-docs-discrepancies">5. Public-docs discrepancies<a class="headerlink" href="#5-public-docs-discrepancies" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Topic</th>
+<th>Public docs say</th>
+<th>Server actually does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Response format</td>
+<td>single JSON object</td>
+<td><code>text/ndjson</code> stream</td>
+</tr>
+<tr>
+<td><code>cache</code> enum</td>
+<td><code>disabled/normal/refresh/refresh_all</code></td>
+<td><code>Standard/SkipRequery/SkipCache/SkipCacheAndRebuildExtracts</code></td>
+</tr>
+<tr>
+<td>Default limit</td>
+<td>500 (schema description) / 1000 (openapi)</td>
+<td>1000 (<code>DEFAULT_ROW_LIMIT</code>)</td>
+</tr>
+<tr>
+<td>Max limit</td>
+<td>75000</td>
+<td>&gt;50000 = high-limit override mode; no 75000 cap — live 2026-08-14: <code>planOnly</code> with <code>limit: 75001</code> accepted and echoed <code>limit: null</code></td>
+</tr>
+<tr>
+<td>Invalid token</td>
+<td>401</td>
+<td>403</td>
+</tr>
+<tr>
+<td>Timeout</td>
+<td>408</td>
+<td>NDJSON path: in-band footer, always 200 (408 only in <code>resultType</code> mode)</td>
+</tr>
+<tr>
+<td><code>/query/wait</code> params</td>
+<td><code>job_ids</code> JSON array</td>
+<td><code>jobIds</code> comma-separated preferred (legacy accepts both)</td>
+</tr>
+<tr>
+<td><code>branchId</code>, <code>timezone</code>, <code>workbookUrl</code></td>
+<td>absent</td>
+<td>supported</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="6-live-validate-register">6. LIVE-VALIDATE register<a class="headerlink" href="#6-live-validate-register" title="Permanent link">&para;</a></h2>
+<p>Run <code>scripts/live_smoke.py</code> against a real org (needs <code>OMNI_BASE_URL</code>, <code>OMNI_API_KEY</code>) to close.</p>
+<p><strong>Closed 2026-08-14</strong> (omni.demo.exploreomni.dev, Postgres connection; facts folded into the
+body sections above):</p>
+<ol>
+<li><code>staticQueryReferences</code>-as-table in <code>userEditedSQL</code> — <strong>REFUTED</strong>; the real composition
+   mechanism is parsed OmniSQL <code>${…}</code> refs (§3.5). The original envelope (<code>rewriteSql: false</code></li>
+<li><code>FROM ref_1</code>) failed with <code>relation "ref_1" does not exist</code>. Tier 2 now emits OmniSQL,
+   and the fake's unsupported temp-view materialization has been removed.</li>
+<li><code>timezone</code> — param exists; 400 unless the connection enables user-specific timezones (§2).</li>
+<li>Max limit — no 75000 cap; <code>limit: 75001</code> accepted, echoed as <code>null</code> (§5 table).</li>
+<li>Measure-keyed <code>filters</code> → HAVING — confirmed in live <code>display_sql</code> (§3.1).</li>
+<li><code>workbookUrl</code> header — <code>X-Omni-Workbook-Url</code> spelling correct; live URL format is a share
+    link <code>https://&lt;host&gt;/e/&lt;short-id&gt;/&lt;n&gt;</code> (the fake's <code>/w/fake/&lt;job-id&gt;</code> pins plumbing only).
+    Emission on the in-band-timeout path is still unobserved.</li>
+</ol>
+<p><strong>Still open:</strong></p>
+<ol>
+<li><code>generate-query</code> response variance (topic vs baseView, error shapes).</li>
+<li>High-limit mode (<code>limit &gt; 50000</code>) result streaming behavior.</li>
+<li>WAF 429 shape under the shared 60/min bucket: whether it reliably sends <code>Retry-After</code> (and
+   whether that value is numeric seconds or an HTTP date), and whether it reliably accompanies
+   the response with <code>X-Omni-Waf-Action: block</code>.</li>
+<li>Wait-loop timing under a genuinely cold warehouse (multi-minute jobs).</li>
+<li><strong>Dialect portability of <code>read.sql</code>.</strong> A verbatim raw-SQL job (<code>rewriteSql: false</code>) reaches
+   the warehouse untouched, so its dialect is the user's own problem and omniframes has nothing
+   to confirm. Tier 2's half of this item closed 2026-08-14: an OmniSQL statement is parsed and
+   <strong>re-rendered per warehouse</strong> by the server (§3.6), quoting, <code>LIMIT</code>/<code>OFFSET</code>, <code>NULLS LAST</code>
+   and the <code>LIKE … ESCAPE</code> character included, so the dialect omniframes emits in is not
+   observable downstream. The <code>sql_dialect</code> builder knob and the backslash refusal that existed
+   for it were removed with the v1 mechanism (docs/SQLTIER.md §6).</li>
+<li><code>workbookUrl</code> on the in-band-timeout path (footer with <code>remaining_job_ids</code>) — the header's
+    normal-path behavior closed 2026-08-14 (see above); whether it is emitted when the run times
+    out in-band is the one residue.</li>
+<li><strong>OmniSQL path residue</strong> (§3.6, probed on one Postgres org only): exact semantics of the
+    same-column predicate merge (which side wins, when); whether <code>GROUP BY</code> over all columns is
+    a safe dedup substitute for the stripped <code>DISTINCT</code>; the scoping rule for multi-view
+    expressions beyond first-ref-wins (only one shape tested); topic-specific join overrides and
+    filters on the view-based SQL path; which permission gates the path (<code>QUERY_SQL</code> vs <code>QUERY_TOPICS</code>) and behavior on topic-locked orgs; re-verification on
+    a non-Postgres warehouse.</li>
+<li><strong>Grain <code>__raw</code> collapse, live re-verification</strong> (§2.7): the client now keeps the <code>__raw</code>
+    values under the plain name and drops the formatted column, and FakeOmniAPI emits the pair
+    (docs/SQLTIER.md §5). What is still open is the check against a real org: that the pair
+    arrives in the shape assumed here for a grain the model formats, on both the semantic and
+    the OmniSQL path, and that <code>summary.fields</code> collapses the same way.</li>
+<li><strong>Topic-specific semantics on the view-based SQL path.</strong> The topic/view name mismatch
+    is fixed: Omniframes emits the catalog's <code>base_view_name</code>, and the WWI Querier permission
+    tests live-confirmed the distinct-name case on 2026-09-15 (§3.6). The remaining question
+    is whether topic-specific join overrides and topic filters are preserved. The parser's
+    topic lookup is gated behind <code>enableTopicResolution</code>, and this endpoint defaults
+    <code>resolveTopics</code> to false (source locations in §3.6). Establish endpoint support for topic
+    resolution and preservation of those semantics before relying on topic-specific behavior;
+    successful base-view binding alone does not establish it. This tracks the topic-specific
+    portion of item 11.</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Apache-2.0
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.instant", "navigation.tracking", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
