@@ -1,7 +1,6 @@
 site_name: Omniframes
 site_description: A PySpark-style DataFrame library for Omni — dataframe code in, governed semantic queries out.
-# No site_url yet: the site is built in CI (`mkdocs build --strict`) but not published, and a
-# canonical URL that 404s is worse than none. Set it in the change that adds a deploy job.
+site_url: https://exploreomni.github.io/omniframes/
 repo_url: https://github.com/exploreomni/omniframes
 repo_name: exploreomni/omniframes
 copyright: Apache-2.0
@@ -38,6 +37,10 @@ theme:
       toggle:
         icon: material/weather-sunny
         name: Switch to light mode
+
+extra:
+  version:
+    provider: mike
 
 extra_css:
   - stylesheets/extra.css

@@ -6,7 +6,7 @@ execution layer.
 
 > **Status: released — beta.** Omniframes is available on PyPI, but is still in beta. Expect
 > breaking changes as the API evolves. Install with `pip install omniframes` or see the
-> [quickstart](docs/quickstart.md).
+> [quickstart](https://exploreomni.github.io/omniframes/stable/quickstart/).
 
 ```python
 import omniframes as of
@@ -63,6 +63,11 @@ Local [pandas]
 
 ## Documentation
 
+Read the [Omniframes documentation](https://exploreomni.github.io/omniframes/).
+The site defaults to `stable`, the newest stable release, and publishes `dev` from `main`
+through GitHub Pages.
+Use the version selector to match your installed release.
+
 The docs site is built with [MkDocs](https://www.mkdocs.org/) + Material:
 
 ```bash
@@ -70,8 +75,8 @@ uv run mkdocs serve          # live preview on http://127.0.0.1:8000
 uv run mkdocs build --strict # what CI runs
 ```
 
-Start with [`docs/index.md`](docs/index.md) and
-[`docs/quickstart.md`](docs/quickstart.md); [`docs/mental-model.md`](docs/mental-model.md) is the
+Start with [`docs/index.md`](https://exploreomni.github.io/omniframes/) and
+[`docs/quickstart.md`](https://exploreomni.github.io/omniframes/stable/quickstart/); [`docs/mental-model.md`](https://exploreomni.github.io/omniframes/stable/mental-model/) is the
 page that makes the rest of the API predictable. `examples/demo.ipynb` walks the whole feature
 surface and runs offline, with no credentials.
 
@@ -96,20 +101,20 @@ uv run ruff format --check && uv run ruff check && uv run mypy && uv run pytest 
 
 Tests run in-process against a wire-faithful fake of the Omni query API over a deterministic
 bench dataset — no credentials, no network. See
-[`docs/offline-testing.md`](docs/offline-testing.md) for the fake, the dataset and the five test
-lanes. The opt-in [WWI integration suite](tests/integration/README.md) checks live query results
+[`docs/offline-testing.md`](https://exploreomni.github.io/omniframes/stable/offline-testing/) for the fake, the dataset and the five test
+lanes. The opt-in [WWI integration suite](https://github.com/exploreomni/omniframes/blob/main/tests/integration/README.md) checks live query results
 and permissions. The separate `scripts/live_smoke.py` probe, run with `OMNI_BASE_URL` and
 `OMNI_API_KEY` set, checks the LIVE-VALIDATE register in `docs/CONTRACT_NOTES.md`.
 
 The bench dataset and Omni model specifications are in the
-[internal repository docs](internal-docs/README.md).
+[internal repository docs](https://github.com/exploreomni/omniframes/blob/main/internal-docs/README.md).
 
 ## Releasing
 
 Prepare a version/changelog PR with `uv run python scripts/prepare_release.py prepare 0.1.0`.
 Review and merge it, then explicitly push the matching `v0.1.0` tag on the merged commit to
 publish to PyPI and GitHub Releases. Merging the PR does not publish; a manual Release workflow
-run only validates and builds. See the [release runbook](docs/releasing.md) for Trusted Publishing
+run only validates and builds. See the [release runbook](https://exploreomni.github.io/omniframes/dev/releasing/) for Trusted Publishing
 setup (no API keys), prereleases, and recovery instructions.
 
 ## Related projects
