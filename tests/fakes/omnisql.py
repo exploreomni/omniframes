@@ -191,15 +191,9 @@ def run_omnisql_job(
     engine: BenchEngine,
     query: Mapping[str, Any],
     *,
-    model_id: str,
     plan_only: bool = False,
 ) -> tuple[SqlJob, pa.Table | None]:
-    """Compile and (unless ``plan_only``) run one parsed-OmniSQL job.
-
-    ``model_id`` is taken for signature parity with the verbatim path; the statement carries no
-    model reference of its own — it binds against the one topic this fake serves.
-    """
-    del model_id
+    """Compile and (unless ``plan_only``) run one parsed-OmniSQL job."""
     _refuse_semantic_baggage(query)
     statement_text = _statement_text(query)
     sentinel_sql, refs = _extract_references(statement_text)

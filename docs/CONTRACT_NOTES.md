@@ -492,11 +492,9 @@ Run `scripts/live_smoke.py` against a real org (needs `OMNI_BASE_URL`, `OMNI_API
 body sections above):
 
 1. `staticQueryReferences`-as-table in `userEditedSQL` — **REFUTED**; the real composition
-   mechanism is parsed OmniSQL `${…}` refs (§3.5). Consequence: the tier-2 envelope Omniframes
-   0.1 emits (`rewriteSql: false` + `FROM ref_1`) **fails on a live org** with
-   `relation "ref_1" does not exist`, and FakeOmniAPI's temp-view materialization of refKeys
-   models a mechanism the server does not have. Tier 2 (and the splitter shapes that prefer it,
-   e.g. mixed aggregation) needs redesign onto OmniSQL before live use.
+   mechanism is parsed OmniSQL `${…}` refs (§3.5). The original envelope (`rewriteSql: false`
+   + `FROM ref_1`) failed with `relation "ref_1" does not exist`. Tier 2 now emits OmniSQL,
+   and the fake's unsupported temp-view materialization has been removed.
 2. `timezone` — param exists; 400 unless the connection enables user-specific timezones (§2).
 3. Max limit — no 75000 cap; `limit: 75001` accepted, echoed as `null` (§5 table).
 4. Measure-keyed `filters` → HAVING — confirmed in live `display_sql` (§3.1).

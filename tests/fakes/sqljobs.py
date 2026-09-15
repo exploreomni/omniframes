@@ -24,17 +24,13 @@ Three server behaviors are reproduced literally because they are the ones that b
   SQL has an empty measures map (§3.1, ``OmniJobPlanner.kt``).  Dimension-keyed entries would
   need Omni's mustache templating, which the fake refuses loudly instead of approximating.
 
-``staticQueryReferences`` (§3.5) are validated through the ordinary semantic planner, executed,
-and registered as temp views named **exactly** the reference key, so the outer SQL can name a
-reference as a bare table identifier.  That syntax is LIVE-VALIDATE #1 — an assumption, flagged
-as one in internal-docs/bench_omni_model.md.
+``staticQueryReferences`` are ignored on this path (§3.5). Their keys do not become tables;
+only the warehouse tables named in the SQL are available.
 """
 
 from __future__ import annotations
 
-import re
-from collections.abc import Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -47,7 +43,6 @@ from tests.fakes.engine import (
     TOTAL_INDICATOR_COLUMN,
     BenchEngine,
     PlanFailure,
-    PlannedQuery,
     arrow_data_type,
     fetch_arrow,
     sql_ident,
@@ -56,7 +51,6 @@ from tests.fakes.engine import (
 __all__ = [
     "SQL_WRAPPER_ALIAS",
     "SUMM_SIDECAR_SUFFIX",
-    "QueryReference",
     "SqlJob",
     "is_raw_sql_job",
     "run_sql_job",
@@ -71,23 +65,6 @@ SUMM_SIDECAR_SUFFIX: Final = "__omni_summ"
 
 #: Alias the fake gives the sub-select it wraps ``userEditedSQL`` in for sorts and totals.
 SQL_WRAPPER_ALIAS: Final = "omni_sql_wrapper"
-
-#: A ``staticQueryReferences`` key has to be usable as a bare table identifier in the outer SQL
-#: (LIVE-VALIDATE #1), so the fake insists on one rather than quoting something exotic and
-#: pretending it knows how the server would spell it.
-_REFERENCE_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
-#: Keys a *referenced* query may not carry: references fold into the outer plan as a single job,
-#: and a reference that itself needs SQL, further references or a totals row is not modeled.
-_REFERENCE_REFUSED: Final = (
-    "userEditedSQL",
-    "staticQueryReferences",
-    "column_totals",
-    "row_totals",
-    "pivots",
-    "calculations",
-    "fill_fields",
-)
 
 
 def is_raw_sql_job(query: Mapping[str, Any]) -> bool:
@@ -114,25 +91,6 @@ def is_raw_sql_job(query: Mapping[str, Any]) -> bool:
 
 
 @dataclass(frozen=True)
-class QueryReference:
-    """One materialized ``staticQueryReferences`` entry (§3.5).
-
-    ``key`` is registered as a DuckDB temp view under exactly that name, so the outer SQL names
-    it as a bare identifier.  Its columns are the referenced query's field names verbatim
-    (``users.state``, ``order_items.total_sale_price``), dots included — the outer SQL therefore
-    has to quote them.
-    """
-
-    key: str
-    planned: PlannedQuery
-    table: pa.Table
-
-    @property
-    def column_names(self) -> tuple[str, ...]:
-        return tuple(self.table.schema.names)
-
-
-@dataclass(frozen=True)
 class _SqlTotals:
     """The compiled ``column_totals`` request of a raw-SQL job: which columns, and the SUM SQL."""
 
@@ -152,7 +110,6 @@ class SqlJob:
     #: The result schema.  ``summary.fields`` is synthesized from it (:func:`synthesize_fields`);
     #: it never includes the sidecars or the indicator column the fake appends afterwards.
     schema: pa.Schema
-    references: tuple[QueryReference, ...] = ()
     #: Result columns that got a ``__omni_summ`` sidecar and a totals row.
     totaled_columns: tuple[str, ...] = ()
     #: ``filters`` entries keyed by a governed measure — silently skipped, per §3.1.
@@ -166,10 +123,6 @@ class SqlJob:
     #: ``summary.omni_sql`` — the OmniSQL text on the parsed path, empty on the verbatim one
     #: (hand-written SQL has no Omni-flavored form).
     omni_sql: str = ""
-
-    @property
-    def reference_keys(self) -> tuple[str, ...]:
-        return tuple(reference.key for reference in self.references)
 
     @property
     def result_fields(self) -> Mapping[str, Any]:
@@ -228,14 +181,9 @@ def run_sql_job(
     engine: BenchEngine,
     query: Mapping[str, Any],
     *,
-    model_id: str,
     plan_only: bool = False,
 ) -> tuple[SqlJob, pa.Table | None]:
     """Compile and (unless ``plan_only``) run a raw-SQL job.
-
-    Planning and execution are one call because ``staticQueryReferences`` are live temp views:
-    they exist only for the duration of the job, and both the schema probe and the execution
-    have to see them.
 
     Returns the compiled job and its result table (``None`` for ``planOnly``).  Every refusal is
     a :class:`~tests.fakes.engine.PlanFailure`, which the HTTP layer turns into an in-band job
@@ -244,33 +192,29 @@ def run_sql_job(
     """
     user_sql = _statement(query)
     skipped = _partition_filters(engine, query)
-    references = _materialize_references(engine, query, model_id=model_id)
+    schema = _probe_schema(engine, user_sql)
+    # `sqlSortsEnabled` falsy strips sorts AND column_totals, silently: the server forces
+    # both to empty for a SQL job that did not opt in (§3.4).
+    sorts_enabled = bool(query.get("sqlSortsEnabled"))
+    order_by = _order_by(query.get("sorts"), schema) if sorts_enabled else ""
+    totals = (
+        _resolve_totals(query.get("column_totals"), schema, user_sql) if sorts_enabled else None
+    )
 
-    with _registered(engine, references):
-        schema = _probe_schema(engine, user_sql)
-        # `sqlSortsEnabled` falsy strips sorts AND column_totals, silently: the server forces
-        # both to empty for a SQL job that did not opt in (§3.4).
-        sorts_enabled = bool(query.get("sqlSortsEnabled"))
-        order_by = _order_by(query.get("sorts"), schema) if sorts_enabled else ""
-        totals = (
-            _resolve_totals(query.get("column_totals"), schema, user_sql) if sorts_enabled else None
-        )
-
-        sql = _with_order_by(user_sql, order_by) if order_by else user_sql
-        job = SqlJob(
-            sql=sql,
-            user_sql=user_sql,
-            schema=schema,
-            references=references,
-            totaled_columns=() if totals is None else totals.columns,
-            skipped_filters=skipped,
-            sorts_applied=bool(order_by),
-        )
-        if plan_only:
-            return job, None
-        table = _execute(engine, sql)
-        if totals is not None:
-            table = _append_sidecar_totals(engine, table, totals)
+    sql = _with_order_by(user_sql, order_by) if order_by else user_sql
+    job = SqlJob(
+        sql=sql,
+        user_sql=user_sql,
+        schema=schema,
+        totaled_columns=() if totals is None else totals.columns,
+        skipped_filters=skipped,
+        sorts_applied=bool(order_by),
+    )
+    if plan_only:
+        return job, None
+    table = _execute(engine, sql)
+    if totals is not None:
+        table = _append_sidecar_totals(engine, table, totals)
     return job, table
 
 
@@ -465,75 +409,6 @@ def _is_numeric(dtype: pa.DataType) -> bool:
     return bool(
         pa.types.is_integer(dtype) or pa.types.is_floating(dtype) or pa.types.is_decimal(dtype)
     )
-
-
-# --------------------------------------------------------------------------------------
-# staticQueryReferences (§3.5)
-# --------------------------------------------------------------------------------------
-
-
-def _materialize_references(
-    engine: BenchEngine, query: Mapping[str, Any], *, model_id: str
-) -> tuple[QueryReference, ...]:
-    """Validate, compile and execute every ``staticQueryReferences`` entry.
-
-    Each referenced query is an ordinary semantic query object with an extra **snake_case**
-    ``model_id`` (§3.5), so it goes through the same planner as a model job: fields, grains,
-    filters and sorts all have to compile, and a reference that does not is a ``PLAN`` failure
-    naming the reference — never a silently empty table.
-    """
-    raw = query.get("staticQueryReferences")
-    if not raw:
-        return ()
-    if not isinstance(raw, Mapping):
-        raise PlanFailure("query.staticQueryReferences must be an object keyed by reference name")
-
-    references: list[QueryReference] = []
-    for key, payload in raw.items():
-        name = str(key)
-        where = f"query.staticQueryReferences[{name!r}]"
-        if not _REFERENCE_KEY.match(name):
-            raise PlanFailure(
-                f"{where}: a reference key must be a bare SQL identifier so the outer "
-                "userEditedSQL can name it as a table (CONTRACT_NOTES §3.5, LIVE-VALIDATE #1)"
-            )
-        if not isinstance(payload, Mapping):
-            raise PlanFailure(f"{where} must be a query object")
-        referenced_model = payload.get("model_id")
-        if referenced_model is None:
-            raise PlanFailure(
-                f"{where}: a referenced query carries its model as snake_case 'model_id' (§3.5)"
-            )
-        if referenced_model != model_id:
-            raise PlanFailure(f"{where}: Model {referenced_model} not found")
-        for refused in _REFERENCE_REFUSED:
-            if payload.get(refused):
-                raise PlanFailure(
-                    f"{where}: a referenced query carrying {refused!r} is not modeled by "
-                    "FakeOmniAPI; references fold into the outer plan as one job"
-                )
-        try:
-            planned = engine.plan(payload)
-            table = engine.execute(planned)
-        except PlanFailure as exc:
-            raise PlanFailure(f"{where}: {exc}", error_type=exc.error_type) from None
-        references.append(QueryReference(key=name, planned=planned, table=table))
-    return tuple(references)
-
-
-@contextmanager
-def _registered(engine: BenchEngine, references: Sequence[QueryReference]) -> Iterator[None]:
-    """Register each reference as a temp view named exactly its key, for this job only."""
-    connection = engine.connection
-    registered: list[str] = []
-    try:
-        for reference in references:
-            connection.register(reference.key, reference.table)
-            registered.append(reference.key)
-        yield
-    finally:
-        for key in reversed(registered):
-            connection.unregister(key)
 
 
 # --------------------------------------------------------------------------------------
