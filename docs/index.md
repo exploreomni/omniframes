@@ -4,9 +4,9 @@ A PySpark-style Python DataFrame library for [Omni](https://omni.co). You write 
 it compiles into **governed semantic queries** and pushes as much compute as possible into Omni's
 SQL execution layer.
 
-!!! warning "Status: pre-release (`0.1.0.dev`)"
-    APIs may still change, and the package is **not yet published to PyPI** — install from a
-    checkout for now. See the [quickstart](quickstart.md).
+!!! warning "Status: released — beta"
+    Omniframes is released and available on PyPI, but is still in **beta**. Expect breaking
+    changes as the API evolves. See the [quickstart](quickstart.md) to install it.
 
 ```python
 import omniframes as of

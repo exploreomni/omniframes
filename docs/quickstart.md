@@ -11,31 +11,22 @@ Install, authenticate, run a query, read an `explain()`. Ten minutes.
 
 ## 1. Install
 
-The first Omniframes release is **not yet published to PyPI**. Until it lands, install from a
-checkout:
+Omniframes is available on PyPI. It is in **beta** — expect breaking changes as the API evolves.
 
 === "uv"
 
     ```bash
-    git clone https://github.com/exploreomni/omniframes
-    cd omniframes
-    uv sync --all-extras     # dev environment, all optional extras
-    uv run python            # a REPL with omniframes importable
+    uv add omniframes
     ```
 
 === "pip"
 
     ```bash
-    git clone https://github.com/exploreomni/omniframes
-    cd omniframes
-    python -m venv .venv && source .venv/bin/activate
-    pip install -e ".[polars]"
+    pip install omniframes
     ```
 
 Python 3.11+ is required. `pandas`, `pyarrow`, `httpx` and `sqlglot` come along; `polars` is an
 optional extra (`omniframes[polars]`) used only by `to_polars()`.
-
-Once the package is published, this becomes `uv add omniframes` / `pip install omniframes`.
 
 ## 2. Authenticate
 
