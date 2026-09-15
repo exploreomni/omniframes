@@ -3,8 +3,7 @@
 * :mod:`omniframes.compile.querymodel` — the typed wire contract (CONTRACT_NOTES §2/§3).
 * :mod:`omniframes.compile.semantic` — tier 1, the governed semantic query, plus the
   :class:`ExecutionPlan` an action runs.
-* :mod:`omniframes.compile.sqlgen` — tier 2, an OmniSQL job using governed model references
-  (docs/SQLTIER.md).
+* :mod:`omniframes.compile.sqlgen` — tier 2, one governed OmniSQL statement (docs/SQLTIER.md).
 * :mod:`omniframes.compile.splitter` — the pushdown frontier: one plan in, a DAG of remote
   queries and local operators out (docs/HYBRID.md §2).  This is what a DataFrame action calls,
   and the seam the three tiers are tried at, in order.

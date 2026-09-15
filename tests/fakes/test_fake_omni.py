@@ -2159,152 +2159,42 @@ def test_unusable_sql_column_totals_are_a_plan_error(
 
 
 # --------------------------------------------------------------------------------------
-# staticQueryReferences (CONTRACT_NOTES §3.5; LIVE-VALIDATE #1)
+# staticQueryReferences (CONTRACT_NOTES §3.5)
 # --------------------------------------------------------------------------------------
 
-#: A reference's columns are the referenced query's field names verbatim, dots and all, so the
-#: outer SQL quotes them.  The refKey itself is a bare identifier — the LIVE-VALIDATE #1
-#: assumption this whole section is written on.
-JOIN_REFERENCES_SQL = (
-    'SELECT r."users.state" AS state,\n'
-    '       r."order_items.total_sale_price" AS revenue,\n'
-    '       b."users.count" AS buyers\n'
-    "FROM state_revenue r\n"
-    'JOIN state_buyers b ON b."users.state" = r."users.state"\n'
-    "ORDER BY 1"
-)
 
-
-def test_a_reference_is_queryable_from_the_outer_sql_as_a_bare_identifier(
-    client: httpx.Client, known_answers: dict[str, Any]
+@pytest.mark.parametrize("table_name", ["state_revenue", '"state_revenue"'])
+def test_query_references_do_not_create_tables_for_raw_sql(
+    client: httpx.Client, table_name: str
 ) -> None:
-    """The semantic engine materializes the reference; the SQL names it as a table."""
-    expected = {
-        row["state"]: row
-        for row in answer_rows(known_answers, "revenue_by_state")
-        if row["state"] is not None
-    }
+    """Both spellings reach the warehouse unchanged; a reference key is not a table."""
     job = single_job(
         sql_run(
             client,
-            'SELECT r."users.state" AS state, r."order_items.total_sale_price" AS revenue\n'
-            "FROM state_revenue r\n"
-            'WHERE r."users.state" IS NOT NULL\n'
-            "ORDER BY 1",
+            f"SELECT * FROM {table_name}",
             staticQueryReferences={
-                "state_revenue": reference(fields=["users.state", TOTAL_SALE_PRICE], limit=None)
+                "state_revenue": reference(fields=["users.state", TOTAL_SALE_PRICE])
             },
         )
     )
-    assert job.status is JobStatus.COMPLETE, job.error_message
-    assert job.result is not None
-    returned = decode_result(job.result).to_pylist()
-    assert len(returned) == len(expected) == 20
-    for row in returned:
-        assert str(row["revenue"]) == expected[row["state"]]["total_sale_price"]
-
-
-def test_two_references_join_inside_one_sql_query(
-    client: httpx.Client, known_answers: dict[str, Any]
-) -> None:
-    expected = {
-        row["state"]: row
-        for row in answer_rows(known_answers, "revenue_and_buyers_by_state")
-        if row["state"] is not None
-    }
-    job = single_job(
-        sql_run(
-            client,
-            JOIN_REFERENCES_SQL,
-            staticQueryReferences={
-                "state_revenue": reference(fields=["users.state", TOTAL_SALE_PRICE], limit=None),
-                "state_buyers": reference(fields=["users.state", USERS_COUNT], limit=None),
-            },
-        )
-    )
-    assert job.status is JobStatus.COMPLETE, job.error_message
-    assert job.result is not None
-    returned = decode_result(job.result).to_pylist()
-    assert len(returned) == len(expected) == 20
-    for row in returned:
-        answer = expected[row["state"]]
-        assert str(row["revenue"]) == answer["total_sale_price"]
-        assert row["buyers"] == answer["distinct_buyers"]
-
-
-def test_a_reference_query_compiles_through_the_semantic_engine(client: httpx.Client) -> None:
-    """A reference is a real semantic query: grains and filters compile the same way."""
-    job = single_job(
-        sql_run(
-            client,
-            'SELECT COUNT(*) AS months FROM monthly_rev WHERE "order_items.count" > 0',
-            staticQueryReferences={
-                "monthly_rev": reference(
-                    fields=[MONTH, TOTAL_SALE_PRICE, ORDER_ITEMS_COUNT],
-                    filters={"order_items.created_at": TRAILING_12M},
-                    limit=None,
-                )
-            },
-        )
-    )
-    assert job.status is JobStatus.COMPLETE, job.error_message
-    assert job.result is not None
-    assert decode_result(job.result).to_pylist() == [{"months": 12}]
-
-
-def test_an_invalid_reference_query_is_a_plan_error_naming_the_reference(
-    client: httpx.Client,
-) -> None:
-    job = single_job(
-        sql_run(
-            client,
-            "SELECT * FROM bad_ref",
-            staticQueryReferences={"bad_ref": reference(fields=["users.nope"])},
-        )
-    )
     assert job.status is JobStatus.ERROR
-    assert job.error_type == "PLAN"
-    message = job.error_message or ""
-    assert "bad_ref" in message
-    assert "no resolvable fields" in message
+    assert job.error_type == "QUERY"
+    assert "state_revenue" in (job.error_message or "")
+    assert "does not exist" in (job.error_message or "")
 
 
-@pytest.mark.parametrize(
-    ("payload", "expected"),
-    [
-        ({"fields": ["users.state"]}, "model_id"),
-        ({"fields": ["users.state"], "model_id": OTHER_MODEL_ID}, "not found"),
-    ],
-)
-def test_a_reference_carries_its_own_snake_case_model_id(
-    client: httpx.Client, payload: dict[str, Any], expected: str
-) -> None:
-    entry = query_body(**{k: v for k, v in payload.items() if k != "model_id"})["query"]
-    if "model_id" in payload:
-        entry["model_id"] = payload["model_id"]
-    job = single_job(sql_run(client, "SELECT * FROM ref", staticQueryReferences={"ref": entry}))
-    assert job.status is JobStatus.ERROR
-    assert job.error_type == "PLAN"
-    assert expected in (job.error_message or "")
-
-
-@pytest.mark.parametrize("key", ["monthly rev", "1st_ref", "order-items", "a.b"])
-def test_a_reference_key_must_be_a_bare_sql_identifier(client: httpx.Client, key: str) -> None:
-    """LIVE-VALIDATE #1: the fake assumes the refKey is used as a table identifier verbatim."""
-    job = single_job(
-        sql_run(
-            client,
-            "SELECT 1 AS x",
-            staticQueryReferences={key: reference(fields=["users.state"])},
-        )
+def test_raw_sql_ignores_query_references(client: httpx.Client) -> None:
+    """Even an unresolvable reference is inert on the verbatim SQL path."""
+    response = sql_run(
+        client,
+        "SELECT 1 AS x",
+        staticQueryReferences={"unused": reference(fields=["users.nope"])},
     )
-    assert job.status is JobStatus.ERROR
-    assert job.error_type == "PLAN"
-    assert "bare SQL identifier" in (job.error_message or "")
+    assert rows(response) == [{"x": 1}]
 
 
-def test_references_without_a_raw_sql_outer_query_are_refused(client: httpx.Client) -> None:
-    """The other two consumers (``type: "query"`` filters, XLOOKUP calcs) are still unmodeled."""
+def test_query_references_on_semantic_queries_are_refused(client: httpx.Client) -> None:
+    """The two consumers (``type: "query"`` filters, XLOOKUP calcs) are still unmodeled."""
     job = single_job(
         run(
             client,
@@ -2314,7 +2204,8 @@ def test_references_without_a_raw_sql_outer_query_are_refused(client: httpx.Clie
     )
     assert job.status is JobStatus.ERROR
     assert job.error_type == "PLAN"
-    assert "raw-SQL outer query" in (job.error_message or "")
+    assert "consumers" in (job.error_message or "")
+    assert "not modeled" in (job.error_message or "")
 
 
 def test_a_query_typed_filter_arm_is_still_refused(client: httpx.Client) -> None:
@@ -2373,21 +2264,6 @@ def test_workbook_url_is_echoed_as_a_response_header(client: httpx.Client) -> No
 def test_no_workbook_url_header_without_the_flag(client: httpx.Client) -> None:
     assert WORKBOOK_URL_HEADER not in run(client, fields=["users.state"]).headers
     assert WORKBOOK_URL_HEADER not in run(client, fields=["users.state"], workbookUrl=False).headers
-
-
-def test_a_reference_view_does_not_outlive_its_job(client: httpx.Client) -> None:
-    """References are per-job temp views: the next SQL job must not see the previous one's."""
-    first = single_job(
-        sql_run(
-            client,
-            "SELECT COUNT(*) AS n FROM state_revenue",
-            staticQueryReferences={"state_revenue": reference(fields=["users.state"])},
-        )
-    )
-    assert first.status is JobStatus.COMPLETE, first.error_message
-    second = single_job(sql_run(client, "SELECT COUNT(*) AS n FROM state_revenue"))
-    assert second.status is JobStatus.ERROR
-    assert second.error_type == "QUERY"
 
 
 # --------------------------------------------------------------------------------------
@@ -2711,7 +2587,7 @@ def test_a_field_name_outside_the_model_charset_never_reaches_the_statement(
         ),
         pytest.param(
             "SELECT ${users.state} FROM ${order_items} oi",
-            "an alias on the ${topic} reference is not modeled",
+            "an alias on the ${view} reference is not modeled",
             id="aliased-from",
         ),
         pytest.param(

@@ -1,0 +1,59 @@
+name: Release labels
+
+# Metadata only: never check out or execute pull-request code with this token.
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, edited, reopened, closed]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: release-labels-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const match = /^(feat|fix|perf|docs|test|ci|refactor|chore|revert|migration)(\([^)]*\))?(!)?:/.exec(pr.title);
+            const categories = {
+              feat: 'feature', fix: 'fix', perf: 'performance', docs: 'docs',
+              test: 'maintenance', ci: 'maintenance', refactor: 'maintenance',
+              chore: 'maintenance', revert: 'maintenance', migration: 'maintenance',
+            };
+            const category = match ? `release:${categories[match[1]]}` : null;
+            const automatic = new Set(Object.values(categories).map(value => `release:${value}`));
+            const current = await github.paginate(github.rest.issues.listLabelsOnIssue, {
+              ...context.repo, issue_number: pr.number,
+            });
+            for (const label of current) {
+              if (automatic.has(label.name) && label.name !== category) {
+                await github.rest.issues.removeLabel({
+                  ...context.repo, issue_number: pr.number, name: label.name,
+                });
+              }
+            }
+            const labels = category ? [category] : [];
+            // Breaking/skip labels are maintainer overrides and are never removed automatically.
+            if (match?.[3]) labels.push('release:breaking');
+            if (/^chore\(release\):/.test(pr.title)) labels.push('release:skip');
+            for (const name of labels) {
+              try {
+                await github.rest.issues.createLabel({
+                  ...context.repo, name, color: 'd4c5f9', description: 'Release note classification',
+                });
+              } catch (error) {
+                if (error.status !== 422) throw error;
+              }
+            }
+            if (labels.length) {
+              await github.rest.issues.addLabels({...context.repo, issue_number: pr.number, labels});
+            }

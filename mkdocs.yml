@@ -89,6 +89,7 @@ nav:
   - Mental model: mental-model.md
   - API reference: api.md
   - Offline testing: offline-testing.md
+  - Releasing: releasing.md
   - Design notes:
       - Wire contract: CONTRACT_NOTES.md
       - Architecture: DESIGN.md

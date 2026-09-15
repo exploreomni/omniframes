@@ -81,7 +81,7 @@ Requires [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync --all-extras         # install environment
-uv run pytest                # run tests (live tests auto-skip without credentials)
+uv run pytest                # offline tests; live tests require explicit --live opt-in
 uv run ruff format && uv run ruff check --fix
 uv run mypy
 uv run mkdocs build --strict # docs site
@@ -97,21 +97,20 @@ uv run ruff format --check && uv run ruff check && uv run mypy && uv run pytest 
 Tests run in-process against a wire-faithful fake of the Omni query API over a deterministic
 bench dataset — no credentials, no network. See
 [`docs/offline-testing.md`](docs/offline-testing.md) for the fake, the dataset and the five test
-lanes. Checks against a live Omni org are a standalone script, `scripts/live_smoke.py`, run with
-`OMNI_BASE_URL` and `OMNI_API_KEY` set — not a pytest lane.
+lanes. The opt-in [WWI integration suite](tests/integration/README.md) checks live query results
+and permissions. The separate `scripts/live_smoke.py` probe, run with `OMNI_BASE_URL` and
+`OMNI_API_KEY` set, checks the LIVE-VALIDATE register in `docs/CONTRACT_NOTES.md`.
 
 The bench dataset and Omni model specifications are in the
 [internal repository docs](internal-docs/README.md).
 
 ## Releasing
 
-The release version has one source of truth: `src/omniframes/_version.py`. Update it and the
-changelog, then run `uv sync --reinstall-package omniframes` so the editable install's metadata
-sees the new version (`uv.lock` intentionally omits a dynamically sourced root-project version).
-Tag the release as that exact version prefixed with `v`; for example, version `0.1.0` uses tag
-`v0.1.0`. The release workflow builds and smoke-installs the wheel, verifies its metadata and
-public `omniframes.__version__`, and refuses a mismatched tag before publishing to PyPI. A manual
-workflow run builds and validates artifacts but does not publish them.
+Prepare a version/changelog PR with `uv run python scripts/prepare_release.py prepare 0.1.0`.
+Review and merge it, then explicitly push the matching `v0.1.0` tag on the merged commit to
+publish to PyPI and GitHub Releases. Merging the PR does not publish; a manual Release workflow
+run only validates and builds. See the [release runbook](docs/releasing.md) for Trusted Publishing
+setup (no API keys), prereleases, and recovery instructions.
 
 ## Related projects
 

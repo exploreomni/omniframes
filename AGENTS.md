@@ -24,7 +24,7 @@ primary; thin camelCase aliases exist for muscle memory.
 ## Commands
 
 - `uv sync --all-extras` — install/refresh the environment
-- `uv run pytest` — full suite (offline; there is no live pytest lane)
+- `uv run pytest` — offline suite (live integration tests skip unless `--live` is supplied)
 - `uv run pytest tests/unit/test_x.py::test_name` — single test
 - `uv run python scripts/live_smoke.py` — the live-org probe (needs credentials)
 - `uv run marimo edit examples/demo.py` — launch the marimo demo notebook (needs
@@ -53,10 +53,11 @@ schema authority.
 
 ## Testing
 
-Five lanes under `tests/`: `unit/`, `golden/` (compiler snapshots as checked-in JSON),
+Five offline lanes under `tests/`: `unit/`, `golden/` (compiler snapshots as checked-in JSON),
 `wire/` (HttpTransport vs fixture NDJSON bytes), `differential/` (pushdown vs pure-pandas
-equivalence; `dropna=False` semantics), `e2e/`. Live-org checks are `scripts/live_smoke.py`, a
-standalone script — `pytest -m live` collects nothing.
+equivalence; `dropna=False` semantics), `e2e/`. `tests/integration/` checks the live WWI model
+with an explicit `--live --principal querier|restricted` opt-in (see its README).
+`scripts/live_smoke.py` is the separate probe for the LIVE-VALIDATE register.
 `tests/fakes/` holds FakeOmniAPI — an in-process httpx.MockTransport fake with exact NDJSON
 framing over the bench dataset (DuckDB-executed; dev dep only). The fake implements only what
 current milestones exercise — grow it with the milestone that needs it.
@@ -68,7 +69,7 @@ current milestones exercise — grow it with the milestone that needs it.
 - New wire behavior must cite a monorepo source location in `docs/CONTRACT_NOTES.md`; unverified
   behavior gets a `LIVE-VALIDATE` entry there, not a guess.
 - API keys must never appear in reprs, logs, errors, docs, or fixtures (tested).
-- Open questions that need a human call: PyPI publish timing/name claim, repo publication.
+- Open questions that need a human call: PyPI publish timing, repo publication.
 
 ## Git and commits
 

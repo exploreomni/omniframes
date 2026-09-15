@@ -79,7 +79,6 @@ from tests.fakes.omnisql import (
 )
 from tests.fakes.sqljobs import (
     SUMM_SIDECAR_SUFFIX,
-    QueryReference,
     SqlJob,
     is_raw_sql_job,
     sidecar_name,
@@ -128,7 +127,6 @@ __all__ = [
     "GrainFormat",
     "PlanFailure",
     "PlannedQuery",
-    "QueryReference",
     "RecordedRequest",
     "ResolvedField",
     "SavedQuery",
