@@ -1,0 +1,1190 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A PySpark-style DataFrame library for Omni — dataframe code in, governed semantic queries out.">
+      
+      
+      
+        <link rel="canonical" href="https://exploreomni.github.io/omniframes/dev/INTERNALS/">
+      
+      
+        <link rel="prev" href="../DESIGN/">
+      
+      
+        <link rel="next" href="../SQLTIER/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Internals - Omniframes</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CIBM+Plex+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"IBM Plex Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#internals-expression-tree-plan-nodes-compile-pipeline" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Omniframes" class="md-header__button md-logo" aria-label="Omniframes" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Omniframes
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Internals
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/exploreomni/omniframes" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    exploreomni/omniframes
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Omniframes" class="md-nav__button md-logo" aria-label="Omniframes" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Omniframes
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/exploreomni/omniframes" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    exploreomni/omniframes
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mental-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mental model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../offline-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Offline testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design notes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design notes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CONTRACT_NOTES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wire contract
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../DESIGN/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internals
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-expressions-srcomniframescolumnpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Expressions (src/omniframes/column.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-plan-nodes-srcomniframesplannodespy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Plan nodes (src/omniframes/plan/nodes.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Plan nodes (src/omniframes/plan/nodes.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#semantic-query-implementation-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Semantic-query implementation notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sql-and-stored-query-implementation-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SQL and stored-query implementation notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-wire-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Wire names
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-compile-pipeline-compile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Compile pipeline (compile/)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-sessioncatalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Session/catalog
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-testing-interfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Testing interfaces
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../SQLTIER/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQL tier (tier 2)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../HYBRID/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hybrid engine (tier 3)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-expressions-srcomniframescolumnpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Expressions (src/omniframes/column.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-plan-nodes-srcomniframesplannodespy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Plan nodes (src/omniframes/plan/nodes.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Plan nodes (src/omniframes/plan/nodes.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#semantic-query-implementation-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Semantic-query implementation notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sql-and-stored-query-implementation-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SQL and stored-query implementation notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-wire-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Wire names
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-compile-pipeline-compile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Compile pipeline (compile/)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-sessioncatalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Session/catalog
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-testing-interfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Testing interfaces
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="internals-expression-tree-plan-nodes-compile-pipeline">Internals — expression tree, plan nodes, compile pipeline<a class="headerlink" href="#internals-expression-tree-plan-nodes-compile-pipeline" title="Permanent link">&para;</a></h1>
+<p>The precise internal shapes. DESIGN.md says <em>what</em> and <em>why</em>; this doc pins <em>exactly how</em> so the
+layers compose. Implementations must match these signatures (rename only with a doc update).</p>
+<h2 id="1-expressions-srcomniframescolumnpy">1. Expressions (<code>src/omniframes/column.py</code>)<a class="headerlink" href="#1-expressions-srcomniframescolumnpy" title="Permanent link">&para;</a></h2>
+<p>An immutable tree of frozen dataclasses, all subclasses of <code>Expr</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>FieldRef(name: str, grain: str | None = None)      # &quot;users.state&quot;; grain → wire &quot;name[grain]&quot;
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>MeasureRef(name: str)                              # governed model measure
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>Literal(value: object)                             # str | int | float | bool | date | datetime | None
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>AdHocAgg(fn: AggFn, operand: FieldRef, distinct: bool = False)
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    # AggFn enum: SUM, COUNT, AVG, MIN, MAX  (count_distinct = COUNT + distinct=True)
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>Comparison(op: CmpOp, left: Expr, right: Expr)     # EQ NE LT LE GT GE
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>Arithmetic(op: ArithOp, left: Expr, right: Expr)   # ADD SUB MUL DIV — never tier 1
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>BooleanOp(op: BoolOp, operands: tuple[Expr, ...])  # AND OR (n-ary, flattened on construction)
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>Not(operand: Expr)
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>IsNull(operand: Expr)
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>IsIn(operand: Expr, values: tuple[object, ...])
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>StringPredicate(kind: StrPredKind, operand: Expr, value: str, case_insensitive: bool = False)
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    # StrPredKind: CONTAINS, STARTS_WITH, ENDS_WITH, LIKE
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>Between(operand: Expr, low: object, high: object)
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    # NUMBERS: inclusive both ends (PySpark-consistent) — compiles to composite
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    #   AND(GREATER_THAN is_inclusive, LESS_THAN is_inclusive), NOT the wire BETWEEN kind
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    #   (whose upper bound is exclusive).
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    # DATES/DATETIMES: half-open [low, high) — the wire offers only ON_OR_AFTER (&gt;=) and
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    #   BEFORE (&lt;) for dates, so an inclusive upper bound is not exactly expressible without
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>    #   date arithmetic we refuse to invent. Documented loudly in Column.between.
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>SortKey(expr: Expr, descending: bool = False)
+</code></pre></div>
+<p><code>Column</code> is the user-facing wrapper: <code>Column(expr: Expr, alias: str | None = None)</code>.
+Methods (each returns a new Column): <code>alias(name)</code> (also <code>.name(...)</code> no — only <code>alias</code>),
+<code>grain(g)</code> (valid only over a bare FieldRef; validates against <code>querymodel</code> grain list, raises
+<code>CompileError</code> otherwise), <code>desc()</code> / <code>asc()</code> (wrap into SortKey at use site), comparison and
+arithmetic dunders building the nodes above, <code>__invert__</code> → Not, <code>__and__</code>/<code>__or__</code> → BooleanOp,
+<code>is_null()</code>/<code>is_not_null()</code>, <code>isin(*values)</code>, <code>contains/starts_with/ends_with/like</code>,
+<code>between(low, high)</code>. <code>__bool__</code> raises <code>TypeError</code> with the <code>&amp;</code>/<code>|</code>/<code>~</code> guidance.
+<code>__eq__</code> builds a Comparison (so <code>__hash__ = None</code> issues: set <code>__hash__ = object.__hash__</code>
+explicitly to keep Columns usable in identity sets; document it).</p>
+<p><code>functions.py</code> (<code>F</code>): <code>col(name)</code>, <code>lit(v)</code>, <code>measure(name)</code>, <code>sum/avg/min/max/count(col_or_name)</code>,
+<code>count_distinct(col_or_name)</code>, and <code>udf</code>. <code>DataFrame.map_pandas()</code> applies a function to a whole
+frame. String arguments are accepted anywhere a Column is (auto-wrapped via <code>F.col</code>).</p>
+<h2 id="2-plan-nodes-srcomniframesplannodespy">2. Plan nodes (<code>src/omniframes/plan/nodes.py</code>)<a class="headerlink" href="#2-plan-nodes-srcomniframesplannodespy" title="Permanent link">&para;</a></h2>
+<p>Frozen dataclasses, subclasses of <code>PlanNode</code>; children are explicit fields. Every node exposes
+<code>children: tuple[PlanNode, ...]</code> (property) for generic walking.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>Scan(source: ScanSource)                     # leaf
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  ScanSource is a union of frozen dataclasses:
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    TopicScan(model_name: str, model_id: str, topic: str, base_view: str)
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    ViewScan(model_name: str, model_id: str, view: str)
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    SqlScan(model_id: str, sql: str)
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    SavedQueryScan(document_id: str, name: str, query: dict)  # hydrated at read time
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>Project(child, columns: tuple[Column, ...])  # select(); may contain dims, measures, ad-hoc aggs
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>Filter(child, predicate: Expr)
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>Aggregate(child, keys: tuple[Column, ...], aggs: tuple[Column, ...])   # group_by().agg()
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>Sort(child, keys: tuple[SortKey, ...])
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>Limit(child, n: int | None, offset: int = 0)   # n=None means user asked for unlimited
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>Join(left, right, on: tuple[str, ...] | Expr, how: JoinHow)
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>Union(left, right)
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>WithColumn(child, name: str, expr: Expr)
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>MapPandas(child, fn: Callable, schema_hint: OmniSchema | None)
+</code></pre></div>
+<p><code>plan/visitor.py</code>: a small generic <code>transform(node, fn)</code> / <code>walk(node)</code> utility pair, plus
+<code>transform_expr(expr, fn)</code> / <code>walk_expr(expr)</code> for expression trees. Every <code>Expr</code> that
+reports <code>children</code> can be rebuilt around new ones — <code>AdHocAgg</code> is the single deliberate
+exception, and it says so by name. The compiler has its own inline rewriters
+(<code>splitter._rebind</code>, <code>semantic.alias_map</code> + <code>resolve</code>); these are the reusable form.</p>
+<p><strong>Alias map:</strong> aliases are collected per-plan at compile time by walking Project/Aggregate
+columns (<code>{alias: wire_name}</code>). Building a plan with two aliases mapping the same wire name, a
+duplicate alias, or an alias shadowing a projected wire name raises <code>CompileError</code> at
+construction of the DataFrame op (fail fast, not at action time). Sorts/filters referencing an
+alias resolve through the map before compilation. Selecting one field <strong>both bare and aliased</strong>
+(<code>select("users.state", F.col("users.state").alias("s"))</code>) is not a collision but a <em>copy</em>: one
+<code>fields</code> entry returns one column, so tier 1 declines it (<code>CannotCompile</code>) and tier 2 writes
+<code>x, x AS y</code>. Asking for the identical column twice (same output name) collapses to one.</p>
+<h3 id="semantic-query-implementation-notes">Semantic-query implementation notes<a class="headerlink" href="#semantic-query-implementation-notes" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>Limit.n: int | Unset | None</code> — three states (user n / UNSET sentinel = library default 50 000 /
+  None = unlimited), matching the wire trichotomy. <code>offset()</code> without <code>limit()</code> uses UNSET.</li>
+<li><code>predicate_to_filters</code> RAISES <code>CannotCompile(reason)</code> (reason is load-bearing for error
+  messages); <code>try_semantic()</code> returns None on non-match.</li>
+<li><code>compile_plan(plan, *, options: EnvelopeOptions | None)</code> — scans carry their own model/topic
+  identity; options carry session branch/cache/timezone/userId. <code>ExecutionPlan</code>/<code>RemoteStep</code>
+  live in <code>compile/semantic.py</code>, re-exported from <code>compile/__init__</code>.</li>
+<li>The literal's Python type picks the filter arm (no schema at compile time): <code>== "2026-03"</code> is
+  a STRING filter; use <code>date</code>/<code>datetime</code> literals or <code>.grain()</code> for date filters. Date
+  comparisons support only <code>&gt;=</code> (ON_OR_AFTER) and <code>&lt;</code> (BEFORE); <code>&gt;</code>/<code>&lt;=</code> on dates raise
+  CannotCompile.</li>
+<li>No implicit select-*: acting on a frame without <code>select()</code> is a CompileError. Ops above a
+  <code>Limit</code> node (select/filter/sort after <code>.limit()</code>) are CannotCompile in tier 1.</li>
+<li>Topic scans send BOTH <code>table=&lt;base_view&gt;</code> and <code>join_paths_from_topic_name=&lt;topic&gt;</code>; view
+  scans send only <code>table</code> (this also drives the transport's permission hint in 403 mapping).</li>
+<li><code>show(n)</code>/<code>first()</code> suppress TruncationWarning (self-imposed limits); collect/to_pandas/
+  to_arrow/count warn.</li>
+<li>The whoami preflight also guards the first catalog call; <code>catalog.views()</code> derives from
+  topic-detail payloads (no per-view endpoint exists).</li>
+</ul>
+<h3 id="sql-and-stored-query-implementation-notes">SQL and stored-query implementation notes<a class="headerlink" href="#sql-and-stored-query-implementation-notes" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>SqlScan(model_id, sql, model_name="")</code> — the model <strong>name</strong> rides along purely so <code>explain()</code>
+  can print <code>model: &lt;name&gt;</code> next to <code>sql: &lt;raw SQL job&gt;</code>; the wire only ever sees <code>model_id</code>.</li>
+<li><code>SavedQueryScan(document_id, name, query, origin="saved query")</code> — <code>origin</code> tells the two
+  endpoints of CONTRACT_NOTES §4 apart: <code>"saved query"</code> (<code>GET /documents/{id}/queries</code>) and
+  <code>"ask"</code> (<code>POST /ai/generate-query</code>), where <code>document_id</code> instead carries the model the prompt
+  was answered against. It is what <code>explain()</code> renders as <code>saved query: &lt;name&gt; (&lt;doc&gt;)</code> vs.
+  <code>ask("&lt;prompt&gt;")   model: &lt;id&gt;</code>.</li>
+<li><code>SemanticCompilation</code> grew four derived attributes and one override, all in
+  <code>compile/semantic.py</code>:</li>
+<li><code>envelope_query: WireDict | None</code> — a stored query object to put on the wire <strong>verbatim</strong>
+    instead of <code>query.to_wire()</code>. Set for saved queries and <code>session.ask()</code>: omniframes did not
+    write those blobs and re-serializing them would quietly normalize keys it was handed (§4).
+    <code>query</code> then only <em>describes</em> the payload (fields, limit) for <code>explain()</code>.</li>
+<li><code>opaque</code> — the <em>server</em> decides this step's payload (<code>SqlScan</code> / <code>SavedQueryScan</code>). An opaque
+    step is a wall in both directions: nothing pushes into it, nothing above it compiles.</li>
+<li><code>is_sql</code> — omniframes <em>wrote</em> this step's SQL (a tier-2 OmniSQL job). The exact complement
+    of <code>opaque</code>: both put <code>userEditedSQL</code> on the wire, but only this one carries <code>${…}</code> model
+    refs and compiler-chosen output columns, which is why <code>explain()</code> renders them differently.
+    The two are also told apart <em>on the wire</em> by the <code>rewriteSql</code> key: <code>false</code> for the verbatim
+    payload, <strong>absent</strong> for the parsed OmniSQL one (CONTRACT_NOTES §3.5/§3.6).</li>
+<li><code>role</code> — what the step is, for <code>explain()</code> and the truncation warning: <code>"semantic"</code>,
+    <code>"sql"</code>, <code>"raw SQL job"</code>, <code>"saved query"</code> or <code>"generated query"</code>.</li>
+<li><code>RemoteStep.applied_limit</code> — the limit this step actually sends (<code>None</code> = unlimited), read off
+  the <strong>envelope</strong> when <code>envelope_query</code> is set, because there the bytes, not the typed <code>Query</code>
+  that merely describes them, are what the server applies. <code>_warn_if_truncated</code> and the
+  executor's per-step warning both read it. The envelope's <code>limit</code> is a <em>trichotomy</em>, and
+  <code>semantic.envelope_limit</code> decodes all three arms: an int is itself, <code>null</code> is unlimited, and a
+  <strong>key that is absent entirely</strong> — which only a blob omniframes was handed can be — is
+  <code>DEFAULT_SERVER_LIMIT = 1000</code>, the value <code>createQuery</code> fills in (CONTRACT_NOTES §3). Collapsing
+  the absent key into <code>None</code> would print <code>limit: unlimited (null)</code> over a 1000-row truncation and
+  suppress the warning; <code>explain()</code> renders it as <code>1000 (server default — the stored query
+  carries no limit)</code> so the two cases never read alike.</li>
+<li><code>RemoteStep.__post_init__</code> refuses, by construction, to carry <code>userEditedSQL</code> under the wrong
+  reading of <code>rewriteSql</code> — the key the server picks the path from, and the one failure it does
+  not report (CONTRACT_NOTES §3.4/§3.6). It mirrors the compilation's non-wire <code>omnisql</code> flag:
+  a compiled OmniSQL statement must have the key <strong>absent</strong>, anything else must carry
+  <code>rewriteSql: false</code>. Every remote step passes through it, compiled or verbatim, so neither
+  path can reach the transport under the other's marker.</li>
+<li><code>QueryError.statement</code> — the OmniSQL text the server refused, set only when the executor
+  re-reads a <code>Could not substitute Omni SQL</code> job error as omniframes' own emission bug or as
+  model drift (docs/SQLTIER.md §8). <code>compile/executor.remote_errors(step)</code> is the context
+  manager that does it, and it wraps every request a compiled step makes: the DAG walk inside
+  <code>execute()</code>, and <code>dataframe</code>'s single-step <code>collect</code>/<code>schema</code> shortcut. A raw-SQL job's errors
+  pass through untouched — that SQL is the user's own.</li>
+<li><code>TransportError.status: int | None</code> — the HTTP status the failure came from, <code>None</code> for a
+  request that never got an answer. It is the <strong>only</strong> HTTP detail that crosses the transport
+  seam, and it does so as an attribute rather than as text: <code>session.py</code> branches on it to tell
+  the two documented <code>/documents</code> 404s apart and to give <code>generate-query</code>'s 400/402 their own
+  advice (§4), and recovering it by re-reading the message would make the wording load-bearing.</li>
+</ul>
+<h2 id="3-wire-names">3. Wire names<a class="headerlink" href="#3-wire-names" title="Permanent link">&para;</a></h2>
+<p><code>wire_name(expr) -&gt; str</code> (in <code>compile/semantic.py</code>):
+- <code>FieldRef("v.c")</code> → <code>"v.c"</code>; with grain → <code>"v.c[month]"</code>
+- <code>MeasureRef("v.m")</code> → <code>"v.m"</code>
+- <code>AdHocAgg(SUM, v.c)</code> → display name <code>"sum(v.c)"</code> — has NO wire name (never tier 1).
+Result columns arrive under wire names; <code>normalize(aliases=...)</code> renames to aliases last.</p>
+<h2 id="4-compile-pipeline-compile">4. Compile pipeline (<code>compile/</code>)<a class="headerlink" href="#4-compile-pipeline-compile" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>split(plan: PlanNode, *, options: SplitOptions | None = None) -&gt; ExecutionPlan
+</code></pre></div>
+<ul>
+<li>DataFrame actions call <code>splitter.split</code>. At each node it tries <code>try_semantic</code>, then
+  <code>try_sql</code>, and finally local execution or aggregate decomposition. A successful remote
+  compilation holds a <code>querymodel.Query</code>, alias map, and projected column order.</li>
+<li><code>semantic.py</code> implements <code>try_semantic(plan) -&gt; SemanticCompilation | None</code>; unsupported
+  shapes return <code>None</code>, while invalid plans raise <code>CompileError</code>. Its separate <code>compile_plan</code>
+  helper builds a single remote plan and raises on unsupported shapes instead of invoking
+  the splitter. It is not the DataFrame's three-tier entry point.</li>
+<li><code>predicate_to_filters(expr) -&gt; dict[str, Filter]</code> normalizes tier-1 predicates: top-level
+  AND splits per field; per-field OR becomes a composite; the grain-filter rule (DESIGN §3)
+  applies. Governed measure filters compile to HAVING in tier 1. Cross-field OR, arithmetic,
+  and filters over ad-hoc aggregates require SQL or local execution.</li>
+<li>Limit policy: user Limit(n) → n; absent → <code>DEFAULT_FETCH_LIMIT = 50_000</code>
+  (defined in <code>compile/querymodel.py</code>); Limit(None) → wire null. Local aggregation inputs
+  use the separate unlimited-by-default decomposition policy (HYBRID §2.1).</li>
+<li><code>ExecutionPlan</code> (defined in <code>compile/semantic.py</code>, re-exported by <code>compile/__init__.py</code>)
+  contains remote steps and an optional DAG root of <code>RemoteStep</code>/<code>LocalStep</code> nodes. A single
+  remote query has <code>root=None</code>. <code>explain_text</code> in <code>compile/explain.py</code> renders the execution:</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>== Physical plan ==
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>Remote [tier 1 · semantic → POST /api/v1/query/run]
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  topic: order_items   model: bench_ecommerce
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  fields: [...]
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  filters: users.state = &#39;California&#39; AND NOT order_items.returned
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>  sort: ...   limit: ...   version: 9
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>Local [pandas]
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>  (none — fully pushed down)
+</code></pre></div>
+<h2 id="5-sessioncatalog">5. Session/catalog<a class="headerlink" href="#5-sessioncatalog" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>OmniSession.builder</code> → <code>SessionBuilder</code>: <code>.host(str)</code> / <code>.base_url(str)</code>, <code>.api_key(str)</code>,
+  <code>.api_key_from_env()</code> (OMNI_API_KEY), <code>.branch(str)</code>, <code>.timezone(str)</code>, <code>.cache(str)</code>,
+  <code>.user_id(str)</code>, <code>.rate_limit_wait(float)</code> (per-GET 429 waiting budget),
+  <code>.transport(QueryTransport)</code> (injection for tests), <code>.get_or_create()</code>.
+  No network I/O. <code>session.verify()</code> runs whoami eagerly; otherwise the first action triggers a
+  cached whoami preflight for crisp errors.</li>
+<li><code>session.catalog</code>: <code>models()</code> (paginate all), <code>model(name_or_id)</code> (one exact-match filtered
+  request — <code>?modelId=</code> for a UUID, else <code>?name=</code>; the cursor walk is only the fallback that
+  builds the error's model list), <code>topics(model)</code>, <code>topic(model, name)</code> (full metadata → typed
+  <code>TopicInfo</code> with views/fields/relationships), <code>views(model)</code> (typed, topic-scoped, <code>1+N_topics</code>
+  requests), <code>view_names(model)</code> (flattened <code>/view</code>, one request, composed-model scope). All
+  read-through-cache; <code>refresh()</code> clears. Filtered resolutions cache separately from <code>models()</code>,
+  so a cheap lookup never masquerades as the complete catalog.</li>
+<li><code>session.read.topic(model, topic)</code> / <code>read.view(model, view)</code> → DataFrame(Scan). Resolution of
+  model name and topic existence happens at read time (one catalog call; clear error naming the
+  model/topic). Both are three requests on a cold session — whoami, the filtered model lookup,
+  and one list call — independent of catalog and topic count. <code>df.schema</code> → <code>session._transport.plan(...)</code> cached on the DataFrame instance.</li>
+<li>Actions: <code>collect() -&gt; pa.Table</code> (normalized), <code>to_pandas()</code>, <code>to_arrow()</code>, <code>show(n=20)</code>,
+  <code>count()</code>, <code>first()</code>, <code>explain(analyze=False)</code>, <code>omni_url()</code>. <code>with_totals()</code> marks a frame
+  for server-side totals and remains lazy.
+  Truncation warning per DESIGN §3.</li>
+</ul>
+<h2 id="6-testing-interfaces">6. Testing interfaces<a class="headerlink" href="#6-testing-interfaces" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Fake wiring: <code>HttpTransport(base_url="https://bench.omniapp.co", api_key=BENCH_KEY,
+  client=httpx.Client(transport=httpx.MockTransport(FakeOmniAPI()), base_url=...))</code>.</li>
+<li>Golden tests build DataFrames against a <strong>stub catalog</strong> (no I/O): construct scans directly or
+  stub the transport's catalog responses with the fake's payloads.</li>
+<li>Differential lane: run the same logical ops via (a) the full pipeline against the fake
+  and (b) pure pandas over <code>tests/data/bench/*.parquet</code>, compare with the comparator rules
+  (DESIGN §5).</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Apache-2.0
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.instant", "navigation.tracking", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
