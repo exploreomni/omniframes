@@ -31,17 +31,8 @@ Initial release.
   truthiness), so an unverified `records[0]` would silently resolve an arbitrary model. A miss
   against an already-cached catalog is answered from the cache instead of re-asking the server.
 
-- **Breaking, custom transports only:** `QueryTransport` gains a required `list_views(model_id)`
-  member. `Protocol` is not runtime-checked, so a transport injected through
-  `SessionBuilder.transport(...)` that predates this release still constructs and only fails at
-  the first `read.view(...)`, with a bare `AttributeError`. `mypy` catches it; nothing else will.
-  There is no fallback to the old topic-detail path — that path is the `1 + N_topics` fan-out
-  this release exists to remove.
-
-- **Behavior change:** `read.view(...)` now accepts any view in the composed model, including
-  views no topic reaches, and `hidden` ones (the server filters neither out of the flattened
-  list). Bare views are read outside any topic, so the old topic-reachability gate contradicted
-  the method's contract; the accepted set strictly widens.
+- `read.view(...)` accepts any view in the composed model, including hidden views and views
+  that no topic reaches.
 
 - Lazy, immutable PySpark-style `DataFrame` API over Omni's semantic layer
   (`OmniSession`, `read.topic` / `read.view` / `read.sql` / `read.saved_query`, `session.ask`).
@@ -50,10 +41,6 @@ Initial release.
   execution (tier 3) — with `explain()` showing exactly what runs where. A tier-2 statement
   refers to the model directly (`FROM ${base_view}`, `${view.field}`, `${view.measure}`), so an
   `agg()` mixing governed measures with ad-hoc aggregations is a single request.
-- Removed before the first release, with the tier-2 mechanism they belonged to: the
-  `SessionBuilder.sql_dialect(...)` knob and the refusal to push a filter value containing a
-  backslash. Omni parses the statement and re-renders it in the warehouse's own dialect, so
-  neither had anything left to do (docs/SQLTIER.md §6).
 - A formatted time grain arrives as a timestamp, not as the model's display string: Omni returns
   both, and omniframes keeps the raw value under the plain column name (docs/SQLTIER.md §5).
 - Governed measures, time grains, measure filters (HAVING), column totals, cross-frame joins
@@ -76,13 +63,6 @@ Initial release.
   `a - b / c`. SQLGlot prints the tree it is handed and never re-derives precedence, so the
   parens are now nodes; without them the warehouse answered by its own precedence and tiers 2
   and 3 disagreed on the same frame.
-
-### Migration from development snapshots
-
-- **Breaking:** direct callers of `compile_sql(...)` and `try_sql(...)` must remove the
-  unused `options=` argument. ([#14](https://github.com/exploreomni/omniframes/pull/14))
-- Custom transports must implement `list_views(model_id)` before using `read.view(...)`.
-  Remove calls to the retired `SessionBuilder.sql_dialect(...)` method.
 
 ### Additional fixes and examples
 
