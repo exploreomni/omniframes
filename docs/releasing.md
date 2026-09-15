@@ -106,3 +106,34 @@ separate Omni Integration workflow beforehand when the changes warrant live veri
 
 Manual dispatch always validates/builds only, even when targeting an existing release tag. It is
 not a way to bypass the explicit tag-push publishing trigger.
+
+## Publishing documentation
+
+The [docs site](https://exploreomni.github.io/omniframes/) uses mike to retain multiple versions,
+with a version selector in the header:
+
+- `latest` follows `main` and is the default landing page once published.
+- Release tags such as `v0.1.0` publish to `0.1.0/`. Prereleases get their own version as well.
+- Publishing one version preserves the others on the generated `gh-pages` branch.
+
+The **Publish docs** workflow (`.github/workflows/docs.yml`) builds strictly, saves the versioned
+site to `gh-pages`, and deploys it through GitHub Pages. PRs only build docs in CI. Tag-triggered
+docs publication is independent of the PyPI upload; a docs version does not prove package
+publication succeeded. Concurrent docs updates are serialized. If a queued run is superseded,
+rerun the workflow for that release tag to publish the missing version.
+
+To retry or backfill docs for an existing release, run **Publish docs** on `main` and enter its
+`release_tag`, for example `v0.1.0`. Leave the input blank to rebuild `latest`. Backfills use the
+current workflow's locked documentation tools with the tagged source, docs, and theme. A small
+inherited config enables the selector for releases predating versioning. Historical docs must
+still pass the strict build with those tools. Rebuilding a version replaces only that version.
+
+Repository setup: select **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+The `github-pages` environment allows branch `main` and tags `v*`. The build job needs
+`contents: write` to save generated versions; the deployment job uses `pages: write` and
+`id-token: write`. No personal token or PyPI credentials are needed. Do not hand-edit `gh-pages`.
+
+PyPI displays `README.md` and the `Documentation` link from `pyproject.toml` as package metadata.
+Those update with the next package release; deploying the docs does not upload a new package or
+change metadata for an existing PyPI release. Keep `mkdocs.yml`'s `site_url`, the package's
+`Documentation` URL, and README links aligned if the site moves.
