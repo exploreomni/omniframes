@@ -55,11 +55,11 @@ from tests.fakes import (
     no_such_view,
 )
 
-BASE_URL = "https://bench.example.omni.co"
+BASE_URL = "https://bench.omniapp.co"
 BENCH_DIR = Path(__file__).resolve().parents[1] / "data" / "bench"
 OTHER_MODEL_ID = "11111111-2222-4333-8444-555555555555"
 
-#: The six governed measures of the bench model (docs/bench_omni_model.md §5).
+#: The six governed measures of the bench model (internal-docs/bench_omni_model.md §5).
 TOTAL_SALE_PRICE = "order_items.total_sale_price"
 ORDER_ITEMS_COUNT = "order_items.count"
 TOTAL_QUANTITY = "order_items.total_quantity"
@@ -197,7 +197,7 @@ NO_REWRITE_MARKERS: dict[str, dict[str, Any]] = {
 
 #: A raw-SQL query written against the fake's **warehouse schema**: the three bench tables are
 #: registered in DuckDB under their bare names, with no schema qualifier
-#: (docs/bench_omni_model.md §1 / :mod:`tests.fakes.sqljobs`).
+#: (internal-docs/bench_omni_model.md §1 / :mod:`tests.fakes.sqljobs`).
 REVENUE_SQL = (
     "SELECT u.state AS state,\n"
     "       SUM(oi.sale_price) AS total_sale_price,\n"
@@ -961,7 +961,7 @@ def test_relative_date_literals_are_refused_rather_than_guessed(client: httpx.Cl
 
 
 # --------------------------------------------------------------------------------------
-# Governed measures (docs/bench_omni_model.md §5; grouping semantics per DESIGN.md §2)
+# Governed measures (internal-docs/bench_omni_model.md §5; grouping semantics per DESIGN.md §2)
 # --------------------------------------------------------------------------------------
 
 
@@ -1723,7 +1723,7 @@ def test_column_totals_append_a_grand_total_row(
 
 
 def test_column_totals_are_pre_limit(client: httpx.Client, known_answers: dict[str, Any]) -> None:
-    """The totals row aggregates the post-filter, PRE-limit rows (docs/bench_omni_model.md)."""
+    """The totals row aggregates the post-filter, PRE-limit rows (internal-docs/bench_omni_model.md)."""
     expected = one_answer(known_answers, "grand_totals")
     returned = rows(
         run(
@@ -2257,7 +2257,7 @@ def test_workbook_url_is_echoed_as_a_response_header(client: httpx.Client) -> No
     assert job.status is JobStatus.COMPLETE, job.error_message
     assert job.result is not None, "the rows still come back; the header rides alongside them"
     assert response.headers[WORKBOOK_URL_HEADER] == (
-        f"https://bench.example.omni.co/w/fake/{job.job_id}"
+        f"https://bench.omniapp.co/w/fake/{job.job_id}"
     )
 
 
@@ -2587,7 +2587,7 @@ def test_a_field_name_outside_the_model_charset_never_reaches_the_statement(
         ),
         pytest.param(
             "SELECT ${users.state} FROM ${order_items} oi",
-            "an alias on the ${topic} reference is not modeled",
+            "an alias on the ${view} reference is not modeled",
             id="aliased-from",
         ),
         pytest.param(
@@ -2755,7 +2755,7 @@ def test_the_document_map_is_configurable() -> None:
         id="q_states",
         name="Just states",
         query=bench_query(fields=["users.state"]),
-        url="https://bench.example.omni.co/dashboards/deck/q_states",
+        url="https://bench.omniapp.co/dashboards/deck/q_states",
     )
     fake = FakeOmniAPI(documents={"deck": (saved,)})
     with make_client(fake) as client:

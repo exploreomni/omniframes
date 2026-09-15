@@ -9,7 +9,7 @@ the exchange is unchanged: the same NDJSON framing, the same base64 Arrow ``resu
 registered under their **bare** names — ``users``, ``products`` and ``order_items`` — with no
 schema qualifier, so ``SELECT ... FROM order_items oi LEFT JOIN users u ON u.id = oi.user_id``
 is the shape a tier-2 query takes offline.  A live org puts them behind whatever schema the
-connection uses (``OMNIFRAMES_BENCH`` in docs/bench_omni_model.md §1), so a SQL string that must
+connection uses (``OMNIFRAMES_BENCH`` in internal-docs/bench_omni_model.md §1), so a SQL string that must
 run in both lanes has to be schema-qualified by the caller, not by the fake.
 
 Three server behaviors are reproduced literally because they are the ones that bite clients:

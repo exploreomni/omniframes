@@ -14,8 +14,8 @@ tests/data/bench/             # checked-in artifacts at scale=1
   products.parquet / products.csv
   order_items.parquet / order_items.csv
   known_answers.json          # precomputed aggregate results (DuckDB) for known-answer tests
-docs/BENCH_DATASET.md         # this spec
-docs/bench_omni_model.md      # Omni model/topic YAML sketch for the live org (M0e output)
+internal-docs/BENCH_DATASET.md         # this spec
+internal-docs/bench_omni_model.md      # Omni model/topic YAML sketch for the live org (M0e output)
 ```
 
 Regenerate with `uv run python tools/bench/generate.py` (add `--scale N` for larger live loads —

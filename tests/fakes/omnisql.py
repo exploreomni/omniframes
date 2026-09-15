@@ -6,7 +6,7 @@ caller's SQL verbatim nor ignores it: the server parses the text as *OmniSQL*, b
 relationships pruned to the views the statement mentions, measures expanded to their governed
 SQL.  This module is that path, executed offline over the bench dataset:
 
-* ``${topic}`` in FROM position → the bench base table plus the topic's LEFT JOINs, pruned;
+* ``${base_view}`` in FROM position → the bench base table plus the topic's LEFT JOINs, pruned;
 * ``${view.field}`` → the qualified DuckDB column, ``${view.field[grain]}`` → its ``date_trunc``
   (plus the §2.7 formatted sidecar when the grain is formatted);
 * ``${view.measure}`` → the measure's aggregate expression from the bench model.
@@ -85,7 +85,7 @@ _FIELD_REFERENCE = re.compile(
     r"^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*(\[[A-Za-z0-9_]+\])?$"
 )
 
-#: A resolvable topic/view reference (FROM position).
+#: A resolvable view reference (FROM position).
 _VIEW_REFERENCE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 #: Query-object keys that have no meaning on the parsed path.  The statement IS the plan, so the
@@ -154,7 +154,7 @@ class _Ref:
 
     sentinel: str
     text: str
-    #: The model field for a ``${view.field}`` reference; ``None`` for a topic/view reference.
+    #: The model field for a ``${view.field}`` reference; ``None`` for a view reference.
     field: ResolvedField | None = None
 
 
@@ -335,17 +335,17 @@ def _bind(refs: dict[str, _Ref], engine: BenchEngine) -> None:
 
 
 def _from_view(statement: exp.Select, refs: Mapping[str, _Ref], engine: BenchEngine) -> str:
-    """The base view the statement selects from — a ``${topic}`` / ``${view}`` reference (§3.6)."""
+    """The base view the statement selects from — a ``${view}`` reference (§3.6)."""
     source = statement.find(exp.From)
     table = None if source is None else source.this
     if not isinstance(table, exp.Table):
         raise PlanFailure(
-            f"{REJECTION}: the FROM target of an OmniSQL statement is a ${{topic}} reference "
+            f"{REJECTION}: the FROM target of an OmniSQL statement is a ${{view}} reference "
             "(CONTRACT_NOTES §3.6); FakeOmniAPI does not model a bare warehouse table here"
         )
     if table.args.get("alias"):
         raise PlanFailure(
-            f"{REJECTION}: an alias on the ${{topic}} reference is not modeled — a model ref is "
+            f"{REJECTION}: an alias on the ${{view}} reference is not modeled — a model ref is "
             "already fully qualified"
         )
     ref = refs.get(table.name)
@@ -354,13 +354,13 @@ def _from_view(statement: exp.Select, refs: Mapping[str, _Ref], engine: BenchEng
     if ref.field is not None:
         raise PlanFailure(no_such_view(ref.text))
     topic = engine.topic
-    if ref.text in {topic.name, topic.base_view_name}:
+    if ref.text == topic.base_view_name:
         return topic.base_view_name
     if topic.view(ref.text) is not None:
         raise PlanFailure(
             f"{REJECTION}: FakeOmniAPI serves the {topic.name!r} topic's join graph rooted at "
-            f"{topic.base_view_name!r}; FROM ${{{ref.text}}} would need a different root, and the "
-            "topic-vs-view precedence is unverified (CONTRACT_NOTES §6 item 11)"
+            f"{topic.base_view_name!r}; FROM ${{{ref.text}}} would need a different root, which "
+            "this fake does not implement"
         )
     raise PlanFailure(no_such_view(ref.text))
 
@@ -564,7 +564,7 @@ def _summary_fields(outputs: Sequence[_Output], schema: pa.Schema) -> dict[str, 
 
     A bare-ref column reports the model's own metadata (label, ``date_type``, ``aggregate_type``);
     an expression column is synthesized, a dimension unless it aggregates.  ``sql`` is blank
-    throughout, exactly as on the verbatim path (docs/bench_omni_model.md §6.2): the fake does not
+    throughout, exactly as on the verbatim path (internal-docs/bench_omni_model.md §6.2): the fake does not
     model per-column SQL redaction on a SQL job.
     """
     types = {name: schema.field(name).type for name in schema.names}

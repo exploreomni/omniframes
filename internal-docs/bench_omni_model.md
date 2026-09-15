@@ -5,8 +5,8 @@ suite and the live probe (`scripts/live_smoke.py`):** `tests/fakes/` serves exac
 written against the FakeOmniAPI must hold verbatim against the live org. If the live model has to
 deviate, change `tests/fakes/bench_model.py` and this document in the same commit.
 
-Companion docs: [BENCH_DATASET.md](BENCH_DATASET.md) (the data), [CONTRACT_NOTES.md](CONTRACT_NOTES.md)
-(the wire), [DESIGN.md](DESIGN.md) §5 (the test lanes).
+Companion docs: [BENCH_DATASET.md](BENCH_DATASET.md) (the data), [CONTRACT_NOTES.md](../docs/CONTRACT_NOTES.md)
+(the wire), [DESIGN.md](../docs/DESIGN.md) §5 (the test lanes).
 
 ---
 

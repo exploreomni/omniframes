@@ -12,7 +12,7 @@ everything else predictable. Read it once and the API stops surprising you.
 import omniframes as of
 from omniframes import functions as F
 
-session = of.OmniSession.builder.host("acme.omni.co").api_key_from_env().get_or_create()
+session = of.OmniSession.builder.host("acme.omniapp.co").api_key_from_env().get_or_create()
 orders = session.read.topic("ecommerce", "order_items")
 ```
 

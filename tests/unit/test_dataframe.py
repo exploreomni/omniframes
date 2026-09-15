@@ -35,7 +35,7 @@ from omniframes.session import OmniSession
 from omniframes.transport import HttpTransport
 from omniframes.types import OmniDataType
 
-BASE_URL = "https://bench.example.omni.co"
+BASE_URL = "https://bench.omniapp.co"
 SCAN = Scan(
     TopicScan(
         model_name=BENCH_MODEL_NAME,

@@ -1,6 +1,8 @@
 name: Omni Integration
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
   schedule:
     - cron: "0 7 * * *"
@@ -9,7 +11,7 @@ on:
 permissions:
   contents: read
 
-# Avoid overlapping scheduled/manual runs against the shared integration model.
+# Avoid overlapping runs against the shared integration model.
 concurrency:
   group: omni-integration-${{ github.workflow }}
   cancel-in-progress: false

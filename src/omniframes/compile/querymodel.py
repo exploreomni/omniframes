@@ -730,7 +730,7 @@ class Query:
         """Build a tier-2 OmniSQL job — one statement the server parses against the model (§3.6).
 
         ``rewriteSql`` stays **absent** (not ``False``): that is what selects the parsed path,
-        where ``${view.field}`` / ``${topic}`` refs resolve, measures expand to their governed
+        where ``${view.field}`` / ``${view}`` refs resolve, measures expand to their governed
         SQL and row-level policies apply.  No ``staticQueryReferences``, no ``sqlSortsEnabled``
         — the statement is the whole plan, and the signature has no seam for either.
 
