@@ -30,7 +30,7 @@ the remote portion:
   group-by (Omni semantics); `group_by().agg()` is sugar compiled identically.
 - **Tier 2 — OmniSQL job**. ONE SQLGlot-built statement sent as `userEditedSQL` with the
   `rewriteSql` key **absent**, which is what makes the server parse it as OmniSQL and plan it as
-  a governed model job: `${topic}` in FROM brings the topic's join graph, `${view.field}` and
+  a governed model job: `${base_view}` in FROM resolves the catalog-provided view against the model, `${view.field}` and
   `${view.measure}` resolve against the model (measures expand to their governed SQL), and
   row-level policies apply. No `staticQueryReferences`, no reference core, no second query
   object — the statement *is* the plan. Covers: ad-hoc aggregations over raw columns,

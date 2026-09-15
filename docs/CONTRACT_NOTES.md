@@ -316,7 +316,7 @@ OmniSQL substitution (`No such view "<key>"`). There is no server mechanism for 
   (`OmniSqlParser.doNotParseRegex`), with no sorts/calcs on the job → **verbatim raw SQL job**:
   the text goes to the warehouse untouched. `staticQueryReferences`, the `filters` map's measure
   entries, and all semantic constructs are ignored on this path.
-- Otherwise the SQL is parsed as **OmniSQL**: `${view}` / `${topic}` in FROM position and
+- Otherwise the SQL is parsed as **OmniSQL**: `${view}` in FROM position and
   `${view.field}` in expressions resolve against the model, and the job is planned as a governed
   model job (parse failure falls back to a raw SQL job via `PlannerFailedException`; an
   unresolvable `${…}` ref is a hard error, not a fallback). Live-confirmed 2026-08-14: plain
@@ -333,13 +333,25 @@ All live-confirmed 2026-08-14 against omni.demo.exploreomni.dev (Postgres connec
 ~20-case probe battery; server-source pins in §3.5. This is the delivery mechanism for tier 2.
 
 **Envelope**: `userEditedSQL: "<omnisql>"` + `modelId`, with `rewriteSql` **absent** (not
-`false`). The server parses the text as OmniSQL and plans a **governed model job**: joins come
-from the topic's relationships (pruned to the views actually referenced), measures expand to
+`false`). The server parses the text as OmniSQL and plans a **governed model job**: joins resolve
+against the model (pruned to the views actually referenced), measures expand to
 their governed SQL, row-level policies apply.
 
 **Reference syntax**:
-- `${topic}` in FROM position — brings the topic's join graph. (`${view}` also resolves; the
-  view-vs-topic precedence when names differ is unverified — Omniframes always names its topic.)
+- `${view}` in FROM position resolves a **view**, not a topic. For a topic scan, Omniframes
+  emits the catalog's `base_view_name`; a topic named `wwi_sales` with base view
+  `wwi_sales_fact` must use `FROM ${wwi_sales_fact}`. Live-confirmed 2026-09-15 by the WWI
+  Querier permission tests (the previous topic-name spelling failed).
+  Source re-verified at monorepo `c7e09003514915d45161c7c81a09143bbc6cedcf`:
+  `services/query-manager/src/main/kotlin/com/omnianalytics/semantics/parse/OmniSqlParser.kt:978-988`
+  (`resolveFromRefForTypeInference`) resolves views unless `enableTopicResolution` is enabled;
+  `services/query-manager/src/main/kotlin/com/omnianalytics/querymanager/QueryManagerService.kt:98`
+  defaults `SqlQueryJobDescription.resolveTopics` to false;
+  `services/query-manager/src/main/kotlin/com/omnianalytics/querymanager/execution/OmniJobPlanner.kt:2963-2969`
+  passes that flag to the parser. This API path does not opt in. The earlier same-name
+  topic/view probe could not distinguish those bindings.
+  Tier 2 therefore uses model-level view/join resolution; this does **not** establish that
+  topic-specific join overrides or topic filters are preserved.
 - `${view.field}` anywhere in an expression: select items, WHERE, HAVING, ORDER BY, function
   args, arithmetic. Bracketed grain refs work: `${order_items.created_at[month]}`.
 - `${view.measure}` — a governed measure ref, expanded server-side (e.g.
@@ -513,9 +525,8 @@ body sections above):
 11. **OmniSQL path residue** (§3.6, probed on one Postgres org only): exact semantics of the
     same-column predicate merge (which side wins, when); whether `GROUP BY` over all columns is
     a safe dedup substitute for the stripped `DISTINCT`; the scoping rule for multi-view
-    expressions beyond first-ref-wins (only one shape tested); topic-vs-view precedence for
-    `FROM ${name}` when a topic and an unrelated view share a name; which permission gates the
-    path (`QUERY_SQL` vs `QUERY_TOPICS`) and behavior on topic-locked orgs; re-verification on
+    expressions beyond first-ref-wins (only one shape tested); topic-specific join overrides and
+    filters on the view-based SQL path; which permission gates the path (`QUERY_SQL` vs `QUERY_TOPICS`) and behavior on topic-locked orgs; re-verification on
     a non-Postgres warehouse.
 12. **Grain `__raw` collapse, live re-verification** (§2.7): the client now keeps the `__raw`
     values under the plain name and drops the formatted column, and FakeOmniAPI emits the pair

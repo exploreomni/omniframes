@@ -38,6 +38,7 @@ from tests.fakes import (
     DEFAULT_TOKEN,
     FakeOmniAPI,
 )
+from tests.fakes.bench_model import BENCH_TOPIC
 
 BASE_URL = "https://bench.omniapp.co"
 BENCH_DIR = Path(__file__).resolve().parents[1] / "data" / "bench"
@@ -99,6 +100,34 @@ def sql_queries(handler: FakeOmniAPI) -> list[Mapping[str, Any]]:
 # --------------------------------------------------------------------------------------
 # The answers (tests/data/bench/known_answers.json)
 # --------------------------------------------------------------------------------------
+
+
+def test_distinct_topic_name_resolves_to_a_view_for_sql(known_answers: dict[str, Any]) -> None:
+    topic = replace(BENCH_TOPIC, name="sales_topic")
+    fake = FakeOmniAPI(topic=topic)
+    try:
+        with httpx.Client(transport=httpx.MockTransport(fake), base_url=BASE_URL) as client:
+            transport = HttpTransport(base_url=BASE_URL, api_key=DEFAULT_TOKEN, client=client)
+            with OmniSession.builder.transport(transport).get_or_create() as session:
+                orders = session.read.topic(BENCH_MODEL_NAME, topic.name)
+                test_revenue_by_state_as_an_ad_hoc_aggregate_matches_the_known_answers(
+                    orders, fake, known_answers
+                )
+                assert "FROM ${order_items}" in sql_queries(fake)[0]["userEditedSQL"]
+                # The fake must reject the original bug, not silently translate a topic to a view.
+                with pytest.raises(QueryError, match='No such view "sales_topic"'):
+                    transport.run(
+                        {
+                            "query": {
+                                "modelId": BENCH_MODEL_ID,
+                                "fields": [],
+                                "limit": 1,
+                                "userEditedSQL": "SELECT ${order_items.id} FROM ${sales_topic} LIMIT 1",
+                            }
+                        }
+                    )
+    finally:
+        fake.close()
 
 
 def test_revenue_by_state_as_an_ad_hoc_aggregate_matches_the_known_answers(
@@ -447,7 +476,7 @@ def test_a_field_the_model_cannot_bind_is_reported_as_omniframes_own_sql(
     assert "${users.retired_column}" in error.statement
 
 
-def test_a_topic_the_model_cannot_bind_names_the_view(session: OmniSession) -> None:
+def test_a_topic_base_view_the_model_cannot_bind_names_the_view(session: OmniSession) -> None:
     """The FROM arm of the same error.  Built off a scan node, because ``read.topic`` checks."""
     frame = DataFrame(
         session,
@@ -455,13 +484,13 @@ def test_a_topic_the_model_cannot_bind_names_the_view(session: OmniSession) -> N
             nodes.TopicScan(
                 model_name=BENCH_MODEL_NAME,
                 model_id=BENCH_MODEL_ID,
-                topic="retired_topic",
-                base_view="order_items",
+                topic="sales_topic",
+                base_view="retired_view",
             )
         ),
     )
 
-    with pytest.raises(QueryError, match="no view 'retired_topic'"):
+    with pytest.raises(QueryError, match="no view 'retired_view'"):
         frame.group_by(STATE).agg(F.count_distinct(BUYER)).collect()
 
 

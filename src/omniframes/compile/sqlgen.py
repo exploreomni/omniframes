@@ -8,7 +8,7 @@ expression, a governed measure sitting next to an ad-hoc aggregate, a ``HAVING``
 
 A tier-2 job is **one OmniSQL statement**: ``userEditedSQL`` with ``rewriteSql`` *absent*, which
 is what makes the server parse the text against the model rather than hand it to the warehouse
-(CONTRACT_NOTES §3.5/§3.6).  Joins come from the topic's relationships, ``${view.measure}``
+(CONTRACT_NOTES §3.5/§3.6).  Joins resolve against the model, ``${view.measure}``
 expands to its governed SQL, row-level policies apply — the statement *is* the governed plan::
 
     SELECT ${users.state}, ${order_items.sale_price_sum},
@@ -140,7 +140,7 @@ _SENTINEL: Final = re.compile(r"__OF_REF_\d+__")
 #: Anything else refuses to tier 3 rather than becoming text inside the statement.
 _REF_CHARSET: Final = re.compile(r"^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)?(\[[A-Za-z0-9_]+\])?$")
 
-#: What a ``FROM ${…}`` target may contain — a topic or view name, so the first group alone.
+#: What a ``FROM ${…}`` target may contain — a view name, so the first group alone.
 _SOURCE_CHARSET: Final = re.compile(r"^[A-Za-z0-9_]+$")
 
 _AGGREGATES: Final[Mapping[AggFn, type[exp.AggFunc]]] = {
@@ -196,7 +196,7 @@ class _References:
         return exp.column(self._sentinel(name, _REF_CHARSET, "field"), quoted=False)
 
     def source(self, name: str) -> exp.Expr:
-        """The sqlglot table standing in for ``FROM ${name}`` — a topic, or a bare view."""
+        """The sqlglot table standing in for ``FROM ${name}`` — a model view."""
         return exp.to_table(self._sentinel(name, _SOURCE_CHARSET, "topic/view"))
 
     def _sentinel(self, name: str, charset: re.Pattern[str], kind: str) -> str:
@@ -795,9 +795,11 @@ def _model_id(source: nodes.ScanSource) -> str:
 
 
 def _from_ref(source: nodes.ScanSource) -> str:
-    """The ``FROM ${…}`` target: the topic (which brings its join graph), or a bare view."""
+    """Resolve FROM to a model view; this API path does not resolve topic names (§3.6)."""
     if isinstance(source, nodes.TopicScan):
-        return source.topic
+        if not source.base_view:
+            raise CannotCompile("a tier-2 topic scan needs its catalog-resolved base view")
+        return source.base_view
     if isinstance(source, nodes.ViewScan):
         return source.view
     raise CannotCompile(f"{type(source).__name__} has no OmniSQL FROM reference")
