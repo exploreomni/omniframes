@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.1 (2026-09-15)
+
+- Point PyPI's Documentation link and README guide links to the published Omniframes docs.
+- Publish versioned documentation on GitHub Pages: `stable` follows the newest stable release,
+  `dev` follows `main`, and individual release versions remain available in the version selector.
+- Add manual backfills for existing release tags, with safeguards against older releases or
+  prereleases replacing the stable documentation.
+
+No library API or runtime behavior changes.
+
+**Full Changelog**: https://github.com/exploreomni/omniframes/compare/v0.1.0...v0.1.1
+
 ## 0.1.0 (2026-09-15)
 
 Initial release.
