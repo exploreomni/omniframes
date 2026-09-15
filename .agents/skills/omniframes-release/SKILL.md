@@ -110,6 +110,11 @@ already authorized publishing this version, proceed when the checks pass without
 - Follow the run for that tag and commit through PyPI upload and GitHub Release creation. Report
   the tag, commit, workflow result, and verified PyPI/GitHub Release links. Report partial success
   explicitly; a successful build alone is not a published release.
+- Follow the separate **Publish docs** run dispatched on `main` with the release tag after
+  publication. A successful Release docs job only confirms dispatch, not deployment. Verify the
+  live version page and `stable` alias before reporting docs as published. If dispatch or docs
+  deployment fails, retry only that stage or manually dispatch `docs.yml` on `main` with
+  `release_tag=VERSION_TAG`; do not rerun a successful PyPI upload.
 
 ## Recover a failed release
 

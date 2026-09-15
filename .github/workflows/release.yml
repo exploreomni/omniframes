@@ -109,3 +109,19 @@ jobs:
           fi
           gh release upload "$RELEASE_TAG" dist/* --clobber
           gh release edit "$RELEASE_TAG" --draft=false
+
+  docs:
+    needs: github-release
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      # Tag-based Pages deployments can reuse the earlier main deployment for the same SHA.
+      # Dispatch on main while building the tagged docs through the existing backfill input.
+      - name: Dispatch release documentation from main
+        run: gh workflow run docs.yml --ref main -f release_tag="$RELEASE_TAG"
