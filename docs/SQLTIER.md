@@ -29,7 +29,7 @@ node. Shapes `try_sql` accepts:
 
 | Shape (logical plan) | OmniSQL rendering |
 |---|---|
-| `Aggregate(keys=dims/grains, aggs=ad-hoc and/or MEASURES)` | `SELECT ${key}…, ${measure}…, AGG(${field}) AS a_n FROM ${topic} GROUP BY 1…k` |
+| `Aggregate(keys=dims/grains, aggs=ad-hoc and/or MEASURES)` | `SELECT ${key}…, ${measure}…, AGG(${field}) AS a_n FROM ${base_view} GROUP BY 1…k` |
 | Tier-1-incompatible `Filter` below the aggregate (cross-field OR, arithmetic, string-pred mixes) — AND every tier-1-compilable filter that used to ride the reference core | `WHERE`, one conjunct per underlying column (§3.3) |
 | `Filter` above the aggregate over ad-hoc agg or MEASURE outputs | `HAVING` with the ad-hoc aggregate substituted inline (verified P5b) or the `${measure}` ref expanded server-side (CONTRACT_NOTES §3.6) |
 | `Project`/`WithColumn` computed columns | select-list expressions `AS <alias>` |
@@ -232,7 +232,7 @@ Verbatim `read.sql()` remains the caller's responsibility for dialect portabilit
 `tests/fakes/omnisql.py` is dispatched from the sql_job handler when `rewrite_sql` is
 absent (verbatim path with `rewrite_sql: false` keeps its current handler):
 
-- Substitute `${topic}` → the bench base table with LEFT JOINs from the bench relationships,
+- Substitute `${base_view}` → the bench base table with LEFT JOINs from the bench relationships,
   pruned to the views the statement references (mirrors P1/P7 join pruning).
   `${view.field}` → qualified DuckDB column; `${view.field[grain]}` → `DATE_TRUNC` expression
   (+ the month-format pair per §5); `${view.measure}` → the measure's SQL from the bench

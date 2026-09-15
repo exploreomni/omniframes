@@ -2711,7 +2711,7 @@ def test_a_field_name_outside_the_model_charset_never_reaches_the_statement(
         ),
         pytest.param(
             "SELECT ${users.state} FROM ${order_items} oi",
-            "an alias on the ${topic} reference is not modeled",
+            "an alias on the ${view} reference is not modeled",
             id="aliased-from",
         ),
         pytest.param(
