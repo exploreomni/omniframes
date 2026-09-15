@@ -892,7 +892,8 @@ one wheel and one source distribution, validates metadata, and installs each out
 in a fresh environment to check runtime version, installed metadata, and <code>py.typed</code>.</p>
 <p>The publish job uploads those saved artifacts using PyPI Trusted Publishing. After success, a
 separate job creates a draft GitHub Release, attaches the same files, and publishes it using the
-reviewed changelog text. Prereleases are marked accordingly. Per-tag concurrency prevents
+reviewed changelog text. A final job dispatches <strong>Publish docs</strong> on <code>main</code> with the release tag.
+That docs run is asynchronous; verify it and the live version page separately. Prereleases are marked accordingly. Per-tag concurrency prevents
 simultaneous publication runs. No live Omni credentials are required for release checks; run the
 separate Omni Integration workflow beforehand when the changes warrant live verification.</p>
 <h2 id="failed-releases-and-retries">Failed releases and retries<a class="headerlink" href="#failed-releases-and-retries" title="Permanent link">&para;</a></h2>
@@ -910,6 +911,9 @@ separate Omni Integration workflow beforehand when the changes warrant live veri
   an existing draft, replaces its draft attachments, and leaves an already published release
   intact. Do not rerun the successful upload job. If artifacts have expired, retrieve and verify
   the published PyPI distributions before manually completing the GitHub Release.</li>
+<li><strong>Docs dispatch or deployment failure:</strong> the package is already published. Retry only the
+  failed dispatch job, or run <strong>Publish docs</strong> on <code>main</code> with the release tag. Do not rerun the
+  PyPI upload. A successful dispatch only means the docs run was scheduled.</li>
 <li><strong>Bad published code:</strong> ship a new version and consider yanking the bad release; do not delete
   or recreate its Git tag.</li>
 </ul>
@@ -927,17 +931,24 @@ with a version selector in the header:</p>
 <li>Prereleases never become <code>stable</code>; backfilling an older release cannot move <code>stable</code> backwards.</li>
 </ul>
 <p>The <strong>Publish docs</strong> workflow (<code>.github/workflows/docs.yml</code>) builds strictly, saves the versioned
-site to <code>gh-pages</code>, and deploys it through GitHub Pages. PRs only build docs in CI. Tag-triggered
-docs publication is independent of the PyPI upload; a docs version does not prove package
-publication succeeded. Concurrent docs updates are serialized. If a queued run is superseded,
-rerun the workflow for that release tag to publish the missing version.</p>
+site to <code>gh-pages</code>, and deploys it through GitHub Pages. Pushes to <code>main</code> publish <code>dev</code>; after
+PyPI and GitHub Release publication succeed, the Release workflow dispatches <strong>Publish docs</strong>
+on <code>main</code> with <code>release_tag</code>. Manual Release rehearsals never dispatch docs. PRs only build docs
+in CI. Concurrent docs updates are serialized. If a queued run is superseded, manually dispatch
+the workflow on <code>main</code> with that release tag to publish the missing version.</p>
+<p>Direct tag-triggered docs deployments are intentionally disabled. They can report success while
+serving an earlier artifact for the same commit (see
+<a href="https://github.com/actions/deploy-pages/issues/383">deploy-pages issue #383</a>). Dispatching from
+<code>main</code> uses the recovery path verified for <code>0.1.1</code>, while still building the exact tagged source.
+Check the separate docs run and the live version URL before reporting docs publication complete.</p>
 <p>To retry or backfill docs for an existing release, run <strong>Publish docs</strong> on <code>main</code> and enter its
 <code>release_tag</code>, for example <code>v0.1.0</code>. Leave the input blank to rebuild <code>dev</code>. Backfills use the
 current workflow's locked documentation tools with the tagged source, docs, and theme. A small
 inherited config enables the selector for releases predating versioning. Historical docs must
 still pass the strict build with those tools. Rebuilding a version replaces only that version.</p>
 <p>Repository setup: select <strong>Settings → Pages → Build and deployment → Source: GitHub Actions</strong>.
-The <code>github-pages</code> environment allows branch <code>main</code> and tags <code>v*</code>. The build job needs
+The <code>github-pages</code> environment only needs to allow branch <code>main</code>. The Release workflow’s docs
+dispatch job needs <code>actions: write</code>. The build job needs
 <code>contents: write</code> to save generated versions; the deployment job uses <code>pages: write</code> and
 <code>id-token: write</code>. No personal token or PyPI credentials are needed. Do not hand-edit <code>gh-pages</code>.</p>
 <p>PyPI displays <code>README.md</code> and the <code>Documentation</code> link from <code>pyproject.toml</code> as package metadata.
