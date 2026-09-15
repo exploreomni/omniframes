@@ -48,7 +48,7 @@ Initial release.
 - Three-tier compile chain with a DAG splitter: governed semantic queries (tier 1), one
   generated **OmniSQL** statement planned as a governed model job (tier 2), local Arrow
   execution (tier 3) — with `explain()` showing exactly what runs where. A tier-2 statement
-  refers to the model directly (`FROM ${topic}`, `${view.field}`, `${view.measure}`), so an
+  refers to the model directly (`FROM ${base_view}`, `${view.field}`, `${view.measure}`), so an
   `agg()` mixing governed measures with ad-hoc aggregations is a single request.
 - Removed before the first release, with the tier-2 mechanism they belonged to: the
   `SessionBuilder.sql_dialect(...)` knob and the refusal to push a filter value containing a
@@ -77,34 +77,28 @@ Initial release.
   parens are now nodes; without them the warehouse answered by its own precedence and tiers 2
   and 3 disagreed on the same frame.
 
-<!-- Release notes generated using configuration in .github/release.yml at 42b810f9f52d4947075c37466030544cbb88006c -->
+### Migration from development snapshots
 
-### What's Changed
-#### Features
-* feat(release): automate release preparation and tag publishing by @dspangen in https://github.com/exploreomni/omniframes/pull/11
-#### Documentation
-* docs: refresh beta status and omni styling by @dspangen in https://github.com/exploreomni/omniframes/pull/22
-#### Other changes
-* Recover gracefully from transient WAF 429s during catalog resolution by @dspangen in https://github.com/exploreomni/omniframes/pull/2
-* Parenthesize nested arithmetic in tier-2 SQL by @dspangen in https://github.com/exploreomni/omniframes/pull/3
-* docs(examples): add the marimo guided-tour demo notebook by @dspangen in https://github.com/exploreomni/omniframes/pull/7
-* perf(catalog): resolve models and view names without enumerating by @dspangen in https://github.com/exploreomni/omniframes/pull/6
-* docs: add coding-agent contribution guidelines by @dspangen in https://github.com/exploreomni/omniframes/pull/10
-* feat: add versioned user agent and release safeguards by @dspangen in https://github.com/exploreomni/omniframes/pull/8
-* test: add WWI dual-role integration suite by @dspangen in https://github.com/exploreomni/omniframes/pull/9
-* docs: clarify query grouping and replace milestone references by @dspangen in https://github.com/exploreomni/omniframes/pull/12
-* fix: use omniapp.co for example organization hostnames by @dspangen in https://github.com/exploreomni/omniframes/pull/19
-* docs: move bench specifications into internal repository docs by @dspangen in https://github.com/exploreomni/omniframes/pull/18
-* refactor(catalog): remove unsupported relationship wire fallback by @dspangen in https://github.com/exploreomni/omniframes/pull/15
-* refactor(compile)!: remove redundant traversal and unused options by @dspangen in https://github.com/exploreomni/omniframes/pull/14
-* fix(compile): bind topic sql to its base view by @dspangen in https://github.com/exploreomni/omniframes/pull/20
-* ci: run integration tests on pushes to main by @dspangen in https://github.com/exploreomni/omniframes/pull/21
-* docs(testing): describe the explicit live integration opt-in by @dspangen in https://github.com/exploreomni/omniframes/pull/16
-* docs(sql): clarify unresolved topic-specific sql semantics by @dspangen in https://github.com/exploreomni/omniframes/pull/17
-* fix(testing): remove unsupported query-reference tables from fake api by @dspangen in https://github.com/exploreomni/omniframes/pull/13
+- **Breaking:** direct callers of `compile_sql(...)` and `try_sql(...)` must remove the
+  unused `options=` argument. ([#14](https://github.com/exploreomni/omniframes/pull/14))
+- Custom transports must implement `list_views(model_id)` before using `read.view(...)`.
+  Remove calls to the retired `SessionBuilder.sql_dialect(...)` method.
 
-### New Contributors
-* @dspangen made their first contribution in https://github.com/exploreomni/omniframes/pull/2
+### Additional fixes and examples
 
-**Full Changelog**: https://github.com/exploreomni/omniframes/commits/v0.1.0
+- Topic SQL now uses the catalog's base view, including when the topic and view names differ.
+  Preservation of topic-specific join overrides and topic filters remains **unverified**;
+  see `docs/SQLTIER.md` and the LIVE-VALIDATE register before relying on those semantics.
+  ([#20](https://github.com/exploreomni/omniframes/pull/20),
+  [#17](https://github.com/exploreomni/omniframes/pull/17))
+- Catalog relationships read their relationship type from the API's `type` field.
+  ([#15](https://github.com/exploreomni/omniframes/pull/15))
+- `examples/demo.py` adds an interactive marimo guided tour.
+  ([#7](https://github.com/exploreomni/omniframes/pull/7))
+- Live integration tests cover querier and restricted principals with an explicit `--live`
+  opt-in. The fake rejects unsupported query-reference tables instead of emulating server
+  behavior that does not exist.
+  ([#9](https://github.com/exploreomni/omniframes/pull/9),
+  [#13](https://github.com/exploreomni/omniframes/pull/13))
 
+**Full history:** https://github.com/exploreomni/omniframes/commits/v0.1.0
