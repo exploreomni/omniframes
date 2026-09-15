@@ -1,0 +1,1448 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A PySpark-style DataFrame library for Omni — dataframe code in, governed semantic queries out.">
+      
+      
+      
+        <link rel="canonical" href="https://exploreomni.github.io/omniframes/0.1.0/SQLTIER/">
+      
+      
+        <link rel="prev" href="../INTERNALS/">
+      
+      
+        <link rel="next" href="../HYBRID/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>SQL tier (tier 2) - Omniframes</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CIBM+Plex+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"IBM Plex Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#the-sql-compiler-tier-2-on-omnisql" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Omniframes" class="md-header__button md-logo" aria-label="Omniframes" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Omniframes
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              SQL tier (tier 2)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/exploreomni/omniframes" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    exploreomni/omniframes
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Omniframes" class="md-nav__button md-logo" aria-label="Omniframes" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Omniframes
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/exploreomni/omniframes" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    exploreomni/omniframes
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mental-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mental model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../offline-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Offline testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design notes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design notes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CONTRACT_NOTES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wire contract
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../DESIGN/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../INTERNALS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQL tier (tier 2)
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQL tier (tier 2)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-what-upgrades-what-doesnt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. What upgrades, what doesn't
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-envelope-and-guards" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Envelope and guards
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-compilesqlgenpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. compile/sqlgen.py
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. compile/sqlgen.py">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-rendering-sentinel-substitution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 Rendering: sentinel substitution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-naming-two-regimes-predict-only-what-is-guaranteed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 Naming — two regimes, predict only what is guaranteed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-where-discipline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 WHERE discipline
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-splitter-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Splitter integration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-grain-__raw-normalization-tier-1-and-tier-2-fixes-lv12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Grain __raw normalization (tier 1 AND tier 2 — fixes LV#12)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-dialect-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Dialect handling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-fakeomniapi-the-omnisql-resolver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. FakeOmniAPI: the OmniSQL resolver
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-error-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Error mapping
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-test-coverage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Test coverage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-implementation-and-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Implementation and validation
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../HYBRID/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hybrid engine (tier 3)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-what-upgrades-what-doesnt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. What upgrades, what doesn't
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-envelope-and-guards" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Envelope and guards
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-compilesqlgenpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. compile/sqlgen.py
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. compile/sqlgen.py">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-rendering-sentinel-substitution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 Rendering: sentinel substitution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-naming-two-regimes-predict-only-what-is-guaranteed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 Naming — two regimes, predict only what is guaranteed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-where-discipline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 WHERE discipline
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-splitter-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Splitter integration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-grain-__raw-normalization-tier-1-and-tier-2-fixes-lv12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Grain __raw normalization (tier 1 AND tier 2 — fixes LV#12)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-dialect-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Dialect handling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-fakeomniapi-the-omnisql-resolver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. FakeOmniAPI: the OmniSQL resolver
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-error-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Error mapping
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-test-coverage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Test coverage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-implementation-and-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Implementation and validation
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="the-sql-compiler-tier-2-on-omnisql">The SQL compiler — tier 2 on OmniSQL<a class="headerlink" href="#the-sql-compiler-tier-2-on-omnisql" title="Permanent link">&para;</a></h1>
+<p>Authoritative design for the implemented OmniSQL compiler (historical rationale at the bottom).
+Read with CONTRACT_NOTES §3.5/§3.6 (the wire truth, live-pinned 2026-08-14), §2.7 (grain
+<code>__raw</code> sidecars), §6 items 11–13 (open residue), and HYBRID.md (the splitter/local engine
+it integrates with). Every DECISION is marked with its rationale.</p>
+<p>Tier 2 avoids the <strong>unlimited raw scan</strong> feeding a local aggregate by pushing supported
+operations into a warehouse query. A tier-2 job is <strong>one OmniSQL
+statement</strong> — <code>userEditedSQL</code> with <code>rewriteSql</code> ABSENT — that the server parses, binds against
+the model (model-level joins, measures expanded to their governed SQL,
+row-level policies applied), and plans as a governed model job. There is no reference core, no
+<code>staticQueryReferences</code>, no second query object. The statement IS the plan.</p>
+<p>Topic scans bind to the catalog's base view, including when topic and view names differ.
+Preservation of topic-specific join overrides and topic filters remains unverified; see
+CONTRACT_NOTES §6 item 13 before relying on those semantics on this path.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="err">${</span><span class="n">users</span><span class="p">.</span><span class="k">state</span><span class="err">}</span><span class="p">,</span><span class="w"> </span><span class="err">${</span><span class="n">order_items</span><span class="p">.</span><span class="n">sale_price_sum</span><span class="err">}</span><span class="p">,</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="k">COUNT</span><span class="p">(</span><span class="k">DISTINCT</span><span class="w"> </span><span class="err">${</span><span class="n">users</span><span class="p">.</span><span class="n">id</span><span class="err">}</span><span class="p">)</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">of_expr_1</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="k">FROM</span><span class="w"> </span><span class="err">${</span><span class="n">order_items</span><span class="err">}</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="k">GROUP</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="mi">1</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="k">HAVING</span><span class="w"> </span><span class="k">COUNT</span><span class="p">(</span><span class="k">DISTINCT</span><span class="w"> </span><span class="err">${</span><span class="n">users</span><span class="p">.</span><span class="n">id</span><span class="err">}</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">10</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="k">DESC</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="k">LIMIT</span><span class="w"> </span><span class="mi">50000</span>
+</code></pre></div>
+<h2 id="1-what-upgrades-what-doesnt">1. What upgrades, what doesn't<a class="headerlink" href="#1-what-upgrades-what-doesnt" title="Permanent link">&para;</a></h2>
+<p>Splitter invariant unchanged: tier 1 (<code>try_semantic</code>) → tier 2 (<code>try_sql</code>) → local, at every
+node. Shapes <code>try_sql</code> accepts:</p>
+<table>
+<thead>
+<tr>
+<th>Shape (logical plan)</th>
+<th>OmniSQL rendering</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Aggregate(keys=dims/grains, aggs=ad-hoc and/or MEASURES)</code></td>
+<td><code>SELECT ${key}…, ${measure}…, AGG(${field}) AS a_n FROM ${base_view} GROUP BY 1…k</code></td>
+</tr>
+<tr>
+<td>Tier-1-incompatible <code>Filter</code> below the aggregate (cross-field OR, arithmetic, string-pred mixes) — AND every tier-1-compilable filter that used to ride the reference core</td>
+<td><code>WHERE</code>, one conjunct per underlying column (§3.3)</td>
+</tr>
+<tr>
+<td><code>Filter</code> above the aggregate over ad-hoc agg or MEASURE outputs</td>
+<td><code>HAVING</code> with the ad-hoc aggregate substituted inline (verified P5b) or the <code>${measure}</code> ref expanded server-side (CONTRACT_NOTES §3.6)</td>
+</tr>
+<tr>
+<td><code>Project</code>/<code>WithColumn</code> computed columns</td>
+<td>select-list expressions <code>AS &lt;alias&gt;</code></td>
+</tr>
+<tr>
+<td><code>Sort</code>/<code>Limit</code>/<code>offset</code> on top</td>
+<td><code>ORDER BY &lt;position&gt;</code> / <code>LIMIT</code>/<code>OFFSET</code> in the text (verified P1/P10)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Mixed aggregation uses one statement.</strong> Governed measures are legal select items
+(<code>${view.measure}</code> expands server-side, mixes with ad-hoc aggregates — CONTRACT_NOTES §3.6,
+P2/P3). A mixed <code>agg()</code> becomes ONE tier-2 statement; aggregate decomposition
+(tier-1 measures + raw scan + <code>LocalAggregate</code> + <code>AlignJoin</code>) survives only as the fallback
+when <code>try_sql</code> declines. See §4.</p>
+<p>The following shapes refuse tier 2. The splitter then attempts local execution or aggregate
+decomposition, subject to the constraints in HYBRID §6:</p>
+<ul>
+<li>UDFs / <code>map_pandas</code>; user-facing <code>Join</code>/<code>Union</code>; anything above <code>SqlScan</code>/<code>SavedQueryScan</code>;
+  <code>with_totals()</code> on non-tier-1 plans (all unchanged).</li>
+<li>Relative date literals — ⊖ previously rode the reference core as typed filters; OmniSQL text
+  has no rendering for Omni's date grammar. Tier 3 still answers them (its raw scan carries
+  them as tier-1 filters).</li>
+<li>A string literal compared against a timestamp-grain field (unchanged rule, same reason).</li>
+<li>Grain refs in <code>WHERE</code> — the §3.3 hazard: mixing a bare ref and a grain ref of the same
+  field is where the live predicate loss occurs (CONTRACT_NOTES §3.6). Grain refs stay legal
+  as SELECT items and GROUP BY keys.</li>
+<li>Predicates over columns the aggregate consumed, double limits, sorts below aggregates —
+  unchanged <code>_match</code> rules.</li>
+<li><code>SELECT DISTINCT</code> is silently stripped (CONTRACT_NOTES §3.6), so the compiler never emits
+  it. There is no <code>DataFrame.drop_duplicates()</code> method; use <code>map_pandas()</code> for local deduplication.</li>
+<li>A field, topic, or view whose name fails the sentinel charset (§3.1) — refuse, tier 3.</li>
+</ul>
+<h2 id="2-envelope-and-guards">2. Envelope and guards<a class="headerlink" href="#2-envelope-and-guards" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>{
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  &quot;query&quot;: {
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    &quot;modelId&quot;: &quot;&lt;model&gt;&quot;,
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    &quot;userEditedSQL&quot;: &quot;SELECT ${users.state} … FROM ${order_items} … LIMIT 50000&quot;,
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    //  NO rewriteSql key — absent selects the parsed-OmniSQL path (§3.5/§3.6)
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    //  NO staticQueryReferences, NO sqlSortsEnabled
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    &quot;fields&quot;: [], &quot;table&quot;: &quot;&quot;, &quot;limit&quot;: 50000,   // limit: client bookkeeping only, see below
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    &quot;version&quot;: 9, ...
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>  }, ...
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>}
+</code></pre></div>
+<blockquote>
+<p>DECISION — <code>Query.for_omnisql(model_id, sql, *, limit, offset)</code>: sets
+<code>user_edited_sql=sql</code>, <code>rewrite_sql=None</code> (key absent on the wire), and a <strong>non-wire flag</strong>
+<code>omnisql=True</code> (excluded from <code>to_wire()</code>). <code>Query.validate()</code> requires a SQL job to have
+<code>rewrite_sql is False</code> (verbatim, <code>for_sql</code>) XOR (<code>omnisql</code> flag and <code>rewrite_sql is None</code>).
+<code>RemoteStep.__post_init__</code> mirrors it off the envelope: <code>userEditedSQL</code> present requires
+either <code>rewriteSql: false</code> in the bytes, or the compilation's <code>omnisql</code> flag with the key
+absent. The structural guarantee survives both ways: user-provided SQL (<code>read.sql</code>) is built
+only by <code>for_sql</code> and can never ride the parsed path; compiler-generated OmniSQL is built
+only by <code>for_omnisql</code> from plan nodes and can never ride the verbatim path.</p>
+<p>DECISION — the envelope <code>limit</code> mirrors the SQL <code>LIMIT</code> (or <code>null</code> for <code>limit(None)</code>) but is
+<strong>client bookkeeping only</strong>: the server IGNORES the query-object limit on this path and a
+statement without <code>LIMIT</code> runs unlimited (§3.6). The always-explicit-limit invariant
+therefore lives in the TEXT: <code>LIMIT DEFAULT_FETCH_LIMIT</code> when the user never called
+<code>.limit(n)</code>, <code>LIMIT n</code> when they did, no LIMIT clause only for <code>limit(None)</code>.
+<code>user_limit</code>/TruncationWarning plumbing reads the mirrored envelope value unchanged.</p>
+</blockquote>
+<h2 id="3-compilesqlgenpy">3. compile/sqlgen.py<a class="headerlink" href="#3-compilesqlgenpy" title="Permanent link">&para;</a></h2>
+<p><code>try_sql</code>/<code>compile_sql</code> take only the plan and return the <code>SemanticCompilation(tier=2)</code> carrier.
+The plan-matching machinery survives verbatim: <code>_match</code>, <code>_Shape</code>, <code>_core_selects</code> (minus the
+measure refusal), <code>_substitute</code>, <code>_partition</code>, <code>_conjuncts</code>, <code>_has_aggregate</code>,
+<code>_references_keys</code>. What is deleted: <code>_reference</code>, <code>_split_pushable</code> (no reference to push
+into — §3.3 replaces it), <code>_refuse_dialect_sensitive_literals</code>, <code>REFERENCE_PREFIX</code>,
+<code>reference_summary</code>. What changes: rendering (§3.1), naming (§3.2), WHERE discipline (§3.3).</p>
+<h3 id="31-rendering-sentinel-substitution">3.1 Rendering: sentinel substitution<a class="headerlink" href="#31-rendering-sentinel-substitution" title="Permanent link">&para;</a></h3>
+<p>sqlglot cannot carry <code>${users.state}</code> as an identifier (the <code>.</code> splits into table.column, the
+<code>$</code>/<code>{</code> invite quoting). The AST is still built programmatically — values are still typed
+literal nodes, injection stance unchanged — but every model reference renders through an
+opaque sentinel:</p>
+<blockquote>
+<p>DECISION — <strong>sentinel substitution.</strong> <code>FieldRef</code>/<code>MeasureRef</code>/the FROM target render as
+<code>exp.column("__OF_REF_&lt;n&gt;__", quoted=False)</code> sentinels; after <code>.sql(pretty=True)</code> the
+sentinels are string-replaced with <code>${wire_name}</code> tokens. Sentinels are <code>[A-Z0-9_]</code>-only so
+no dialect quotes or rewrites them, the mapping is positional and deterministic, and no user
+VALUE ever travels through the replacement (values are literals in the AST; only model
+IDENTIFIERS become sentinels). Charset gate: a substituted name must match
+<code>^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)?(\[[A-Za-z0-9_]+\])?$</code> (topic/view: the first group alone)
+— anything else refuses to tier 3, so a hostile name can never smuggle text into the
+statement.</p>
+</blockquote>
+<p>Emission dialect: sqlglot default (ANSI-ish), no dialect knob — the server re-renders the
+parsed statement per warehouse (§3.6), which is what makes §6 possible.</p>
+<p>Expr → sqlglot table: unchanged for literals, comparisons, arithmetic, boolean ops, IS NULL,
+IN, BETWEEN, LIKE (<code>!</code> escape, <code>LOWER()</code> for case-insensitive) — except:</p>
+<table>
+<thead>
+<tr>
+<th>Expr</th>
+<th>v2 rendering</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FieldRef(name, grain)</code></td>
+<td>sentinel → <code>${view.field}</code> / <code>${view.field[grain]}</code></td>
+</tr>
+<tr>
+<td><code>MeasureRef(name)</code></td>
+<td>sentinel → <code>${view.measure}</code> — legal as a select item (bare or inside select-item arithmetic, e.g. <code>${m}/NULLIF(${m2},0)</code> and <code>${m}/COUNT(DISTINCT ${f})</code>) and in HAVING, all expanded server-side (CONTRACT_NOTES §3.6); still refused in WHERE</td>
+</tr>
+<tr>
+<td><code>AdHocAgg</code></td>
+<td>unchanged (<code>COUNT(DISTINCT &lt;sentinel&gt;)</code> …)</td>
+</tr>
+</tbody>
+</table>
+<p>GROUP BY and ORDER BY are <strong>positional</strong> (<code>GROUP BY 1, 2</code>, <code>ORDER BY 3 DESC</code>) — the only
+verified form, and positional ORDER BY over a grain item sorts by its <code>__raw</code> value
+(chronological, P4). Non-aggregated sorts over an unselected column render the expression
+inline — verified: the server wraps the statement in a subquery whose <code>omni_sort_expr_&lt;n&gt;</code>
+sidecars never reach the result columns (CONTRACT_NOTES §3.6).
+<code>exp.Ordered(nulls_first=False)</code> stays — <code>NULLS LAST</code> verified (P1).</p>
+<h3 id="32-naming-two-regimes-predict-only-what-is-guaranteed">3.2 Naming — two regimes, predict only what is guaranteed<a class="headerlink" href="#32-naming-two-regimes-predict-only-what-is-guaranteed" title="Permanent link">&para;</a></h3>
+<p>The server names result columns itself; live probing (CONTRACT_NOTES §3.6) splits select
+items into exactly two regimes:</p>
+<ul>
+<li><strong>Bare refs</strong> — <code>${view.field}</code>, <code>${view.field[grain]}</code>, <code>${view.measure}</code>: the wire name
+  is exactly the canonical <code>view.field</code> name. SQL aliases are IGNORED, and duplicate bare
+  refs are DEDUPLICATED to one column. This is tier-1 semantics to the letter.</li>
+<li><strong>Expression items</strong> — everything else: the SQL alias is honored, prefixed with a scope
+  view the client CANNOT predict (first-ref-wins is REFUTED: <code>COALESCE(${products.brand},
+  ${users.country})</code> scopes to <code>users</code> while <code>${users.age} + ${products.cost}</code> also scopes
+  to <code>users</code> — no consistent positional rule exists). Duplicate expression items survive
+  with their aliases.</li>
+</ul>
+<blockquote>
+<p>DECISION — lean on what each regime guarantees, predict nothing more:
+- Bare refs: emit WITHOUT aliases, and DEDUP the select list at emission (the server would
+  collapse duplicates and shift positions otherwise); the tier-1 client-side alias map,
+  keyed by exact wire name, handles renames — including two user aliases over one field,
+  resolved client-side after the single wire column arrives.
+- Expression items: emit with globally unique generated aliases <code>of_expr_&lt;n&gt;</code> (n in select
+  order). Normalize matches the result column whose name ENDS WITH <code>.of_expr_&lt;n&gt;</code> — unique
+  in the column set by construction — and renames it to its user-facing name; the scope
+  prefix is never guessed. <code>SemanticCompilation.aliases</code> carries both kinds of entry
+  (exact wire names, and <code>of_expr_&lt;n&gt;</code> suffix keys marked as such); <code>columns</code> carries the
+  user-facing output order.</p>
+</blockquote>
+<p>The tier-2-vs-tier-3 differential (§9) remains the regression net for naming drift.</p>
+<h3 id="33-where-discipline">3.3 WHERE discipline<a class="headerlink" href="#33-where-discipline" title="Permanent link">&para;</a></h3>
+<p>The live predicate loss in the bare-plus-grain filter probe is specific to mixing a BARE ref and a GRAIN ref of the
+same field in one WHERE. Plain same-column conjunct composition and parenthesized compound
+ranges — <code>(${a} &gt;= x AND ${a} &lt; y)</code>, the BETWEEN shapes — survive intact
+(CONTRACT_NOTES §3.6). Rules:</p>
+<ul>
+<li>Emit WHERE conjuncts naturally, BETWEEN shapes included; no per-column grouping needed.</li>
+<li>Grain refs never appear in WHERE — the one live-observed loss shape; a grain predicate
+  tier 1 could express never reaches tier 2 anyway (tier 1 wins first), and one it could not
+  refuses.</li>
+<li>⊖ Tier-1-compilable filters below the aggregate — v1 pushed them into the reference core as
+  governed typed filters — now render as WHERE conjuncts; the ones with no SQL rendering
+  (relative dates, grained-date strings) refuse tier 2 entirely.</li>
+</ul>
+<h2 id="4-splitter-integration">4. Splitter integration<a class="headerlink" href="#4-splitter-integration" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>SplitOptions.disable_sql</code> lets the differential tests exercise the local fallback.
+  There is no <code>sql_dialect</code> option (§6).</li>
+<li><code>split()</code>: unchanged — <code>try_semantic</code> → <code>try_sql</code> → <code>_local</code>.</li>
+<li><code>_aggregate()</code> (mixed path): FIRST attempt the whole node — keys + measures + ad-hoc — as
+  one tier-2 statement via <code>try_sql</code>. On success: single <code>RemoteStep(label="sql", tier=2)</code>,
+  no <code>AlignJoin</code>, no decomposition, and <code>decomposition_row_cap</code> does not apply (nothing
+  decomposed). On decline: aggregate decomposition (governed tier-1 step + ad-hoc half
+  tier-2-else-raw-scan-plus-<code>LocalAggregate</code> + local <code>AlignJoin</code>).</li>
+</ul>
+<blockquote>
+<p>DECISION — tier 1 still wins measure-only aggregates (native governed path, measure-filter
+map, <code>omni_url()</code> eligibility, no parse layer); tier 2 takes what tier 1 declines. The
+tier ORDER is untouched; only tier 2's reach grew.</p>
+</blockquote>
+<p><code>explain()</code> for a tier-2 step: keep <code>Remote [tier 2 · sql → POST /api/v1/query/run]</code>, the
+<code>topic:</code>/<code>model:</code> line, and the <code>sql:</code> block (<code>sql_lines</code>, 8-line budget) — the <code>${…}</code> tokens
+make it self-documenting. The <code>references:</code> block is deleted with the mechanism.</p>
+<h2 id="5-grain-__raw-normalization-tier-1-and-tier-2-fixes-lv12">5. Grain <code>__raw</code> normalization (tier 1 AND tier 2 — fixes LV#12)<a class="headerlink" href="#5-grain-__raw-normalization-tier-1-and-tier-2-fixes-lv12" title="Permanent link">&para;</a></h2>
+<p>Live, BOTH tiers return a formatted grain as a pair: <code>X__raw</code> (<code>DATE_TRUNC</code> timestamp, at the
+item's select position) + <code>X</code> (formatted STRING, appended last) — CONTRACT_NOTES §2.7.</p>
+<blockquote>
+<p>DECISION — <strong><code>__raw</code> wins.</strong> When <code>X</code> and <code>X__raw</code> are both present and <code>X__raw</code> was not
+itself requested, normalize keeps the <code>__raw</code> VALUES under the name <code>X</code> and drops both the
+formatted column and the sidecar name. Rationale: type-stable schema (a month grain is a
+TIMESTAMP whether or not the model formats it), correct local sort/join/group semantics
+downstream (formatted strings do not order chronologically in general), dataframe-native
+values. The formatted string is display formatting, not data; users who want it can format
+locally. Divergence from the Omni UI's rendering is documented in the user guide.
+<code>df.schema</code> applies the same collapse to <code>summary.fields</code> (report <code>X</code> with <code>X__raw</code>'s type,
+drop the sidecar entry). FakeOmniAPI emits the pair for month grains on BOTH the semantic
+path and the OmniSQL path (bench model formats month as <code>YYYY-MM</code>), so the collapse is
+exercised offline; other grains stay raw-only, matching an unformatted model.</p>
+</blockquote>
+<p>Grain refs are regime-(a) bare refs (§3.2): <code>view.field[grain]</code> and its <code>__raw</code> twin are
+exact, alias-proof names, so the collapse works on predicted names and needs no suffix
+matching.</p>
+<h2 id="6-dialect-handling">6. Dialect handling<a class="headerlink" href="#6-dialect-handling" title="Permanent link">&para;</a></h2>
+<p>The server renders parsed OmniSQL for the warehouse dialect. <code>SessionBuilder</code> has no
+<code>sql_dialect()</code> method, and neither <code>EnvelopeOptions</code> nor <code>SplitOptions</code> carries a dialect
+override. Backslash-containing literals pass through as values. The compiler uses <code>!</code> for
+LIKE escaping; the server renders the warehouse-specific escape syntax (CONTRACT_NOTES §3.6).
+Verbatim <code>read.sql()</code> remains the caller's responsibility for dialect portability.</p>
+<h2 id="7-fakeomniapi-the-omnisql-resolver">7. FakeOmniAPI: the OmniSQL resolver<a class="headerlink" href="#7-fakeomniapi-the-omnisql-resolver" title="Permanent link">&para;</a></h2>
+<p><code>tests/fakes/omnisql.py</code> is dispatched from the sql_job handler when <code>rewrite_sql</code> is
+absent (verbatim path with <code>rewrite_sql: false</code> keeps its current handler):</p>
+<ul>
+<li>Substitute <code>${base_view}</code> → the bench base table with LEFT JOINs from the bench relationships,
+  pruned to the views the statement references (mirrors P1/P7 join pruning).
+  <code>${view.field}</code> → qualified DuckDB column; <code>${view.field[grain]}</code> → <code>DATE_TRUNC</code> expression
+  (+ the month-format pair per §5); <code>${view.measure}</code> → the measure's SQL from the bench
+  model definitions. Unknown topic/field → the server's error text verbatim
+  (<code>Could not substitute Omni SQL … No such view/field "&lt;name&gt;"</code> — §3.6) so the client's
+  error mapping is exercised offline.</li>
+<li>Rename result columns per the §3.2 regimes: bare refs surface under their canonical names
+  with duplicates collapsed to one column and aliases ignored (matching the server);
+  expression items keep their <code>of_expr_&lt;n&gt;</code> aliases under a scope prefix the fake chooses
+  <strong>arbitrarily</strong> — deliberately not a rule the client could learn, so only suffix matching
+  can work against it. The bare-ref rule being shared between fake and client is
+  self-fulfilling by construction — the live re-verification step (§10) is the external
+  check, and both regimes are probe-pinned in CONTRACT_NOTES §3.6.</li>
+<li><strong>Stricter than the server on the hazard shapes</strong>: the fake REJECTS (400-style error, loud)
+  <code>SELECT DISTINCT</code>, a duplicate bare select item (the server dedups silently; the client
+  must dedup at emission), a bare-plus-grain WHERE mix on one field, a <code>rewriteSql</code>-absent
+  job that carries sorts/calculations, and any <code>staticQueryReferences</code> on an OmniSQL job.
+  The server silently rewrites these; a loud fake failure turns an emission bug into a red
+  test instead of a silent live divergence.</li>
+</ul>
+<p>Grow-only-what-tests-need still applies: the resolver implements exactly the constructs §1
+emits, nothing speculative.</p>
+<h2 id="8-error-mapping">8. Error mapping<a class="headerlink" href="#8-error-mapping" title="Permanent link">&para;</a></h2>
+<p>A job-error line matching <code>Could not substitute Omni SQL</code> on a tier-2 step means omniframes
+emitted a statement the model no longer binds (schema drift between planOnly and run, or an
+emission bug). The executor wraps it: <code>QueryError</code> with the offending statement attached and
+a message saying the tier-2 statement was rejected by the server, naming the missing
+view/field from the server text, and pointing at <code>explain()</code>. Verbatim <code>read.sql</code> errors are
+untouched (the SQL is the user's own).</p>
+<h2 id="9-test-coverage">9. Test coverage<a class="headerlink" href="#9-test-coverage" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Golden</strong>: <code>sql_*.sql</code> (OmniSQL text) and <code>semantic_sql_*.json</code> (no
+  <code>staticQueryReferences</code>, no <code>rewriteSql</code>, no <code>sqlSortsEnabled</code>; <code>omnisql</code> flag is non-wire
+  so envelopes stay clean), including mixed aggregation as a single statement and measure grand totals.</li>
+<li><strong>Unit (sqlgen)</strong>: the translation table rows (<code>${}</code> rendering, sentinel charset gate,
+  measure select items incl. measure arithmetic and measure HAVING), §3.2 both regimes
+  (bare-ref dedup at emission, <code>of_expr_&lt;n&gt;</code> alias generation and ordering), §3.3 refusals
+  (grain-in-WHERE; BETWEEN shapes now EMIT and are golden-pinned), injection pins (a value
+  containing <code>'; DROP TABLE</code> and a value containing <code>${users.state}</code> both render as
+  literals — the sentinel pass must never touch a literal).</li>
+<li><strong>Unit (querymodel/semantic)</strong>: <code>for_omnisql</code> wire shape (no <code>rewriteSql</code> key), the XOR
+  guard both ways, <code>RemoteStep</code> envelope mirror.</li>
+<li><strong>Differential</strong>: <code>test_tiers.py</code> compares SQL pushdown with local execution (<code>disable_sql</code>
+  on/off must agree), including one-request mixed aggregation against its decomposed result.</li>
+<li><strong>Wire/normalize</strong>: <code>__raw</code> pair fixtures (tier-1 semantic AND OmniSQL results), the §5
+  collapse incl. schema; a user-requested <code>X__raw</code>-style name passing through untouched;
+  suffix-match renaming of <code>of_expr_&lt;n&gt;</code> columns under arbitrary scope prefixes.</li>
+<li><strong>e2e</strong>: envelope assertions (<code>userEditedSQL</code> with <code>${…}</code>, no <code>rewriteSql</code>, no refs;
+  mixed agg = one request); explain snapshots; fake resolver tests incl. the loud hazard
+  rejections; error-mapping test off the fake's substitution error.</li>
+</ul>
+<h2 id="10-implementation-and-validation">10. Implementation and validation<a class="headerlink" href="#10-implementation-and-validation" title="Permanent link">&para;</a></h2>
+<p><strong>The L probe battery ran 2026-08-14</strong> (compound ranges, LIKE ESCAPE, measure arithmetic,
+measure HAVING, unselected ORDER BY, expression scoping, duplicate select items); every
+outcome is folded into the DECISIONs above and recorded in CONTRACT_NOTES §3.6. The compiler
+and integration paths described here are implemented:</p>
+<table>
+<thead>
+<tr>
+<th>Behavior</th>
+<th>Implementation</th>
+<th>Offline coverage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Parsed-OmniSQL envelope and guards</td>
+<td><code>compile/querymodel.py</code>, <code>compile/semantic.py</code></td>
+<td>query-model and semantic compiler unit tests</td>
+</tr>
+<tr>
+<td>SQL emission, output naming, filters, and explain output</td>
+<td><code>compile/sqlgen.py</code>, <code>compile/explain.py</code></td>
+<td>SQL compiler unit tests and golden snapshots</td>
+</tr>
+<tr>
+<td>Mixed aggregation as one statement, with decomposition fallback</td>
+<td><code>compile/splitter.py</code></td>
+<td>splitter unit tests and <code>tests/differential/test_tiers.py</code></td>
+</tr>
+<tr>
+<td>Fake resolver, formatted grain pairs, and rejected hazards</td>
+<td><code>tests/fakes/omnisql.py</code>, <code>tests/fakes/sqljobs.py</code>, <code>tests/fakes/engine.py</code></td>
+<td>fake and end-to-end tests</td>
+</tr>
+<tr>
+<td>Grain normalization and expression-column renaming</td>
+<td><code>transport/normalize.py</code>, <code>transport/arrow.py</code>, <code>dataframe.py</code></td>
+<td>wire fixtures and schema tests</td>
+</tr>
+<tr>
+<td>Removed dialect knob and substitution-error mapping</td>
+<td><code>session.py</code>, <code>compile/executor.py</code></td>
+<td>session, executor, and end-to-end tests</td>
+</tr>
+</tbody>
+</table>
+<p>Run the offline validation gate and docs build:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>uv<span class="w"> </span>run<span class="w"> </span>ruff<span class="w"> </span>format<span class="w"> </span>--check<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>ruff<span class="w"> </span>check<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>mypy<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;not live&quot;</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>uv<span class="w"> </span>run<span class="w"> </span>mkdocs<span class="w"> </span>build<span class="w"> </span>--strict
+</code></pre></div>
+<p>Live verification is separate and requires a configured Omni organization. Use
+<code>scripts/live_smoke.py</code> and the LIVE-VALIDATE register in CONTRACT_NOTES §6 for server behaviors
+that offline tests cannot establish.</p>
+<hr />
+<p><em>Historical note — v1 (refuted 2026-08-14).</em> v1 delivered tier 2 as verbatim SQL
+(<code>rewriteSql: false</code>) over a governed tier-1 query embedded in <code>staticQueryReferences</code> and
+named <code>FROM ref_1</code>. The server has no refKey-as-table mechanism — the envelope fails live
+with <code>relation "ref_1" does not exist</code>, and FakeOmniAPI's temp-view materialization modeled
+something that does not exist (CONTRACT_NOTES §3.5, §6 closure #1). v1's plan-shape analysis,
+HAVING substitution, typed-literal injection stance, and fallback discipline all survive in
+v2; the delivery mechanism, naming model, and dialect machinery do not.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Apache-2.0
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.instant", "navigation.tracking", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
