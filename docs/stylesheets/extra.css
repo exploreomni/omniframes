@@ -1,0 +1,87 @@
+/* Omni's cream, plum, and pink palette (https://omni.co).
+   Darker pinks keep links readable on light surfaces. */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #4d122c;
+  --md-primary-fg-color--light: #702744;
+  --md-primary-fg-color--dark: #220411;
+  --md-primary-bg-color: #fcfcf7;
+  --md-primary-bg-color--light: #efe9e3;
+  --md-accent-fg-color: #a7245d;
+  --md-accent-fg-color--transparent: #ff5fa21a;
+  --md-default-bg-color: #fcfcf7;
+  --md-default-fg-color: #291c23;
+  --md-default-fg-color--light: #68575f;
+  --md-default-fg-color--lighter: #c7b9bf;
+  --md-default-fg-color--lightest: #e8dfe2;
+  --md-code-bg-color: #f2eeeb;
+  --md-code-fg-color: #382430;
+  --md-typeset-a-color: #8b1d4e;
+  --omni-heading-color: #4d122c;
+  --omni-surface-color: #fffefa;
+  --omni-border-color: #e8dfe2;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-hue: 330;
+  --md-primary-fg-color: #4d122c;
+  --md-primary-fg-color--light: #702744;
+  --md-primary-fg-color--dark: #220411;
+  --md-primary-bg-color: #fcfcf7;
+  --md-primary-bg-color--light: #efe9e3;
+  --md-accent-fg-color: #ff8fbc;
+  --md-accent-fg-color--transparent: #ff5fa226;
+  --md-default-bg-color: #220f1a;
+  --md-default-fg-color: #f5edf1;
+  --md-default-fg-color--light: #c7b5bf;
+  --md-default-fg-color--lighter: #806574;
+  --md-default-fg-color--lightest: #49303e;
+  --md-code-bg-color: #301d28;
+  --md-code-fg-color: #f5edf1;
+  --md-typeset-a-color: #ff8fbc;
+  --omni-heading-color: #f9d9e7;
+  --omni-surface-color: #2b1722;
+  --omni-border-color: #49303e;
+}
+
+.md-header {
+  border-bottom: 2px solid #ff5fa2;
+  box-shadow: none;
+}
+
+.md-header__topic {
+  font-weight: 600;
+}
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3 {
+  color: var(--omni-heading-color);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.md-typeset h1 {
+  font-weight: 700;
+}
+
+.md-typeset .grid.cards > ul > li {
+  background: var(--omni-surface-color);
+  border-color: var(--omni-border-color);
+  border-radius: 0.75rem;
+}
+
+.md-typeset .grid.cards > ul > li:hover {
+  border-color: var(--md-accent-fg-color);
+  box-shadow: none;
+}
+
+.md-typeset pre > code {
+  border: 1px solid var(--omni-border-color);
+  border-radius: 0.5rem;
+}
+
+.md-typeset a:focus-visible,
+.md-nav__link:focus-visible {
+  outline: 2px solid var(--md-accent-fg-color);
+  outline-offset: 3px;
+}
