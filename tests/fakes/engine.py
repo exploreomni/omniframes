@@ -141,7 +141,7 @@ class Grain:
         if self.kind == "trunc":
             truncated = f"date_trunc('{self.unit}', {expr})"
             # DuckDB widens ``date_trunc`` over a DATE to TIMESTAMP; a date column keeps a
-            # date-shaped result instead (docs/bench_omni_model.md §4, products.introduced_on).
+            # date-shaped result instead (internal-docs/bench_omni_model.md §4, products.introduced_on).
             return f"CAST({truncated} AS DATE)" if date_type == "date" else truncated
         if self.kind == "extract":
             return f"EXTRACT({self.unit} FROM {expr})"

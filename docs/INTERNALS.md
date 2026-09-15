@@ -226,7 +226,7 @@ Local [pandas]
 
 ## 6. Testing interfaces
 
-- Fake wiring: `HttpTransport(base_url="https://bench.example.omni.co", api_key=BENCH_KEY,
+- Fake wiring: `HttpTransport(base_url="https://bench.omniapp.co", api_key=BENCH_KEY,
   client=httpx.Client(transport=httpx.MockTransport(FakeOmniAPI()), base_url=...))`.
 - Golden tests build DataFrames against a **stub catalog** (no I/O): construct scans directly or
   stub the transport's catalog responses with the fake's payloads.

@@ -111,16 +111,7 @@ def test_ad_hoc_topic_aggregation_obeys_the_manual_sql_boundary(
         .limit(1)
     )
     if live_settings.principal == "querier":
-        try:
-            result = frame.collect()
-        except QueryError as error:
-            # The first live run exposed a separate compiler/model integration defect: tier 2
-            # emits the topic name as an OmniSQL view. Keep the permission probe useful while
-            # making that known defect visible; an unrelated failure still fails this test.
-            known_binding_error = "model has no view 'wwi_sales'" in str(error)
-            if known_binding_error:
-                pytest.xfail("tier-2 topic SQL binds wwi_sales as a view")
-            raise
+        result = frame.collect()
         assert result.num_rows == 1
     else:
         with pytest.raises(QueryError) as caught:

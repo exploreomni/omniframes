@@ -1,9 +1,9 @@
 # Offline testing
 
-Omniframes has no "run it against staging and hope" step. The whole library — compiler,
-transport, three tiers, NDJSON framing, Arrow decoding — is exercised in-process against a
-**wire-faithful fake of the Omni query API**, backed by a **deterministic synthetic dataset**
-with pre-computed answers. A bug reproduced offline is the same bug you would have seen live.
+The compiler, transport, three tiers, NDJSON framing, and Arrow decoding are exercised
+in-process against a **fake of the Omni query API**, backed by a **deterministic synthetic
+dataset** with pre-computed answers. The fake implements the documented behaviors exercised by
+the tests; live probes check the assumptions it cannot establish on its own.
 
 This page is for contributors. Users need nothing here.
 
@@ -30,7 +30,7 @@ endpoints, `POST /api/v1/query/run`, `GET /api/v1/query/wait`, the saved-query e
   against the bench model. A client that puts the wrong marker on a statement fails offline
   instead of lying live.
 - **Unsupported query shapes are refused loudly**, never approximated. The fake implements
-  the behaviors exercised by the tests. Its [known gaps](bench_omni_model.md#known-gaps-in-the-offline-twin)
+  the behaviors exercised by the tests. Its [known gaps](https://github.com/exploreomni/omniframes/blob/main/internal-docs/bench_omni_model.md#known-gaps-in-the-offline-twin)
   distinguish rejected features from options that are accepted but have no effect.
 
 Wiring it up is three lines — the real `HttpTransport` runs on top of it, so nothing about the
@@ -43,7 +43,7 @@ from omniframes import OmniSession
 from omniframes.transport import HttpTransport
 from tests.fakes import DEFAULT_TOKEN, FakeOmniAPI
 
-BASE_URL = "https://bench.example.omni.co"
+BASE_URL = "https://bench.omniapp.co"
 
 handler = FakeOmniAPI()
 client = httpx.Client(transport=httpx.MockTransport(handler), base_url=BASE_URL)
@@ -75,8 +75,8 @@ so join selectivity stays put).
 
 Full specifications:
 
-- [Bench dataset](BENCH_DATASET.md) — schema, edge cases, invariants tests may rely on.
-- [Bench Omni model](bench_omni_model.md) — the governed model over it, view by view, plus the
+- [Bench dataset](https://github.com/exploreomni/omniframes/blob/main/internal-docs/BENCH_DATASET.md) — schema, edge cases, invariants tests may rely on.
+- [Bench Omni model](https://github.com/exploreomni/omniframes/blob/main/internal-docs/bench_omni_model.md) — the governed model over it, view by view, plus the
   offline ↔ live parity checklist and the list of what the fake still refuses.
 
 ## The test lanes
@@ -88,13 +88,14 @@ Full specifications:
 | `tests/wire/` | `HttpTransport` against fixture NDJSON **bytes** covering every documented quirk: string `timed_out`, wait cycles, all three error envelopes, redaction, totals, an unterminated tail, exotic Arrow types. |
 | `tests/differential/` | The same logical operation via pushdown vs. an independent pandas reference over the same parquet — and tier 2 vs. tier 3 for the same plan. Three implementations cross-checking each other: DuckDB, Arrow compute, pandas. |
 | `tests/e2e/` | Whole user-facing flows through the real client stack against the fake, asserted against `known_answers.json`. |
-| `scripts/live_smoke.py` | The same expectations against a real org — a standalone script, **not** a pytest lane (`pytest -m live` collects nothing). Needs `OMNI_BASE_URL` + `OMNI_API_KEY`; closes the LIVE-VALIDATE register of CONTRACT_NOTES §6. |
+| `tests/integration/` | Live WWI catalog, pinned query results, and permissions for two PAT roles. Requires explicit `--live --principal querier|restricted`; see the suite's README. |
+| `scripts/live_smoke.py` | A separate live probe for the LIVE-VALIDATE register of CONTRACT_NOTES §6. Needs `OMNI_BASE_URL` + `OMNI_API_KEY`. |
 
 ## Running things
 
 ```bash
 uv sync --all-extras                 # install / refresh the environment
-uv run pytest                        # everything offline (there are no live tests to skip)
+uv run pytest                        # offline tests; live integration tests skip by default
 uv run pytest -m "not live" -q       # the offline suite, explicitly
 uv run pytest tests/e2e -q           # one lane
 uv run pytest tests/unit/test_splitter.py::test_name
@@ -137,4 +138,4 @@ Extend the fake alongside the features and tests that need new wire behavior. Tw
    gets a `LIVE-VALIDATE` entry there, not a guess.
 2. **Refuse what you cannot vouch for.** A fake that approximates an unpinned behavior teaches
    the client a shape the real server never sends. Every offline-only choice the fake *does*
-   make is written down in [bench_omni_model.md](bench_omni_model.md) §5.3 and §6.7.
+   make is written down in [bench_omni_model.md](https://github.com/exploreomni/omniframes/blob/main/internal-docs/bench_omni_model.md) §5.3 and §6.7.

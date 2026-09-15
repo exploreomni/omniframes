@@ -8,12 +8,13 @@ it integrates with). Every DECISION is marked with its rationale.
 Tier 2 avoids the **unlimited raw scan** feeding a local aggregate by pushing supported
 operations into a warehouse query. A tier-2 job is **one OmniSQL
 statement** — `userEditedSQL` with `rewriteSql` ABSENT — that the server parses, binds against
-the model (joins from the topic's relationships, measures expanded to their governed SQL,
+the model (model-level joins, measures expanded to their governed SQL,
 row-level policies applied), and plans as a governed model job. There is no reference core, no
 `staticQueryReferences`, no second query object. The statement IS the plan.
 
-Topic binding when topic and view names differ remains a known failure; see CONTRACT_NOTES §6
-item 13 before relying on topic-specific joins or policies on this path.
+Topic scans bind to the catalog's base view, including when topic and view names differ.
+Preservation of topic-specific join overrides and topic filters remains unverified; see
+CONTRACT_NOTES §6 item 13 before relying on those semantics on this path.
 
 ```sql
 SELECT ${users.state}, ${order_items.sale_price_sum},
@@ -32,7 +33,7 @@ node. Shapes `try_sql` accepts:
 
 | Shape (logical plan) | OmniSQL rendering |
 |---|---|
-| `Aggregate(keys=dims/grains, aggs=ad-hoc and/or MEASURES)` | `SELECT ${key}…, ${measure}…, AGG(${field}) AS a_n FROM ${topic} GROUP BY 1…k` |
+| `Aggregate(keys=dims/grains, aggs=ad-hoc and/or MEASURES)` | `SELECT ${key}…, ${measure}…, AGG(${field}) AS a_n FROM ${base_view} GROUP BY 1…k` |
 | Tier-1-incompatible `Filter` below the aggregate (cross-field OR, arithmetic, string-pred mixes) — AND every tier-1-compilable filter that used to ride the reference core | `WHERE`, one conjunct per underlying column (§3.3) |
 | `Filter` above the aggregate over ad-hoc agg or MEASURE outputs | `HAVING` with the ad-hoc aggregate substituted inline (verified P5b) or the `${measure}` ref expanded server-side (CONTRACT_NOTES §3.6) |
 | `Project`/`WithColumn` computed columns | select-list expressions `AS <alias>` |
@@ -96,7 +97,7 @@ decomposition, subject to the constraints in HYBRID §6:
 
 ## 3. compile/sqlgen.py
 
-`try_sql`/`compile_sql` keep their signatures and the `SemanticCompilation(tier=2)` carrier.
+`try_sql`/`compile_sql` take only the plan and return the `SemanticCompilation(tier=2)` carrier.
 The plan-matching machinery survives verbatim: `_match`, `_Shape`, `_core_selects` (minus the
 measure refusal), `_substitute`, `_partition`, `_conjuncts`, `_has_aggregate`,
 `_references_keys`. What is deleted: `_reference`, `_split_pushable` (no reference to push
@@ -235,7 +236,7 @@ Verbatim `read.sql()` remains the caller's responsibility for dialect portabilit
 `tests/fakes/omnisql.py` is dispatched from the sql_job handler when `rewrite_sql` is
 absent (verbatim path with `rewrite_sql: false` keeps its current handler):
 
-- Substitute `${topic}` → the bench base table with LEFT JOINs from the bench relationships,
+- Substitute `${base_view}` → the bench base table with LEFT JOINs from the bench relationships,
   pruned to the views the statement references (mirrors P1/P7 join pruning).
   `${view.field}` → qualified DuckDB column; `${view.field[grain]}` → `DATE_TRUNC` expression
   (+ the month-format pair per §5); `${view.measure}` → the measure's SQL from the bench

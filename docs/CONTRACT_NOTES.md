@@ -316,7 +316,7 @@ OmniSQL substitution (`No such view "<key>"`). There is no server mechanism for 
   (`OmniSqlParser.doNotParseRegex`), with no sorts/calcs on the job → **verbatim raw SQL job**:
   the text goes to the warehouse untouched. `staticQueryReferences`, the `filters` map's measure
   entries, and all semantic constructs are ignored on this path.
-- Otherwise the SQL is parsed as **OmniSQL**: `${view}` / `${topic}` in FROM position and
+- Otherwise the SQL is parsed as **OmniSQL**: `${view}` in FROM position and
   `${view.field}` in expressions resolve against the model, and the job is planned as a governed
   model job (parse failure falls back to a raw SQL job via `PlannerFailedException`; an
   unresolvable `${…}` ref is a hard error, not a fallback). Live-confirmed 2026-08-14: plain
@@ -333,14 +333,25 @@ All live-confirmed 2026-08-14 against omni.demo.exploreomni.dev (Postgres connec
 ~20-case probe battery; server-source pins in §3.5. This is the delivery mechanism for tier 2.
 
 **Envelope**: `userEditedSQL: "<omnisql>"` + `modelId`, with `rewriteSql` **absent** (not
-`false`). The server parses the text as OmniSQL and plans a **governed model job**: measures
-expand to their governed SQL and row-level policies apply. Topic binding has the limitation below.
+`false`). The server parses the text as OmniSQL and plans a **governed model job**: joins resolve
+against the model (pruned to the views actually referenced), measures expand to
+their governed SQL, row-level policies apply.
 
 **Reference syntax**:
-- `${name}` in FROM position resolves a model view. The compiler currently emits the topic
-  name, and the successful probes used matching topic/view names. The WWI suite records a
-  binding failure when they differ; topic-specific resolution is not established on this
-  endpoint — §6 item 13.
+- `${view}` in FROM position resolves a **view**, not a topic. For a topic scan, Omniframes
+  emits the catalog's `base_view_name`; a topic named `wwi_sales` with base view
+  `wwi_sales_fact` must use `FROM ${wwi_sales_fact}`. Live-confirmed 2026-09-15 by the WWI
+  Querier permission tests (the previous topic-name spelling failed).
+  Source re-verified at monorepo `c7e09003514915d45161c7c81a09143bbc6cedcf`:
+  `services/query-manager/src/main/kotlin/com/omnianalytics/semantics/parse/OmniSqlParser.kt:978-988`
+  (`resolveFromRefForTypeInference`) resolves views unless `enableTopicResolution` is enabled;
+  `services/query-manager/src/main/kotlin/com/omnianalytics/querymanager/QueryManagerService.kt:98`
+  defaults `SqlQueryJobDescription.resolveTopics` to false;
+  `services/query-manager/src/main/kotlin/com/omnianalytics/querymanager/execution/OmniJobPlanner.kt:2963-2969`
+  passes that flag to the parser. This API path does not opt in. The earlier same-name
+  topic/view probe could not distinguish those bindings.
+  Tier 2 therefore uses model-level view/join resolution; this does **not** establish that
+  topic-specific join overrides or topic filters are preserved.
 - `${view.field}` anywhere in an expression: select items, WHERE, HAVING, ORDER BY, function
   args, arithmetic. Bracketed grain refs work: `${order_items.created_at[month]}`.
 - `${view.measure}` — a governed measure ref, expanded server-side (e.g.
@@ -514,22 +525,20 @@ body sections above):
 11. **OmniSQL path residue** (§3.6, probed on one Postgres org only): exact semantics of the
     same-column predicate merge (which side wins, when); whether `GROUP BY` over all columns is
     a safe dedup substitute for the stripped `DISTINCT`; the scoping rule for multi-view
-    expressions beyond first-ref-wins (only one shape tested); topic-vs-view precedence for
-    `FROM ${name}` when a topic and an unrelated view share a name; which permission gates the
-    path (`QUERY_SQL` vs `QUERY_TOPICS`) and behavior on topic-locked orgs; re-verification on
+    expressions beyond first-ref-wins (only one shape tested); topic-specific join overrides and
+    filters on the view-based SQL path; which permission gates the path (`QUERY_SQL` vs `QUERY_TOPICS`) and behavior on topic-locked orgs; re-verification on
     a non-Postgres warehouse.
 12. **Grain `__raw` collapse, live re-verification** (§2.7): the client now keeps the `__raw`
     values under the plain name and drops the formatted column, and FakeOmniAPI emits the pair
     (docs/SQLTIER.md §5). What is still open is the check against a real org: that the pair
     arrives in the shape assumed here for a grain the model formats, on both the semantic and
     the OmniSQL path, and that `summary.fields` collapses the same way.
-13. **Topic names distinct from view names.** The WWI integration suite records
-    `model has no view 'wwi_sales'` for tier-2 topic aggregation and retains an expected failure.
-    Source checked at `9a388ce368d3e3dc89f9e330bbd258904e26e648`: under
-    `services/query-manager/src/main/kotlin/com/omnianalytics/`,
-    `semantics/parse/OmniSqlParser.kt:79-80,886-896` gates topic lookup behind
-    `enableTopicResolution`; `querymanager/QueryManagerService.kt:85` defaults `resolveTopics`
-    to false, and `querymanager/execution/OmniJobPlanner.kt:2755-2762` passes that flag to the
-    parser. Establish endpoint support for topic resolution and preservation of topic joins and
-    policies before changing the compiler's FROM binding; substituting the base view alone
-    would not establish those semantics.
+13. **Topic-specific semantics on the view-based SQL path.** The topic/view name mismatch
+    is fixed: Omniframes emits the catalog's `base_view_name`, and the WWI Querier permission
+    tests live-confirmed the distinct-name case on 2026-09-15 (§3.6). The remaining question
+    is whether topic-specific join overrides and topic filters are preserved. The parser's
+    topic lookup is gated behind `enableTopicResolution`, and this endpoint defaults
+    `resolveTopics` to false (source locations in §3.6). Establish endpoint support for topic
+    resolution and preservation of those semantics before relying on topic-specific behavior;
+    successful base-view binding alone does not establish it. This tracks the topic-specific
+    portion of item 11.

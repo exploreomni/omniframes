@@ -29,7 +29,7 @@ from omniframes.plan import Aggregate, Scan, TopicScan
 from omniframes.session import OmniSession
 from omniframes.transport import HttpTransport
 
-BASE_URL = "https://bench.example.omni.co"
+BASE_URL = "https://bench.omniapp.co"
 REVENUE = "order_items.total_sale_price"
 COUNT = "order_items.count"
 

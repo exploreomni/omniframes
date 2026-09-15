@@ -2,16 +2,16 @@
 
 :class:`FakeOmniAPI` is the keystone of the fixtures-first testing model (docs/DESIGN.md §5): an
 ``httpx.MockTransport`` handler that serves the Omni Query API with exact wire fidelity
-(``docs/CONTRACT_NOTES.md``) over the checked-in bench dataset (``docs/BENCH_DATASET.md``),
+(``docs/CONTRACT_NOTES.md``) over the checked-in bench dataset (``internal-docs/BENCH_DATASET.md``),
 executing queries through DuckDB so the answers are real::
 
     handler = FakeOmniAPI()
     client = httpx.Client(
         transport=httpx.MockTransport(handler),
-        base_url="https://bench.example.omni.co",
+        base_url="https://bench.omniapp.co",
     )
 
-The model it serves is mirrored, YAML-side, in ``docs/bench_omni_model.md`` so the live lane can
+The model it serves is mirrored, YAML-side, in ``internal-docs/bench_omni_model.md`` so the live lane can
 reuse offline expectations.
 """
 

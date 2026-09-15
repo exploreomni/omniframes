@@ -30,7 +30,7 @@ the remote portion:
   group-by (Omni semantics); `group_by().agg()` is sugar compiled identically.
 - **Tier 2 — OmniSQL job**. ONE SQLGlot-built statement sent as `userEditedSQL` with the
   `rewriteSql` key **absent**, which is what makes the server parse it as OmniSQL and plan it as
-  a governed model job: `${topic}` in FROM brings the topic's join graph, `${view.field}` and
+  a governed model job: `${base_view}` in FROM resolves the catalog-provided view against the model, `${view.field}` and
   `${view.measure}` resolve against the model (measures expand to their governed SQL), and
   row-level policies apply. No `staticQueryReferences`, no reference core, no second query
   object — the statement *is* the plan. Covers: ad-hoc aggregations over raw columns,
@@ -162,13 +162,16 @@ for `query-api`, `ModelPermissionError`), `QueryError` (job error lines, incl. r
 - **Live probe** (`scripts/live_smoke.py`, needs `OMNI_BASE_URL`+`OMNI_API_KEY`): a standalone
   script with a PASS/FAIL/OBSERVED/SKIP protocol, not a pytest lane. It is what closes the
   LIVE-VALIDATE register (CONTRACT_NOTES §6), and it is deliberately outside the offline validation gate
-  because it needs a real org. There is **no** `tests/live/`: the `live` pytest marker is
-  registered but applied to nothing, so `pytest -m live` collects zero tests — never read a green
-  run of it as live coverage.
+  because it needs a real org.
+- **Live integration lane** (`tests/integration/`): pinned WWI results, catalog relationships,
+  and permissions for Querier and Restricted Querier PATs. Requires an explicit
+  `--live --principal querier|restricted`; without `--live`, these tests skip even when
+  credentials are present. Ordinary CI excludes them with `-m "not live"`.
 - **FakeOmniAPI** (`tests/fakes/`): in-process httpx.MockTransport ASGI-style fake serving
   whoami/catalog/run/wait with exact NDJSON framing over the bench dataset, executing semantic
   queries via DuckDB (dev dependency only). It implements the wire behaviors exercised by the
-  test suite; unsupported behavior is documented in docs/bench_omni_model.md.
+  test suite; unsupported behavior is documented in the
+  [bench Omni model specification](https://github.com/exploreomni/omniframes/blob/main/internal-docs/bench_omni_model.md).
 
 Validation gate (all checks must pass):
 

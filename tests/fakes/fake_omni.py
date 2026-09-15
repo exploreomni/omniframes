@@ -5,7 +5,7 @@ Use it as an :class:`httpx.MockTransport` handler::
     handler = FakeOmniAPI()
     client = httpx.Client(
         transport=httpx.MockTransport(handler),
-        base_url="https://bench.example.omni.co",
+        base_url="https://bench.omniapp.co",
     )
 
 Everything it serves is byte-faithful to ``docs/CONTRACT_NOTES.md`` — that is the point.  The

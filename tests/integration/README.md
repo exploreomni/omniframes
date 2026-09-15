@@ -42,8 +42,7 @@ The committed contract records the fixture/model version and independently compu
 answers. Do not update those values merely to make a drift failure pass: validate the underlying
 fixture and model change first, then review the contract update like a schema migration.
 
-The normal-Querier run currently reports one expected failure: tier-2 aggregation from a topic
-emits the topic name as an OmniSQL view, and this model has no view named `wwi_sales`. The test
-only xfails for that exact binding defect; it will pass automatically when the compiler is fixed
-and will still fail on any unrelated error. The Restricted Querier side remains a hard assertion
-that the same tier-2/manual-SQL path is denied.
+The normal-Querier run requires tier-2 aggregation from a topic to succeed. The compiler binds
+its OmniSQL FROM reference to the topic's catalog-resolved base view. Query errors fail the
+integration workflow; there is no expected-failure exemption. The Restricted Querier side
+asserts that the same tier-2/manual-SQL path is denied.

@@ -58,7 +58,7 @@ from tests.wire.build_fixtures import (
 
 # A syntactically plausible key (``omni_osk_`` + 50 base62 + 6-char CRC) that is not a real one.
 API_KEY = "omni_osk_" + "K3n0mn1" * 7 + "x" + "AB12CD"
-BASE_URL = "https://acme.omni.co"
+BASE_URL = "https://acme.omniapp.co"
 
 RUN_PATH = "/api/v1/query/run"
 WAIT_PATH = "/api/v1/query/wait"
@@ -182,16 +182,16 @@ VIEW_ENVELOPE: dict[str, Any] = {
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
-        ("acme.omni.co", "https://acme.omni.co"),
-        ("  acme.omni.co  ", "https://acme.omni.co"),
-        ("https://acme.omni.co", "https://acme.omni.co"),
-        ("https://acme.omni.co/", "https://acme.omni.co"),
-        ("acme.omni.co/api", "https://acme.omni.co"),
-        ("https://acme.omni.co/api/", "https://acme.omni.co"),
-        ("https://acme.omni.co/api/v1", "https://acme.omni.co"),
-        ("https://acme.omni.co/api/v1/", "https://acme.omni.co"),
-        ("https://acme.omni.co/API/V1", "https://acme.omni.co"),
-        ("https://acme.omni.co/api/v1?x=1#frag", "https://acme.omni.co"),
+        ("acme.omniapp.co", "https://acme.omniapp.co"),
+        ("  acme.omniapp.co  ", "https://acme.omniapp.co"),
+        ("https://acme.omniapp.co", "https://acme.omniapp.co"),
+        ("https://acme.omniapp.co/", "https://acme.omniapp.co"),
+        ("acme.omniapp.co/api", "https://acme.omniapp.co"),
+        ("https://acme.omniapp.co/api/", "https://acme.omniapp.co"),
+        ("https://acme.omniapp.co/api/v1", "https://acme.omniapp.co"),
+        ("https://acme.omniapp.co/api/v1/", "https://acme.omniapp.co"),
+        ("https://acme.omniapp.co/API/V1", "https://acme.omniapp.co"),
+        ("https://acme.omniapp.co/api/v1?x=1#frag", "https://acme.omniapp.co"),
         ("http://localhost:3000/api/v1", "http://localhost:3000"),
         ("https://proxy.internal/omni/api/v1", "https://proxy.internal/omni"),
     ],
@@ -200,7 +200,7 @@ def test_normalize_base_url(raw, expected):
     assert normalize_base_url(raw) == expected
 
 
-@pytest.mark.parametrize("raw", ["", "   ", "ftp://acme.omni.co", "https://"])
+@pytest.mark.parametrize("raw", ["", "   ", "ftp://acme.omniapp.co", "https://"])
 def test_normalize_base_url_rejects_garbage(raw):
     with pytest.raises(TransportError):
         normalize_base_url(raw)
@@ -317,12 +317,12 @@ def test_run_sends_the_envelope_and_the_auth_headers():
 def test_run_exposes_the_workbook_url_header():
     server = wire_server(
         "happy_single_job.ndjson",
-        run_headers={"X-Omni-Workbook-Url": "https://acme.omni.co/w/abc123"},
+        run_headers={"X-Omni-Workbook-Url": "https://acme.omniapp.co/w/abc123"},
     )
 
     result = transport(server).run({**TOPIC_ENVELOPE, "workbookUrl": True})
 
-    assert result.workbook_url == "https://acme.omni.co/w/abc123"
+    assert result.workbook_url == "https://acme.omniapp.co/w/abc123"
 
 
 def test_run_decodes_exotic_arrow_types_untouched():

@@ -117,7 +117,7 @@ def _saved(identifier: str, name: str, query: Mapping[str, Any]) -> SavedQuery:
         id=identifier,
         name=name,
         query=query,
-        url=f"https://bench.example.omni.co/dashboards/{BENCH_DOCUMENT_ID}/{identifier}",
+        url=f"https://bench.omniapp.co/dashboards/{BENCH_DOCUMENT_ID}/{identifier}",
     )
 
 

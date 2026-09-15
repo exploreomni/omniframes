@@ -91,6 +91,7 @@ from omniframes.compile.semantic import (
 from omniframes.compile.sqlgen import try_sql
 from omniframes.errors import CompileError
 from omniframes.plan import nodes
+from omniframes.plan.visitor import walk_expr
 
 __all__ = ["SplitOptions", "split"]
 
@@ -243,7 +244,7 @@ class _Splitter:
         """One tier-2 attempt: the subtree as a single OmniSQL statement, or ``None``."""
         if self.options.disable_sql:
             return None
-        compilation = try_sql(node, options=self.options)
+        compilation = try_sql(node)
         if compilation is None:
             return None
         # `label` falls out of `compilation.role`, which is "sql" for a statement omniframes
@@ -848,7 +849,7 @@ def _referenced(expr: Expr, available: Sequence[str]) -> frozenset[str]:
 
 def _refuse_unresolvable_aggregation(expr: Expr, available: Sequence[str]) -> None:
     """An aggregate inside a predicate is only a column reference, never a computation."""
-    for sub in _walk(expr):
+    for sub in walk_expr(expr):
         if isinstance(sub, AdHocAgg) and display_name(sub) not in available:
             raise CompileError(f"not yet supported: {adhoc_filter_reason(sub)}")
         if isinstance(sub, MeasureRef) and sub.name not in available:
@@ -857,13 +858,6 @@ def _refuse_unresolvable_aggregation(expr: Expr, available: Sequence[str]) -> No
                 "computed, and the local engine never emulates one. Select it (or aggregate it) "
                 "before referring to it here."
             )
-
-
-def _walk(expr: Expr) -> list[Expr]:
-    found = [expr]
-    for child in expr.children:
-        found.extend(_walk(child))
-    return found
 
 
 def _resolve(expr: Expr, renames: Mapping[str, str]) -> str:

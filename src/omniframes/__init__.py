@@ -5,7 +5,7 @@ as much compute as possible into Omni's SQL execution layer::
 
     from omniframes import OmniSession, functions as F
 
-    session = OmniSession.builder.host("acme.omni.co").api_key_from_env().get_or_create()
+    session = OmniSession.builder.host("acme.omniapp.co").api_key_from_env().get_or_create()
     df = session.read.topic("bench_ecommerce", "order_items")
     (
         df.select("users.state", "order_items.status")

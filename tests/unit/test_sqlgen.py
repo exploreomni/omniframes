@@ -202,10 +202,24 @@ def test_the_names_omniframes_actually_writes_pass_the_gate(name: str) -> None:
     assert fragment(F.col(name).expr) == "${" + name + "}"
 
 
-def test_a_topic_name_outside_the_charset_refuses_too() -> None:
-    scan = nodes.Scan(nodes.TopicScan(BENCH_MODEL_NAME, BENCH_MODEL_ID, "order items", ""))
+@pytest.mark.parametrize("base_view", ["", "order items", "orders} UNION SELECT 1"])
+def test_a_missing_or_unsafe_topic_base_view_refuses(base_view: str) -> None:
+    scan = nodes.Scan(nodes.TopicScan(BENCH_MODEL_NAME, BENCH_MODEL_ID, "sales", base_view))
 
     assert try_sql(nodes.Project(scan, columns(STATE))) is None
+
+
+def test_a_topic_with_a_different_name_selects_from_its_base_view() -> None:
+    scan = nodes.Scan(
+        nodes.TopicScan(BENCH_MODEL_NAME, BENCH_MODEL_ID, "Sales topic", "order_items")
+    )
+    plan = nodes.Aggregate(scan, columns(STATE), (F.sum(PRICE).alias("sales"),))
+
+    compiled = compile_sql(plan)
+
+    assert "FROM ${order_items}" in compiled.query.user_edited_sql
+    assert "Sales topic" not in compiled.query.user_edited_sql
+    assert compiled.scan == scan.source
 
 
 def test_a_bare_view_scan_selects_from_the_view() -> None:
@@ -301,11 +315,11 @@ def test_a_like_pattern_is_passed_through_because_there_the_wildcards_are_the_po
 # --------------------------------------------------------------------------------------
 
 
-def test_the_statement_selects_from_the_topic_and_carries_no_references() -> None:
+def test_the_statement_selects_from_the_base_view_and_carries_no_references() -> None:
     compiled = compile_sql(aggregate(F.count("users.id"), keys=columns(STATE)))
     wire = compiled.query.to_wire()
 
-    assert f"FROM ${{{BENCH_TOPIC_NAME}}}" in compiled.query.user_edited_sql
+    assert "FROM ${order_items}" in compiled.query.user_edited_sql
     assert compiled.query.omnisql is True
     assert compiled.query.static_query_references == {}
     assert "rewriteSql" not in wire, "an ABSENT key is what selects the parsed path (§3.6)"

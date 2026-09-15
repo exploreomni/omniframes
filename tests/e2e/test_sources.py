@@ -36,7 +36,7 @@ from tests.fakes import (
     FakeOmniAPI,
 )
 
-BASE_URL = "https://bench.example.omni.co"
+BASE_URL = "https://bench.omniapp.co"
 BENCH_DIR = Path(__file__).resolve().parents[1] / "data" / "bench"
 
 REVENUE_BY_STATE_SQL = """
