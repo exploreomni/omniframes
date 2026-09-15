@@ -1,0 +1,18 @@
+changelog:
+  exclude:
+    labels: ["release:skip"]
+  categories:
+    - title: Breaking changes
+      labels: ["release:breaking"]
+    - title: Features
+      labels: ["release:feature"]
+    - title: Fixes
+      labels: ["release:fix"]
+    - title: Performance
+      labels: ["release:performance"]
+    - title: Documentation
+      labels: ["release:docs"]
+    - title: Maintenance
+      labels: ["release:maintenance"]
+    - title: Other changes
+      labels: ["*"]

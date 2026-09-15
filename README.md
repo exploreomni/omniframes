@@ -6,7 +6,7 @@ execution layer.
 
 > **Status: pre-release (0.1.0.dev).** APIs may change. **Not yet published to PyPI** — install
 > from a checkout (see [Development](#development)); `pip install omniframes` starts working once
-> the name is claimed and the first tag is released.
+> the first release is published.
 
 ```python
 import omniframes as of
@@ -106,13 +106,11 @@ The bench dataset and Omni model specifications are in the
 
 ## Releasing
 
-The release version has one source of truth: `src/omniframes/_version.py`. Update it and the
-changelog, then run `uv sync --reinstall-package omniframes` so the editable install's metadata
-sees the new version (`uv.lock` intentionally omits a dynamically sourced root-project version).
-Tag the release as that exact version prefixed with `v`; for example, version `0.1.0` uses tag
-`v0.1.0`. The release workflow builds and smoke-installs the wheel, verifies its metadata and
-public `omniframes.__version__`, and refuses a mismatched tag before publishing to PyPI. A manual
-workflow run builds and validates artifacts but does not publish them.
+Prepare a version/changelog PR with `uv run python scripts/prepare_release.py prepare 0.1.0`.
+Review and merge it, then explicitly push the matching `v0.1.0` tag on the merged commit to
+publish to PyPI and GitHub Releases. Merging the PR does not publish; a manual Release workflow
+run only validates and builds. See the [release runbook](docs/releasing.md) for Trusted Publishing
+setup (no API keys), prereleases, and recovery instructions.
 
 ## Related projects
 
