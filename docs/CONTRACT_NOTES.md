@@ -533,3 +533,12 @@ body sections above):
     (docs/SQLTIER.md §5). What is still open is the check against a real org: that the pair
     arrives in the shape assumed here for a grain the model formats, on both the semantic and
     the OmniSQL path, and that `summary.fields` collapses the same way.
+13. **Topic-specific semantics on the view-based SQL path.** The topic/view name mismatch
+    is fixed: Omniframes emits the catalog's `base_view_name`, and the WWI Querier permission
+    tests live-confirmed the distinct-name case on 2026-09-15 (§3.6). The remaining question
+    is whether topic-specific join overrides and topic filters are preserved. The parser's
+    topic lookup is gated behind `enableTopicResolution`, and this endpoint defaults
+    `resolveTopics` to false (source locations in §3.6). Establish endpoint support for topic
+    resolution and preservation of those semantics before relying on topic-specific behavior;
+    successful base-view binding alone does not establish it. This tracks the topic-specific
+    portion of item 11.
