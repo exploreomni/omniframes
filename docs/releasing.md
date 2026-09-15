@@ -82,7 +82,8 @@ in a fresh environment to check runtime version, installed metadata, and `py.typ
 
 The publish job uploads those saved artifacts using PyPI Trusted Publishing. After success, a
 separate job creates a draft GitHub Release, attaches the same files, and publishes it using the
-reviewed changelog text. Prereleases are marked accordingly. Per-tag concurrency prevents
+reviewed changelog text. A final job dispatches **Publish docs** on `main` with the release tag.
+That docs run is asynchronous; verify it and the live version page separately. Prereleases are marked accordingly. Per-tag concurrency prevents
 simultaneous publication runs. No live Omni credentials are required for release checks; run the
 separate Omni Integration workflow beforehand when the changes warrant live verification.
 
@@ -101,6 +102,9 @@ separate Omni Integration workflow beforehand when the changes warrant live veri
   an existing draft, replaces its draft attachments, and leaves an already published release
   intact. Do not rerun the successful upload job. If artifacts have expired, retrieve and verify
   the published PyPI distributions before manually completing the GitHub Release.
+- **Docs dispatch or deployment failure:** the package is already published. Retry only the
+  failed dispatch job, or run **Publish docs** on `main` with the release tag. Do not rerun the
+  PyPI upload. A successful dispatch only means the docs run was scheduled.
 - **Bad published code:** ship a new version and consider yanking the bad release; do not delete
   or recreate its Git tag.
 
@@ -120,10 +124,17 @@ with a version selector in the header:
 - Prereleases never become `stable`; backfilling an older release cannot move `stable` backwards.
 
 The **Publish docs** workflow (`.github/workflows/docs.yml`) builds strictly, saves the versioned
-site to `gh-pages`, and deploys it through GitHub Pages. PRs only build docs in CI. Tag-triggered
-docs publication is independent of the PyPI upload; a docs version does not prove package
-publication succeeded. Concurrent docs updates are serialized. If a queued run is superseded,
-rerun the workflow for that release tag to publish the missing version.
+site to `gh-pages`, and deploys it through GitHub Pages. Pushes to `main` publish `dev`; after
+PyPI and GitHub Release publication succeed, the Release workflow dispatches **Publish docs**
+on `main` with `release_tag`. Manual Release rehearsals never dispatch docs. PRs only build docs
+in CI. Concurrent docs updates are serialized. If a queued run is superseded, manually dispatch
+the workflow on `main` with that release tag to publish the missing version.
+
+Direct tag-triggered docs deployments are intentionally disabled. They can report success while
+serving an earlier artifact for the same commit (see
+[deploy-pages issue #383](https://github.com/actions/deploy-pages/issues/383)). Dispatching from
+`main` uses the recovery path verified for `0.1.1`, while still building the exact tagged source.
+Check the separate docs run and the live version URL before reporting docs publication complete.
 
 To retry or backfill docs for an existing release, run **Publish docs** on `main` and enter its
 `release_tag`, for example `v0.1.0`. Leave the input blank to rebuild `dev`. Backfills use the
@@ -132,7 +143,8 @@ inherited config enables the selector for releases predating versioning. Histori
 still pass the strict build with those tools. Rebuilding a version replaces only that version.
 
 Repository setup: select **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-The `github-pages` environment allows branch `main` and tags `v*`. The build job needs
+The `github-pages` environment only needs to allow branch `main`. The Release workflow’s docs
+dispatch job needs `actions: write`. The build job needs
 `contents: write` to save generated versions; the deployment job uses `pages: write` and
 `id-token: write`. No personal token or PyPI credentials are needed. Do not hand-edit `gh-pages`.
 
