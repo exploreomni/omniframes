@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Existing release tag to publish (blank updates latest from main)"
+        description: "Existing release tag to publish (blank updates dev from main)"
         required: false
         type: string
 
@@ -47,7 +47,7 @@ jobs:
           export PATH="$PWD/.venv/bin:$PATH"
           docs_tag="$REQUESTED_TAG"
           if [[ "$REF_TYPE" == tag ]]; then docs_tag="$REF_NAME"; fi
-          docs_version=latest
+          docs_version=dev
           if [[ -n "$docs_tag" ]]; then
             if [[ ! "$docs_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+((a|b|rc)[0-9]+)?$ ]]; then
               echo "Expected an existing release tag such as v0.1.0" >&2
@@ -75,8 +75,26 @@ jobs:
           fi
           .venv/bin/mike deploy --config-file mkdocs-versioned.yml \
             --message "docs: publish $docs_version" "$docs_version"
+          # Choose the newest published stable version numerically. Backfills and prereleases
+          # must never move stable backwards or make unreleased main the default.
+          git show gh-pages:versions.json > .docs-versions.json
+          docs_stable="$(.venv/bin/python - <<'PYTHON'
+          import json
+          import re
+          from pathlib import Path
+          versions = [entry["version"] for entry in json.loads(Path(".docs-versions.json").read_text())]
+          stable = [version for version in versions if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version)]
+          print(max(stable, key=lambda version: tuple(map(int, version.split(".")))) if stable else "")
+          PYTHON
+          )"
           docs_default="$docs_version"
-          if git cat-file -e gh-pages:latest/index.html 2>/dev/null; then docs_default=latest; fi
+          if [[ -n "$docs_stable" ]]; then
+            .venv/bin/mike alias --config-file mkdocs-versioned.yml --update-aliases \
+              --alias-type redirect --message "docs: update stable documentation alias" "$docs_stable" stable
+            docs_default=stable
+          elif git cat-file -e gh-pages:dev/index.html 2>/dev/null; then
+            docs_default=dev
+          fi
           .venv/bin/mike set-default --config-file mkdocs-versioned.yml \
             --message "docs: set default documentation version" "$docs_default"
           mkdir -p pages-site

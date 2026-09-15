@@ -112,9 +112,12 @@ not a way to bypass the explicit tag-push publishing trigger.
 The [docs site](https://exploreomni.github.io/omniframes/) uses mike to retain multiple versions,
 with a version selector in the header:
 
-- `latest` follows `main` and is the default landing page once published.
+- `stable` points to the newest published stable version and is the default landing page.
+- `dev` follows `main`. Before any stable docs are published, the site defaults to `dev`
+  (or the first published prerelease if `dev` is not yet available).
 - Release tags such as `v0.1.0` publish to `0.1.0/`. Prereleases get their own version as well.
 - Publishing one version preserves the others on the generated `gh-pages` branch.
+- Prereleases never become `stable`; backfilling an older release cannot move `stable` backwards.
 
 The **Publish docs** workflow (`.github/workflows/docs.yml`) builds strictly, saves the versioned
 site to `gh-pages`, and deploys it through GitHub Pages. PRs only build docs in CI. Tag-triggered
@@ -123,7 +126,7 @@ publication succeeded. Concurrent docs updates are serialized. If a queued run i
 rerun the workflow for that release tag to publish the missing version.
 
 To retry or backfill docs for an existing release, run **Publish docs** on `main` and enter its
-`release_tag`, for example `v0.1.0`. Leave the input blank to rebuild `latest`. Backfills use the
+`release_tag`, for example `v0.1.0`. Leave the input blank to rebuild `dev`. Backfills use the
 current workflow's locked documentation tools with the tagged source, docs, and theme. A small
 inherited config enables the selector for releases predating versioning. Historical docs must
 still pass the strict build with those tools. Rebuilding a version replaces only that version.
