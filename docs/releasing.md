@@ -5,11 +5,9 @@ Merging a PR and manually dispatching the Release workflow never upload to PyPI.
 
 ## One-time setup
 
-1. Confirm ownership/availability of the `omniframes` PyPI name. In the intended maintainer's
-   PyPI account, configure a [pending trusted publisher](https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/)
-   with project `omniframes`, owner `exploreomni`, repository `omniframes`, workflow filename
-   `release.yml`, and environment `pypi`. If the project already exists, add the publisher to
-   that project. No API key is required. A pending publisher does not reserve the name.
+1. Configure a Trusted Publisher on the existing `omniframes` PyPI project with owner
+   `exploreomni`, repository `omniframes`, workflow filename `release.yml`, and environment
+   `pypi`. No API key is required.
 2. Create the GitHub environment `pypi` and restrict deployments to tags matching `v*`.
    Do not add required reviewers for the normal flow: the maintainer's tag push is the approval.
    The environment and publisher must be configured explicitly before the first release;

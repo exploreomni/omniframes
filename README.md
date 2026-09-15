@@ -6,7 +6,7 @@ execution layer.
 
 > **Status: pre-release (0.1.0.dev).** APIs may change. **Not yet published to PyPI** — install
 > from a checkout (see [Development](#development)); `pip install omniframes` starts working once
-> the name is claimed and the first tag is released.
+> the first release is published.
 
 ```python
 import omniframes as of

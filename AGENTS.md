@@ -68,7 +68,7 @@ current milestones exercise — grow it with the milestone that needs it.
 - New wire behavior must cite a monorepo source location in `docs/CONTRACT_NOTES.md`; unverified
   behavior gets a `LIVE-VALIDATE` entry there, not a guess.
 - API keys must never appear in reprs, logs, errors, docs, or fixtures (tested).
-- Open questions that need a human call: PyPI publish timing/name claim, repo publication.
+- Open questions that need a human call: PyPI publish timing, repo publication.
 
 ## Git and commits
 

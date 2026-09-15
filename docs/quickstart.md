@@ -11,7 +11,7 @@ Install, authenticate, run a query, read an `explain()`. Ten minutes.
 
 ## 1. Install
 
-Omniframes is **not on PyPI yet** (0.1.0 is pending a name claim). Until it lands, install from a
+The first Omniframes release is **not yet published to PyPI**. Until it lands, install from a
 checkout:
 
 === "uv"
