@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-09-15)
 
 Initial release.
 
@@ -76,3 +76,35 @@ Initial release.
   `a - b / c`. SQLGlot prints the tree it is handed and never re-derives precedence, so the
   parens are now nodes; without them the warehouse answered by its own precedence and tiers 2
   and 3 disagreed on the same frame.
+
+<!-- Release notes generated using configuration in .github/release.yml at 42b810f9f52d4947075c37466030544cbb88006c -->
+
+### What's Changed
+#### Features
+* feat(release): automate release preparation and tag publishing by @dspangen in https://github.com/exploreomni/omniframes/pull/11
+#### Documentation
+* docs: refresh beta status and omni styling by @dspangen in https://github.com/exploreomni/omniframes/pull/22
+#### Other changes
+* Recover gracefully from transient WAF 429s during catalog resolution by @dspangen in https://github.com/exploreomni/omniframes/pull/2
+* Parenthesize nested arithmetic in tier-2 SQL by @dspangen in https://github.com/exploreomni/omniframes/pull/3
+* docs(examples): add the marimo guided-tour demo notebook by @dspangen in https://github.com/exploreomni/omniframes/pull/7
+* perf(catalog): resolve models and view names without enumerating by @dspangen in https://github.com/exploreomni/omniframes/pull/6
+* docs: add coding-agent contribution guidelines by @dspangen in https://github.com/exploreomni/omniframes/pull/10
+* feat: add versioned user agent and release safeguards by @dspangen in https://github.com/exploreomni/omniframes/pull/8
+* test: add WWI dual-role integration suite by @dspangen in https://github.com/exploreomni/omniframes/pull/9
+* docs: clarify query grouping and replace milestone references by @dspangen in https://github.com/exploreomni/omniframes/pull/12
+* fix: use omniapp.co for example organization hostnames by @dspangen in https://github.com/exploreomni/omniframes/pull/19
+* docs: move bench specifications into internal repository docs by @dspangen in https://github.com/exploreomni/omniframes/pull/18
+* refactor(catalog): remove unsupported relationship wire fallback by @dspangen in https://github.com/exploreomni/omniframes/pull/15
+* refactor(compile)!: remove redundant traversal and unused options by @dspangen in https://github.com/exploreomni/omniframes/pull/14
+* fix(compile): bind topic sql to its base view by @dspangen in https://github.com/exploreomni/omniframes/pull/20
+* ci: run integration tests on pushes to main by @dspangen in https://github.com/exploreomni/omniframes/pull/21
+* docs(testing): describe the explicit live integration opt-in by @dspangen in https://github.com/exploreomni/omniframes/pull/16
+* docs(sql): clarify unresolved topic-specific sql semantics by @dspangen in https://github.com/exploreomni/omniframes/pull/17
+* fix(testing): remove unsupported query-reference tables from fake api by @dspangen in https://github.com/exploreomni/omniframes/pull/13
+
+### New Contributors
+* @dspangen made their first contribution in https://github.com/exploreomni/omniframes/pull/2
+
+**Full Changelog**: https://github.com/exploreomni/omniframes/commits/v0.1.0
+
