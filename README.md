@@ -81,7 +81,7 @@ Requires [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync --all-extras         # install environment
-uv run pytest                # run tests (live tests auto-skip without credentials)
+uv run pytest                # offline tests; live tests require explicit --live opt-in
 uv run ruff format && uv run ruff check --fix
 uv run mypy
 uv run mkdocs build --strict # docs site
@@ -97,8 +97,9 @@ uv run ruff format --check && uv run ruff check && uv run mypy && uv run pytest 
 Tests run in-process against a wire-faithful fake of the Omni query API over a deterministic
 bench dataset — no credentials, no network. See
 [`docs/offline-testing.md`](docs/offline-testing.md) for the fake, the dataset and the five test
-lanes. Checks against a live Omni org are a standalone script, `scripts/live_smoke.py`, run with
-`OMNI_BASE_URL` and `OMNI_API_KEY` set — not a pytest lane.
+lanes. The opt-in [WWI integration suite](tests/integration/README.md) checks live query results
+and permissions. The separate `scripts/live_smoke.py` probe, run with `OMNI_BASE_URL` and
+`OMNI_API_KEY` set, checks the LIVE-VALIDATE register in `docs/CONTRACT_NOTES.md`.
 
 The bench dataset and Omni model specifications are in the
 [internal repository docs](internal-docs/README.md).

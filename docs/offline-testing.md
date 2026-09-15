@@ -1,9 +1,9 @@
 # Offline testing
 
-Omniframes has no "run it against staging and hope" step. The whole library — compiler,
-transport, three tiers, NDJSON framing, Arrow decoding — is exercised in-process against a
-**wire-faithful fake of the Omni query API**, backed by a **deterministic synthetic dataset**
-with pre-computed answers. A bug reproduced offline is the same bug you would have seen live.
+The compiler, transport, three tiers, NDJSON framing, and Arrow decoding are exercised
+in-process against a **fake of the Omni query API**, backed by a **deterministic synthetic
+dataset** with pre-computed answers. The fake implements the documented behaviors exercised by
+the tests; live probes check the assumptions it cannot establish on its own.
 
 This page is for contributors. Users need nothing here.
 
@@ -88,13 +88,14 @@ Full specifications:
 | `tests/wire/` | `HttpTransport` against fixture NDJSON **bytes** covering every documented quirk: string `timed_out`, wait cycles, all three error envelopes, redaction, totals, an unterminated tail, exotic Arrow types. |
 | `tests/differential/` | The same logical operation via pushdown vs. an independent pandas reference over the same parquet — and tier 2 vs. tier 3 for the same plan. Three implementations cross-checking each other: DuckDB, Arrow compute, pandas. |
 | `tests/e2e/` | Whole user-facing flows through the real client stack against the fake, asserted against `known_answers.json`. |
-| `scripts/live_smoke.py` | The same expectations against a real org — a standalone script, **not** a pytest lane (`pytest -m live` collects nothing). Needs `OMNI_BASE_URL` + `OMNI_API_KEY`; closes the LIVE-VALIDATE register of CONTRACT_NOTES §6. |
+| `tests/integration/` | Live WWI catalog, pinned query results, and permissions for two PAT roles. Requires explicit `--live --principal querier|restricted`; see the suite's README. |
+| `scripts/live_smoke.py` | A separate live probe for the LIVE-VALIDATE register of CONTRACT_NOTES §6. Needs `OMNI_BASE_URL` + `OMNI_API_KEY`. |
 
 ## Running things
 
 ```bash
 uv sync --all-extras                 # install / refresh the environment
-uv run pytest                        # everything offline (there are no live tests to skip)
+uv run pytest                        # offline tests; live integration tests skip by default
 uv run pytest -m "not live" -q       # the offline suite, explicitly
 uv run pytest tests/e2e -q           # one lane
 uv run pytest tests/unit/test_splitter.py::test_name
