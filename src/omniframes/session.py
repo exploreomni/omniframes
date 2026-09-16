@@ -12,9 +12,11 @@
     )
     df = session.read.topic("bench_ecommerce", "order_items")
 
-**Building a session performs no I/O** (docs/DESIGN.md §3).  The ``whoami`` preflight runs
-lazily, once, before the first call that needs the network — or eagerly via :meth:`verify` —
-so a typo in the key surfaces as an auth error rather than as a confusing query failure.
+**Building a session makes no Omni API calls** (docs/DESIGN.md §3). Missing credentials can be
+read from a notebook secret provider, which may contact the notebook frontend or secret service.
+The ``whoami`` preflight runs lazily, once, before the first call that needs Omni — or eagerly
+via :meth:`verify` — so a typo in the key surfaces as an auth error rather than as a confusing
+query failure.
 ``whoami`` is the right preflight because it answers even when the ``query-api`` feature flag
 is off (CONTRACT_NOTES §1).
 
@@ -32,6 +34,9 @@ from math import isfinite
 from types import TracebackType
 from typing import Any, Final
 
+from omniframes._credentials import API_KEY_ENV as API_KEY_ENV
+from omniframes._credentials import BASE_URL_ENV as BASE_URL_ENV
+from omniframes._credentials import SecretConfig, resolve_credentials
 from omniframes.catalog import Catalog
 from omniframes.compile.querymodel import QUERY_VERSION, CachePolicy
 from omniframes.compile.semantic import EnvelopeOptions
@@ -48,10 +53,6 @@ from omniframes.transport.base import PlanResult, QueryResult, QueryTransport
 from omniframes.transport.http import HttpTransport
 
 __all__ = ["DataFrameReader", "OmniSession", "SessionBuilder"]
-
-#: Environment variables shared with the official ``omni-python-sdk`` (CONTRACT_NOTES §1).
-API_KEY_ENV = "OMNI_API_KEY"
-BASE_URL_ENV = "OMNI_BASE_URL"
 
 _FEATURE_FLAG_ADVICE = (
     "An Omni organization admin has to enable the Query API (the `query-api` feature flag) for "
@@ -73,7 +74,10 @@ _NO_DASHBOARD: Final = "does not have a dashboard"
 
 
 class SessionBuilder:
-    """Collects configuration; :meth:`get_or_create` turns it into a session. No I/O anywhere."""
+    """Collects configuration; :meth:`get_or_create` builds a session without calling Omni.
+
+    Explicit settings take precedence over environment variables, then notebook secrets.
+    """
 
     __slots__ = (
         "_api_key",
@@ -82,6 +86,7 @@ class SessionBuilder:
         "_cache",
         "_decomposition_row_cap",
         "_rate_limit_wait",
+        "_secrets",
         "_timezone",
         "_transport",
         "_user_id",
@@ -97,6 +102,7 @@ class SessionBuilder:
         self._transport: QueryTransport | None = None
         self._decomposition_row_cap: int | None = None
         self._rate_limit_wait: float | None = None
+        self._secrets = SecretConfig()
 
     def __repr__(self) -> str:
         return f"SessionBuilder(base_url={self._base_url!r})"
@@ -111,7 +117,7 @@ class SessionBuilder:
         return self.base_url(host)
 
     def base_url_from_env(self, variable: str = BASE_URL_ENV) -> SessionBuilder:
-        """Read the org URL from the environment (``OMNI_BASE_URL`` by default)."""
+        """Read only the environment variable (``OMNI_BASE_URL`` by default)."""
         value = os.environ.get(variable)
         if not value:
             raise CompileError(f"{variable} is not set")
@@ -123,7 +129,7 @@ class SessionBuilder:
         return self
 
     def api_key_from_env(self, variable: str = API_KEY_ENV) -> SessionBuilder:
-        """Read the key from the environment (``OMNI_API_KEY`` by default)."""
+        """Read only the environment variable (``OMNI_API_KEY`` by default)."""
         value = os.environ.get(variable)
         if not value:
             raise CompileError(
@@ -131,6 +137,29 @@ class SessionBuilder:
                 f"export it as {variable}."
             )
         return self.api_key(value)
+
+    def secrets(
+        self,
+        provider: str | None = "auto",
+        *,
+        scope: str | None = None,
+        api_key_name: str = API_KEY_ENV,
+        base_url_name: str = BASE_URL_ENV,
+    ) -> SessionBuilder:
+        """Configure notebook secret fallback; reads happen only in :meth:`get_or_create`.
+
+        ``auto`` (the default) recognizes loaded Colab or an active notebook's ``dbutils``.
+        Select ``colab``, ``databricks``, ``snowflake`` (Snowpark secrets), or
+        ``snowflake-legacy`` (Streamlit notebook aliases) explicitly to override discovery.
+        ``None`` disables secrets. Snowflake providers require explicit selection.
+
+        Databricks requires ``scope`` when secret lookup is needed. Names identify provider
+        secrets, not environment variables; Snowflake Workspaces uses ``database/schema/name``.
+        Explicit host/API key values and environment variables take precedence. An injected
+        transport bypasses all automatic credential resolution. No provider is imported here.
+        """
+        self._secrets = SecretConfig(provider, scope, api_key_name, base_url_name)
+        return self
 
     def branch(self, branch_id: str) -> SessionBuilder:
         """Run every query against a model branch (top-level ``branchId``; must be a UUID)."""
@@ -217,16 +246,15 @@ class SessionBuilder:
         return self
 
     def get_or_create(self) -> OmniSession:
-        """Build the session. Performs **no** network calls."""
+        """Build without calling Omni; missing settings can use the selected secret provider."""
         transport = self._transport
         owns_transport = transport is None
         if transport is None:
-            base_url = self._base_url or os.environ.get(BASE_URL_ENV)
+            base_url, api_key = resolve_credentials(self._base_url, self._api_key, self._secrets)
             if not base_url:
                 raise CompileError(
                     f"no Omni host configured: call .host('acme.omniapp.co') or set {BASE_URL_ENV}"
                 )
-            api_key = self._api_key or os.environ.get(API_KEY_ENV)
             if not api_key:
                 raise CompileError(
                     "no API key configured: call .api_key(...) / .api_key_from_env() or set "
