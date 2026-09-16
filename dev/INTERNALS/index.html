@@ -1090,11 +1090,23 @@ Result columns arrive under wire names; <code>normalize(aliases=...)</code> rena
 <h2 id="5-sessioncatalog">5. Session/catalog<a class="headerlink" href="#5-sessioncatalog" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>OmniSession.builder</code> → <code>SessionBuilder</code>: <code>.host(str)</code> / <code>.base_url(str)</code>, <code>.api_key(str)</code>,
-  <code>.api_key_from_env()</code> (OMNI_API_KEY), <code>.branch(str)</code>, <code>.timezone(str)</code>, <code>.cache(str)</code>,
+  <code>.base_url_from_env()</code> (OMNI_BASE_URL), <code>.api_key_from_env()</code> (OMNI_API_KEY), <code>.branch(str)</code>,
+  <code>.secrets(provider="auto", scope=..., api_key_name=..., base_url_name=...)</code>,
+  <code>.timezone(str)</code>, <code>.cache(str)</code>,
   <code>.user_id(str)</code>, <code>.rate_limit_wait(float)</code> (per-GET 429 waiting budget),
   <code>.transport(QueryTransport)</code> (injection for tests), <code>.get_or_create()</code>.
-  No network I/O. <code>session.verify()</code> runs whoami eagerly; otherwise the first action triggers a
-  cached whoami preflight for crisp errors.</li>
+  No Omni API calls. Explicit builder values override environment variables, which override
+  one selected notebook secret provider. The <code>*_from_env()</code> helpers read only the environment;
+  <code>.secrets(...)</code> stores configuration and <code>get_or_create()</code> reads any missing credentials.
+  Colab uses <code>userdata.get</code>, Databricks uses the existing notebook <code>dbutils.secrets.get</code> with an
+  explicit scope, Snowflake uses the Snowpark generic-secret helper, and legacy Snowflake uses
+  Streamlit secret aliases. Automatic selection is separate from User-Agent detection: loaded
+  Colab or the active notebook's <code>dbutils</code>, with ambiguous candidates rejected. Snowflake
+  requires an explicit provider. <code>None</code> disables providers; an injected transport bypasses
+  resolution. Errors suppress provider exception text, and providers never fall through to
+  another platform. <code>session.verify()</code> runs whoami eagerly; otherwise the first action triggers
+  a cached whoami preflight for crisp errors. See <a href="../quickstart/#notebook-secrets">notebook setup</a>
+  for platform prerequisites and API sources.</li>
 <li><code>session.catalog</code>: <code>models()</code> (paginate all), <code>model(name_or_id)</code> (one exact-match filtered
   request — <code>?modelId=</code> for a UUID, else <code>?name=</code>; the cursor walk is only the fallback that
   builds the error's model list), <code>topics(model)</code>, <code>topic(model, name)</code> (full metadata → typed

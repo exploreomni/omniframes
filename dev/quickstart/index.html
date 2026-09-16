@@ -378,6 +378,56 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#notebook-secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notebook secrets
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Notebook secrets">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#google-colab" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Google Colab
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#databricks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Databricks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#snowflake" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Snowflake
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#two-org-side-prerequisites" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -824,6 +874,56 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#notebook-secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notebook secrets
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Notebook secrets">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#google-colab" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Google Colab
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#databricks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Databricks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#snowflake" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Snowflake
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#two-org-side-prerequisites" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -929,7 +1029,7 @@
 <p>Install, authenticate, run a query, read an <code>explain()</code>. Ten minutes.</p>
 <div class="admonition info">
 <p class="admonition-title">About the examples</p>
-<p>Every Python block on this page has been executed, verbatim, against a wire-faithful fake of
+<p>The query examples on this page have been executed, verbatim, against a wire-faithful fake of
 the Omni query API — the outputs below are what it printed. The model is called <code>ecommerce</code>,
 with one topic, <code>order_items</code>, joined to <code>users</code> and <code>products</code>
 (<a href="../offline-testing/">the bench model</a>). Substitute your own model, topic and field names;
@@ -957,6 +1057,87 @@ optional extra (<code>omniframes[polars]</code>) used only by <code>to_polars()<
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OMNI_API_KEY</span><span class="o">=</span><span class="s2">&quot;…&quot;</span><span class="w">   </span><span class="c1"># Settings → API keys, in Omni</span>
 </code></pre></div>
 <p>Use your organization’s <code>&lt;example-slug&gt;.omniapp.co</code> hostname; replace <code>acme</code> with your own slug.</p>
+<h3 id="notebook-secrets">Notebook secrets<a class="headerlink" href="#notebook-secrets" title="Permanent link">&para;</a></h3>
+<p>For each credential, <code>get_or_create()</code> checks an explicit builder value, then <code>OMNI_BASE_URL</code>
+or <code>OMNI_API_KEY</code> in the environment, then <strong>one</strong> notebook secret provider. It reads only
+missing credentials. <code>.secrets(...)</code> configures that fallback without accessing any secrets;
+passing <code>.transport(...)</code> skips credential resolution entirely.</p>
+<p>The default <code>.secrets("auto")</code> recognizes a loaded Colab runtime or the current notebook's
+<code>dbutils</code> object. If both are present, select a provider explicitly. Snowflake requires explicit
+selection because we have not identified a supported notebook detector. Package
+installation alone never selects a provider, and secret selection is independent of the
+User-Agent runtime label.</p>
+<p>Use <code>.secrets(None)</code> to disable notebook lookup. The <code>.base_url_from_env()</code> and
+<code>.api_key_from_env()</code> helpers read <strong>only</strong> environment variables and fail immediately when
+the requested variable is missing. For custom secret names, use <code>.secrets(api_key_name="my_key",
+base_url_name="my_url")</code>; these names do not change the environment variable names.</p>
+<h4 id="google-colab">Google Colab<a class="headerlink" href="#google-colab" title="Permanent link">&para;</a></h4>
+<p>In Colab, open <strong>Secrets</strong> (the key icon in the sidebar), add <code>OMNI_BASE_URL</code> with your Omni
+organization URL and <code>OMNI_API_KEY</code> with your API key, and enable <strong>Notebook access</strong> for both.
+The builder detects Colab and reads those secrets automatically:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">omniframes</span><span class="w"> </span><span class="kn">import</span> <span class="n">OmniSession</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">session</span> <span class="o">=</span> <span class="n">OmniSession</span><span class="o">.</span><span class="n">builder</span><span class="o">.</span><span class="n">get_or_create</span><span class="p">()</span>
+</code></pre></div>
+<p>You can also supply <code>.host("acme.omniapp.co")</code> and store only <code>OMNI_API_KEY</code> in Secrets, or
+select <code>.secrets("colab", api_key_name="my_omni_key")</code> explicitly. Automatic selection follows
+the <code>"google.colab" in sys.modules</code> pattern in a
+<a href="https://github.com/GoogleCloudPlatform/generative-ai/blob/main/gemini/use-cases/media-generation/consistent_imagery_generation.ipynb">Google-published notebook</a>.
+This is a runtime hint, not a guarantee that Secrets is available; Colab Enterprise is excluded
+from automatic selection.</p>
+<p>Colab's published
+<a href="https://github.com/googlecolab/colabtools/blob/main/google/colab/userdata.py"><code>userdata.get()</code></a>
+contacts the notebook frontend, so secret lookup needs a connected Colab UI. If a secret is
+missing, add it; if access is denied, enable <strong>Notebook access</strong>. When Secrets is unavailable,
+configure the environment variables instead.</p>
+<h4 id="databricks">Databricks<a class="headerlink" href="#databricks" title="Permanent link">&para;</a></h4>
+<p>Create a secret scope containing <code>OMNI_API_KEY</code>, grant the notebook's principal access, and
+specify the scope:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">session</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">OmniSession</span><span class="o">.</span><span class="n">builder</span><span class="o">.</span><span class="n">host</span><span class="p">(</span><span class="s2">&quot;acme.omniapp.co&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">secrets</span><span class="p">(</span><span class="s2">&quot;databricks&quot;</span><span class="p">,</span> <span class="n">scope</span><span class="o">=</span><span class="s2">&quot;omni&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">get_or_create</span><span class="p">()</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="p">)</span>
+</code></pre></div>
+<p>Omniframes uses the notebook's existing <code>dbutils</code> and the published
+<a href="https://docs.databricks.com/aws/en/dev-tools/databricks-utils#secrets-utility-dbutilssecrets"><code>dbutils.secrets.get(scope, key)</code></a>
+API. It does not create an SDK client or try remote authentication. <code>.secrets(scope="omni")</code>
+also works with automatic selection. The scope is required only when a missing credential
+needs a secret lookup. Omit <code>.host(...)</code> to read <code>OMNI_BASE_URL</code> from the scope too.</p>
+<p>The active IPython namespace lookup follows a
+<a href="https://docs.databricks.com/aws/en/dev-tools/databricks-connect-legacy#access-databricks-utilities">Databricks-published pattern</a>,
+also used by the <a href="https://github.com/databricks/databricks-sdk-py/blob/main/databricks/sdk/runtime/__init__.py">Databricks SDK</a>.
+Finding <code>dbutils</code> is a capability hint; it does not guarantee secret access or a hosted runtime.</p>
+<h4 id="snowflake">Snowflake<a class="headerlink" href="#snowflake" title="Permanent link">&para;</a></h4>
+<p>For <strong>Notebooks in Workspaces</strong>, attach a <code>GENERIC_STRING</code> secret and an external access
+integration (EAI) to the notebook service. Configure the EAI's network rule to allow your Omni
+hostname. Set the normalized <code>database/schema/name</code> path as documented in
+<a href="https://docs.snowflake.com/en/user-guide/ui-snowsight/notebooks-in-workspaces/notebooks-in-workspaces-using-secrets">Snowflake's secrets guide</a>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">session</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="n">OmniSession</span><span class="o">.</span><span class="n">builder</span><span class="o">.</span><span class="n">host</span><span class="p">(</span><span class="s2">&quot;acme.omniapp.co&quot;</span><span class="p">)</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="o">.</span><span class="n">secrets</span><span class="p">(</span><span class="s2">&quot;snowflake&quot;</span><span class="p">,</span> <span class="n">api_key_name</span><span class="o">=</span><span class="s2">&quot;analytics/notebooks/omni_api_key&quot;</span><span class="p">)</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="o">.</span><span class="n">get_or_create</span><span class="p">()</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="p">)</span>
+</code></pre></div>
+<p>This provider calls <code>snowflake.snowpark.secrets.get_generic_secret_string()</code> from the notebook
+runtime. For a URL stored as a secret, omit <code>.host(...)</code> and also set <code>base_url_name</code> to its
+normalized path.</p>
+<p>For <strong>legacy Snowflake Notebooks</strong>, associate a <code>GENERIC_STRING</code> secret with both the EAI and
+the notebook under an alias, then select the legacy provider:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">session</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">OmniSession</span><span class="o">.</span><span class="n">builder</span><span class="o">.</span><span class="n">host</span><span class="p">(</span><span class="s2">&quot;acme.omniapp.co&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="o">.</span><span class="n">secrets</span><span class="p">(</span><span class="s2">&quot;snowflake-legacy&quot;</span><span class="p">,</span> <span class="n">api_key_name</span><span class="o">=</span><span class="s2">&quot;omni_api_key&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="o">.</span><span class="n">get_or_create</span><span class="p">()</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="p">)</span>
+</code></pre></div>
+<p>The legacy provider reads <code>streamlit.secrets[alias]</code>, following
+<a href="https://docs.snowflake.com/en/user-guide/ui-snowsight/notebooks-external-access">Snowflake's legacy notebook guide</a>.
+Here <code>api_key_name</code> is the notebook alias, rather than a Workspaces path.</p>
+<p>Errors identify missing secrets, denied access, or unavailable runtime services where the
+provider exposes that distinction. Some platforms combine missing and inaccessible secrets.
+Provider exception text and secret values are omitted. A failed selected provider never causes
+a lookup on another platform.</p>
+<p>The <a href="https://github.com/exploreomni/omniframes/blob/main/examples/notebook_secrets.ipynb">manual verification notebook</a>
+checks each platform without printing credentials. Automated coverage uses simulated runtimes;
+it does not establish that a live notebook's permissions, frontend, or network are configured.</p>
 <div class="admonition danger">
 <p class="admonition-title">Never hard-code the key</p>
 <p>Put it in the environment or a secret manager — never in a notebook cell, a committed file,
@@ -972,10 +1153,10 @@ environment values, hostnames, usernames, workspace/cluster identifiers, or path
 <p><strong>The <code>query-api</code> feature flag must be enabled for your organization.</strong> Without it every
     query endpoint answers <code>403 Feature not enabled</code> — and <code>whoami</code> keeps working, which is why
     omniframes preflights with it. The error names the remedy and who can apply it:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>the Omni Query API is not enabled for this organization (403 from POST /api/v1/query/run:
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>Feature not enabled). An organization admin has to enable the Query API feature for the org;
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>the same API key then works unchanged. An Omni organization admin has to enable the Query API
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>(the `query-api` feature flag) for this organization; the same API key then works unchanged.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>the Omni Query API is not enabled for this organization (403 from POST /api/v1/query/run:
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>Feature not enabled). An organization admin has to enable the Query API feature for the org;
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>the same API key then works unchanged. An Omni organization admin has to enable the Query API
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>(the `query-api` feature flag) for this organization; the same API key then works unchanged.
 </code></pre></div>
 </li>
 <li>
@@ -983,36 +1164,34 @@ environment values, hostnames, usernames, workspace/cluster identifiers, or path
     <code>QUERY_FULL_MODEL</code> is additionally required for <code>session.read.view(...)</code>; <code>QUERY_SQL</code> for
     <code>session.read.sql(...)</code>; <code>VIEW_SQL</code> to see un-redacted SQL in <code>explain(analyze=True)</code> and in
     error messages. A missing one is equally explicit:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>Omni denied access to this model (403 from POST /api/v1/query/run: Permission denied). The
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>key&#39;s user needs the QUERY_TOPICS permission to query topics on this model. An Omni
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>organization admin can grant it: …
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>Omni denied access to this model (403 from POST /api/v1/query/run: Permission denied). The
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>key&#39;s user needs the QUERY_TOPICS permission to query topics on this model. An Omni
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>organization admin can grant it: …
 </code></pre></div>
 </li>
 </ol>
 <h2 id="3-build-a-session">3. Build a session<a class="headerlink" href="#3-build-a-session" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">omniframes</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">of</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">omniframes</span><span class="w"> </span><span class="kn">import</span> <span class="n">functions</span> <span class="k">as</span> <span class="n">F</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">session</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">of</span><span class="o">.</span><span class="n">OmniSession</span><span class="o">.</span><span class="n">builder</span><span class="o">.</span><span class="n">host</span><span class="p">(</span><span class="s2">&quot;acme.omniapp.co&quot;</span><span class="p">)</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="o">.</span><span class="n">api_key_from_env</span><span class="p">()</span>  <span class="c1"># OMNI_API_KEY; .api_key(&quot;…&quot;) also exists but prefer the env</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="o">.</span><span class="n">get_or_create</span><span class="p">()</span>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">omniframes</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">of</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">omniframes</span><span class="w"> </span><span class="kn">import</span> <span class="n">functions</span> <span class="k">as</span> <span class="n">F</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">session</span> <span class="o">=</span> <span class="n">of</span><span class="o">.</span><span class="n">OmniSession</span><span class="o">.</span><span class="n">builder</span><span class="o">.</span><span class="n">host</span><span class="p">(</span><span class="s2">&quot;acme.omniapp.co&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">get_or_create</span><span class="p">()</span>
 </code></pre></div>
-<p><strong>Building a session performs no network I/O at all.</strong> No handshake, no catalog fetch, nothing —
-so constructing one in a module-level cell or a fixture is free. The <code>whoami</code> preflight runs
-lazily, once, before the first call that needs the network.</p>
+<p><strong>Building a session makes no Omni API calls.</strong> Authentication and catalog requests remain
+lazy. Resolving a missing credential from a notebook provider can contact its secret service
+or frontend; explicit values or environment variables skip that lookup. The <code>whoami</code> preflight
+runs lazily, once, before the first call that needs Omni.</p>
 <p>Run it eagerly when you want to check credentials up front:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">identity</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">verify</span><span class="p">()</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">identity</span><span class="p">[</span><span class="s2">&quot;keyScope&quot;</span><span class="p">])</span>  <span class="c1"># &#39;organization&#39; for an org key, &#39;user&#39; for a PAT</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">identity</span><span class="p">))</span>  <span class="c1"># [&#39;keyScope&#39;, &#39;orgRole&#39;, &#39;rolesByModel&#39;, ...]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">identity</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">verify</span><span class="p">()</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">identity</span><span class="p">[</span><span class="s2">&quot;keyScope&quot;</span><span class="p">])</span>  <span class="c1"># &#39;organization&#39; for an org key, &#39;user&#39; for a PAT</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">identity</span><span class="p">))</span>  <span class="c1"># [&#39;keyScope&#39;, &#39;orgRole&#39;, &#39;rolesByModel&#39;, ...]</span>
 </code></pre></div>
 <p><code>verify()</code> answers three questions in one call: is the key valid, which models can it see, and
 which permissions does it hold on each (<code>rolesByModel[&lt;modelId&gt;]["permissions"]</code>). It is the
 first thing to run when a query 403s.</p>
 <p>Other builder knobs — all optional, all covered in the <a href="../api/">API reference</a>:
-<code>.base_url(...)</code> / <code>.base_url_from_env()</code>, <code>.branch(uuid)</code> to query a model branch,
+<code>.base_url(...)</code> / <code>.base_url_from_env()</code>, <code>.secrets(...)</code> for notebook credentials,
+<code>.branch(uuid)</code> to query a model branch,
 <code>.timezone("America/Los_Angeles")</code>, <code>.cache("SkipCache")</code>, <code>.user_id(membership_id)</code> to
 impersonate, <code>.decomposition_row_cap(n)</code>, <code>.rate_limit_wait(seconds)</code> for each rate-limited GET,
 and <code>.transport(...)</code> for injecting a fake in tests.</p>
@@ -1022,40 +1201,40 @@ quoting, <code>LIMIT</code>, <code>NULLS LAST</code> and the <code>LIKE … ESCA
 there is nothing about the connection a client needs to know.</p>
 <h2 id="4-look-around">4. Look around<a class="headerlink" href="#4-look-around" title="Permanent link">&para;</a></h2>
 <p>The catalog is read-through cached and does the minimum number of calls:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nb">print</span><span class="p">([</span><span class="n">model</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">model</span> <span class="ow">in</span> <span class="n">session</span><span class="o">.</span><span class="n">catalog</span><span class="o">.</span><span class="n">models</span><span class="p">()])</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nb">print</span><span class="p">([</span><span class="n">topic</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">topic</span> <span class="ow">in</span> <span class="n">session</span><span class="o">.</span><span class="n">catalog</span><span class="o">.</span><span class="n">topics</span><span class="p">(</span><span class="s2">&quot;ecommerce&quot;</span><span class="p">)])</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">topic</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">catalog</span><span class="o">.</span><span class="n">topic</span><span class="p">(</span><span class="s2">&quot;ecommerce&quot;</span><span class="p">,</span> <span class="s2">&quot;order_items&quot;</span><span class="p">)</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="nb">print</span><span class="p">([</span><span class="n">view</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">view</span> <span class="ow">in</span> <span class="n">topic</span><span class="o">.</span><span class="n">views</span><span class="p">])</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">topic</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="s2">&quot;users.state&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">data_type</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nb">print</span><span class="p">([</span><span class="n">model</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">model</span> <span class="ow">in</span> <span class="n">session</span><span class="o">.</span><span class="n">catalog</span><span class="o">.</span><span class="n">models</span><span class="p">()])</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="nb">print</span><span class="p">([</span><span class="n">topic</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">topic</span> <span class="ow">in</span> <span class="n">session</span><span class="o">.</span><span class="n">catalog</span><span class="o">.</span><span class="n">topics</span><span class="p">(</span><span class="s2">&quot;ecommerce&quot;</span><span class="p">)])</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="n">topic</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">catalog</span><span class="o">.</span><span class="n">topic</span><span class="p">(</span><span class="s2">&quot;ecommerce&quot;</span><span class="p">,</span> <span class="s2">&quot;order_items&quot;</span><span class="p">)</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="nb">print</span><span class="p">([</span><span class="n">view</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">view</span> <span class="ow">in</span> <span class="n">topic</span><span class="o">.</span><span class="n">views</span><span class="p">])</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">topic</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="s2">&quot;users.state&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">data_type</span><span class="p">)</span>
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>[&#39;ecommerce&#39;, &#39;bench_marketing&#39;, &#39;bench_finance&#39;, &#39;bench_support&#39;, &#39;bench_ecommerce_branch&#39;]
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>[&#39;order_items&#39;]
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>[&#39;order_items&#39;, &#39;users&#39;, &#39;products&#39;]
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>OmniDataType.STRING
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>[&#39;ecommerce&#39;, &#39;bench_marketing&#39;, &#39;bench_finance&#39;, &#39;bench_support&#39;, &#39;bench_ecommerce_branch&#39;]
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>[&#39;order_items&#39;]
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>[&#39;order_items&#39;, &#39;users&#39;, &#39;products&#39;]
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>OmniDataType.STRING
 </code></pre></div>
 <h2 id="5-your-first-query">5. Your first query<a class="headerlink" href="#5-your-first-query" title="Permanent link">&para;</a></h2>
 <p>A <strong>topic</strong> is the governed way in: it carries the model's join paths, so fields from any joined
 view are selectable without saying how they join.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">orders</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">read</span><span class="o">.</span><span class="n">topic</span><span class="p">(</span><span class="s2">&quot;ecommerce&quot;</span><span class="p">,</span> <span class="s2">&quot;order_items&quot;</span><span class="p">)</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="p">(</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="n">orders</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;order_items.id&quot;</span><span class="p">,</span> <span class="s2">&quot;users.state&quot;</span><span class="p">,</span> <span class="s2">&quot;order_items.status&quot;</span><span class="p">)</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;users.state&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;California&quot;</span><span class="p">)</span>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;order_items.id&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">desc</span><span class="p">())</span>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    <span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="o">.</span><span class="n">show</span><span class="p">()</span>
-<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">orders</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">read</span><span class="o">.</span><span class="n">topic</span><span class="p">(</span><span class="s2">&quot;ecommerce&quot;</span><span class="p">,</span> <span class="s2">&quot;order_items&quot;</span><span class="p">)</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="p">(</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>    <span class="n">orders</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;order_items.id&quot;</span><span class="p">,</span> <span class="s2">&quot;users.state&quot;</span><span class="p">,</span> <span class="s2">&quot;order_items.status&quot;</span><span class="p">)</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>    <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;users.state&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;California&quot;</span><span class="p">)</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>    <span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;order_items.id&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">desc</span><span class="p">())</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>    <span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>    <span class="o">.</span><span class="n">show</span><span class="p">()</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="p">)</span>
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>+----------------+-------------+--------------------+
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>| order_items.id | users.state | order_items.status |
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>+----------------+-------------+--------------------+
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>| 10000          | California  | cancelled          |
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>| 9999           | California  | complete           |
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>| 9998           | California  | complete           |
-<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>| 9997           | California  | shipped            |
-<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>| 9996           | California  | processing         |
-<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>+----------------+-------------+--------------------+
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>+----------------+-------------+--------------------+
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>| order_items.id | users.state | order_items.status |
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>+----------------+-------------+--------------------+
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>| 10000          | California  | cancelled          |
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>| 9999           | California  | complete           |
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>| 9998           | California  | complete           |
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>| 9997           | California  | shipped            |
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>| 9996           | California  | processing         |
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>+----------------+-------------+--------------------+
 </code></pre></div>
 <p>Field names are fully qualified (<code>view.column</code>). Nothing ran until <code>.show()</code> — everything before
 it just built a plan.</p>
@@ -1070,45 +1249,45 @@ operand: <code>(F.col("a") == 1) &amp; (F.col("b") == 2)</code>.</p>
 round trip — it plans, it never executes).</p>
 <h2 id="6-your-first-aggregate">6. Your first aggregate<a class="headerlink" href="#6-your-first-aggregate" title="Permanent link">&para;</a></h2>
 <p>Ask for a <strong>governed measure</strong> and Omni computes it, under its own server-side definition:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="p">(</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>    <span class="n">orders</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="s2">&quot;users.state&quot;</span><span class="p">)</span>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>    <span class="o">.</span><span class="n">agg</span><span class="p">(</span>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>        <span class="n">F</span><span class="o">.</span><span class="n">measure</span><span class="p">(</span><span class="s2">&quot;order_items.total_sale_price&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;revenue&quot;</span><span class="p">),</span>
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>        <span class="n">F</span><span class="o">.</span><span class="n">measure</span><span class="p">(</span><span class="s2">&quot;order_items.count&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;orders&quot;</span><span class="p">),</span>
-<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>    <span class="p">)</span>
-<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>    <span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;revenue&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">desc</span><span class="p">())</span>
-<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>    <span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
-<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>    <span class="o">.</span><span class="n">show</span><span class="p">()</span>
-<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="p">(</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>    <span class="n">orders</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="s2">&quot;users.state&quot;</span><span class="p">)</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>    <span class="o">.</span><span class="n">agg</span><span class="p">(</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>        <span class="n">F</span><span class="o">.</span><span class="n">measure</span><span class="p">(</span><span class="s2">&quot;order_items.total_sale_price&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;revenue&quot;</span><span class="p">),</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>        <span class="n">F</span><span class="o">.</span><span class="n">measure</span><span class="p">(</span><span class="s2">&quot;order_items.count&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;orders&quot;</span><span class="p">),</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>    <span class="p">)</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>    <span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;revenue&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">desc</span><span class="p">())</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>    <span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>    <span class="o">.</span><span class="n">show</span><span class="p">()</span>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="p">)</span>
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>+--------------+-----------+--------+
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>| users.state  | revenue   | orders |
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>+--------------+-----------+--------+
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>| California   | 128597.44 | 1260   |
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>| New York     | 99863.96  | 955    |
-<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>| Florida      | 79630.35  | 695    |
-<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>| Texas        | 77864.44  | 723    |
-<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>| Pennsylvania | 68905.90  | 663    |
-<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>+--------------+-----------+--------+
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>+--------------+-----------+--------+
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>| users.state  | revenue   | orders |
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>+--------------+-----------+--------+
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>| California   | 128597.44 | 1260   |
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>| New York     | 99863.96  | 955    |
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>| Florida      | 79630.35  | 695    |
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>| Texas        | 77864.44  | 723    |
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>| Pennsylvania | 68905.90  | 663    |
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>+--------------+-----------+--------+
 </code></pre></div>
 <p>Add a time grain to bucket a timestamp:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">month</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;order_items.created_at&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">grain</span><span class="p">(</span><span class="s2">&quot;month&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;month&quot;</span><span class="p">)</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="p">(</span>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>    <span class="n">orders</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="n">month</span><span class="p">)</span>
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>    <span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">measure</span><span class="p">(</span><span class="s2">&quot;order_items.total_sale_price&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;revenue&quot;</span><span class="p">))</span>
-<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>    <span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;month&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">desc</span><span class="p">())</span>
-<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>    <span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
-<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>    <span class="o">.</span><span class="n">show</span><span class="p">()</span>
-<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">month</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;order_items.created_at&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">grain</span><span class="p">(</span><span class="s2">&quot;month&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;month&quot;</span><span class="p">)</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="p">(</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>    <span class="n">orders</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="n">month</span><span class="p">)</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>    <span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">measure</span><span class="p">(</span><span class="s2">&quot;order_items.total_sale_price&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;revenue&quot;</span><span class="p">))</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>    <span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;month&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">desc</span><span class="p">())</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>    <span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>    <span class="o">.</span><span class="n">show</span><span class="p">()</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="p">)</span>
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>+---------------------------+----------+
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>| month                     | revenue  |
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>+---------------------------+----------+
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>| 2026-06-01 00:00:00+00:00 | 48764.83 |
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>| 2026-05-01 00:00:00+00:00 | 52536.16 |
-<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>| 2026-04-01 00:00:00+00:00 | 41157.42 |
-<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>+---------------------------+----------+
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>+---------------------------+----------+
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>| month                     | revenue  |
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>+---------------------------+----------+
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>| 2026-06-01 00:00:00+00:00 | 48764.83 |
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>| 2026-05-01 00:00:00+00:00 | 52536.16 |
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>| 2026-04-01 00:00:00+00:00 | 41157.42 |
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>+---------------------------+----------+
 </code></pre></div>
 <p><code>group_by().agg()</code> is sugar. <code>orders.select("users.state", F.measure("order_items.count"))</code>
 compiles to the byte-identical query — in Omni, selecting dimensions alongside measures <strong>is</strong>
@@ -1122,25 +1301,25 @@ for an example and the scope of this behavior.</p>
 <h2 id="7-read-the-plan">7. Read the plan<a class="headerlink" href="#7-read-the-plan" title="Permanent link">&para;</a></h2>
 <p><code>explain()</code> is the whole safety story. It compiles the plan (no I/O) and prints every query that
 will be sent, at which tier, plus every operator that will run in this process.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="n">plan</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>    <span class="n">orders</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="s2">&quot;users.state&quot;</span><span class="p">)</span>
-<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>    <span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">measure</span><span class="p">(</span><span class="s2">&quot;order_items.total_sale_price&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;revenue&quot;</span><span class="p">))</span>
-<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>    <span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;revenue&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">desc</span><span class="p">())</span>
-<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>    <span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
-<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="p">)</span>
-<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>
-<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">plan</span><span class="o">.</span><span class="n">explain</span><span class="p">())</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="n">plan</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>    <span class="n">orders</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="s2">&quot;users.state&quot;</span><span class="p">)</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>    <span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">measure</span><span class="p">(</span><span class="s2">&quot;order_items.total_sale_price&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;revenue&quot;</span><span class="p">))</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>    <span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;revenue&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">desc</span><span class="p">())</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>    <span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="p">)</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">plan</span><span class="o">.</span><span class="n">explain</span><span class="p">())</span>
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>== Physical plan ==
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>Remote [tier 1 · semantic → POST /api/v1/query/run]
-<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>  topic: order_items   model: ecommerce
-<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>  fields: [users.state, order_items.total_sale_price]
-<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>  group by: [users.state]
-<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>  measures: [order_items.total_sale_price]
-<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>  sort: order_items.total_sale_price DESC   limit: 5   version: 9
-<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>  aliases: order_items.total_sale_price -&gt; revenue
-<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>Local [pandas]
-<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>  (none — fully pushed down)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>== Physical plan ==
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>Remote [tier 1 · semantic → POST /api/v1/query/run]
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>  topic: order_items   model: ecommerce
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>  fields: [users.state, order_items.total_sale_price]
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>  group by: [users.state]
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a>  measures: [order_items.total_sale_price]
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>  sort: order_items.total_sale_price DESC   limit: 5   version: 9
+<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a>  aliases: order_items.total_sale_price -&gt; revenue
+<a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a>Local [pandas]
+<a id="__codelineno-20-10" name="__codelineno-20-10" href="#__codelineno-20-10"></a>  (none — fully pushed down)
 </code></pre></div>
 <p><code>(none — fully pushed down)</code> is the line to look for: the entire frame is one governed query.
 When it says something else, that something is exactly what will run on this machine.</p>
