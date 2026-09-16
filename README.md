@@ -32,6 +32,10 @@ print(monthly.explain())  # shows exactly what runs remotely vs. locally
 df = monthly.to_pandas()
 ```
 
+In Google Colab, the builder can read `OMNI_BASE_URL` and `OMNI_API_KEY` from Colab Secrets
+automatically. Explicit builder values take precedence, followed by environment variables,
+then secrets. See the [Colab setup](docs/quickstart.md#google-colab).
+
 That frame compiles to one governed query — `explain()` says so:
 
 ```text

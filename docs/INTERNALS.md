@@ -203,11 +203,15 @@ Local [pandas]
 ## 5. Session/catalog
 
 - `OmniSession.builder` → `SessionBuilder`: `.host(str)` / `.base_url(str)`, `.api_key(str)`,
-  `.api_key_from_env()` (OMNI_API_KEY), `.branch(str)`, `.timezone(str)`, `.cache(str)`,
+  `.base_url_from_env()` (OMNI_BASE_URL), `.api_key_from_env()` (OMNI_API_KEY), `.branch(str)`,
+  `.timezone(str)`, `.cache(str)`,
   `.user_id(str)`, `.rate_limit_wait(float)` (per-GET 429 waiting budget),
   `.transport(QueryTransport)` (injection for tests), `.get_or_create()`.
-  No network I/O. `session.verify()` runs whoami eagerly; otherwise the first action triggers a
-  cached whoami preflight for crisp errors.
+  No Omni API calls. Explicit builder values override environment variables, which override
+  same-named Colab Secrets in detected Colab runtimes. The `*_from_env()` helpers also fall back
+  to Secrets, including custom names. Colab secret resolution contacts the notebook frontend;
+  an injected transport skips automatic credential lookup. `session.verify()` runs whoami
+  eagerly; otherwise the first action triggers a cached whoami preflight for crisp errors.
 - `session.catalog`: `models()` (paginate all), `model(name_or_id)` (one exact-match filtered
   request — `?modelId=` for a UUID, else `?name=`; the cursor walk is only the fallback that
   builds the error's model list), `topics(model)`, `topic(model, name)` (full metadata → typed

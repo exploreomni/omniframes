@@ -3,7 +3,7 @@
 Install, authenticate, run a query, read an `explain()`. Ten minutes.
 
 !!! info "About the examples"
-    Every Python block on this page has been executed, verbatim, against a wire-faithful fake of
+    The query examples on this page have been executed, verbatim, against a wire-faithful fake of
     the Omni query API — the outputs below are what it printed. The model is called `ecommerce`,
     with one topic, `order_items`, joined to `users` and `products`
     ([the bench model](offline-testing.md)). Substitute your own model, topic and field names;
@@ -38,6 +38,31 @@ export OMNI_API_KEY="…"   # Settings → API keys, in Omni
 ```
 
 Use your organization’s `<example-slug>.omniapp.co` hostname; replace `acme` with your own slug.
+
+### Google Colab
+
+In Colab, open **Secrets** (the key icon in the sidebar), add `OMNI_BASE_URL` with your Omni
+organization URL and `OMNI_API_KEY` with your API key, and enable **Notebook access** for both.
+The builder detects Colab and reads those secrets automatically:
+
+```python
+from omniframes import OmniSession
+
+session = OmniSession.builder.get_or_create()
+```
+
+For each setting, the lookup order is an explicit builder value, the environment variable,
+then the same-named Colab secret. You can also supply `.host("acme.omniapp.co")` and store only
+`OMNI_API_KEY` in Secrets. `.base_url_from_env()` and `.api_key_from_env()` use the same
+environment-then-secrets lookup, including a custom name such as
+`.api_key_from_env("MY_OMNI_KEY")`. Passing `.transport(...)` skips automatic credential lookup.
+
+No extra package is required. Colab's
+[`userdata.get()`](https://github.com/googlecolab/colabtools/blob/main/google/colab/userdata.py)
+contacts the notebook frontend, so secret lookup needs a connected Colab UI. If a secret is
+missing, add it; if access is denied, enable **Notebook access**. When Secrets is unavailable,
+configure the environment variables instead. Errors describe the remedy without exposing
+secret values.
 
 !!! danger "Never hard-code the key"
     Put it in the environment or a secret manager — never in a notebook cell, a committed file,
@@ -85,9 +110,10 @@ session = (
 )
 ```
 
-**Building a session performs no network I/O at all.** No handshake, no catalog fetch, nothing —
-so constructing one in a module-level cell or a fixture is free. The `whoami` preflight runs
-lazily, once, before the first call that needs the network.
+**Building a session makes no Omni API calls.** Authentication and catalog requests remain
+lazy. In Colab, resolving a missing setting from Secrets can contact the notebook frontend;
+explicit values or environment variables skip that lookup. The `whoami` preflight runs lazily,
+once, before the first call that needs Omni.
 
 Run it eagerly when you want to check credentials up front:
 

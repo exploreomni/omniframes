@@ -12,8 +12,10 @@
     )
     df = session.read.topic("bench_ecommerce", "order_items")
 
-**Building a session performs no I/O** (docs/DESIGN.md §3).  The ``whoami`` preflight runs
-lazily, once, before the first call that needs the network — or eagerly via :meth:`verify` —
+**Building a session makes no Omni API calls** (docs/DESIGN.md §3). Missing credentials in
+Google Colab can be read from ``google.colab.userdata``, which contacts the notebook frontend.
+The ``whoami`` preflight runs lazily, once, before the first call that needs Omni — or eagerly
+via :meth:`verify` —
 so a typo in the key surfaces as an auth error rather than as a confusing query failure.
 ``whoami`` is the right preflight because it answers even when the ``query-api`` feature flag
 is off (CONTRACT_NOTES §1).
@@ -24,6 +26,7 @@ error message.
 
 from __future__ import annotations
 
+import importlib
 import os
 import re
 from collections.abc import Iterator, Mapping, Sequence
@@ -32,6 +35,7 @@ from math import isfinite
 from types import TracebackType
 from typing import Any, Final
 
+from omniframes._user_agent import _detect_hosted_runtime
 from omniframes.catalog import Catalog
 from omniframes.compile.querymodel import QUERY_VERSION, CachePolicy
 from omniframes.compile.semantic import EnvelopeOptions
@@ -72,8 +76,51 @@ _STATUS_IN_MESSAGE: Final = re.compile(r"returned (\d{3}) for ")
 _NO_DASHBOARD: Final = "does not have a dashboard"
 
 
+def _configuration_value(variable: str) -> str | None:
+    """Read environment configuration, falling back to secrets only inside Colab."""
+    value = os.environ.get(variable)
+    if value:
+        return value
+    if _detect_hosted_runtime(os.environ) != "google-colab":
+        return None
+
+    # Keep Colab optional and avoid importing its notebook integrations on other runtimes.
+    try:
+        userdata = importlib.import_module("google.colab.userdata")
+    except ImportError:
+        raise CompileError(
+            f"Google Colab secrets are unavailable; set {variable} in the environment instead."
+        ) from None
+
+    try:
+        value = userdata.get(variable)
+    except Exception as error:
+        if isinstance(error, getattr(userdata, "SecretNotFoundError", ())):
+            advice = "add it in Colab's Secrets panel"
+        elif isinstance(error, getattr(userdata, "NotebookAccessError", ())):
+            advice = "enable Notebook access for it in Colab's Secrets panel"
+        elif isinstance(error, getattr(userdata, "TimeoutException", ())):
+            advice = "run this cell from the Colab UI and try again"
+        else:
+            advice = "check Colab's Secrets panel and try again"
+        # Never include provider exception text or chains: they may contain credentials.
+        raise CompileError(
+            f"could not read Google Colab secret {variable}: {advice}, "
+            f"or set {variable} in the environment."
+        ) from None
+    if not isinstance(value, str) or not value:
+        raise CompileError(
+            f"Google Colab secret {variable} must contain a non-empty string; "
+            f"update it in Colab's Secrets panel or set {variable} in the environment."
+        )
+    return value
+
+
 class SessionBuilder:
-    """Collects configuration; :meth:`get_or_create` turns it into a session. No I/O anywhere."""
+    """Collects configuration; :meth:`get_or_create` builds a session without calling Omni.
+
+    Explicit settings take precedence over environment variables, then Google Colab secrets.
+    """
 
     __slots__ = (
         "_api_key",
@@ -111,8 +158,11 @@ class SessionBuilder:
         return self.base_url(host)
 
     def base_url_from_env(self, variable: str = BASE_URL_ENV) -> SessionBuilder:
-        """Read the org URL from the environment (``OMNI_BASE_URL`` by default)."""
-        value = os.environ.get(variable)
+        """Read the org URL from the environment, then Colab secrets (``OMNI_BASE_URL``).
+
+        In Google Colab, an unset or empty variable falls back to the secret of the same name.
+        """
+        value = _configuration_value(variable)
         if not value:
             raise CompileError(f"{variable} is not set")
         return self.base_url(value)
@@ -123,8 +173,11 @@ class SessionBuilder:
         return self
 
     def api_key_from_env(self, variable: str = API_KEY_ENV) -> SessionBuilder:
-        """Read the key from the environment (``OMNI_API_KEY`` by default)."""
-        value = os.environ.get(variable)
+        """Read the key from the environment, then Colab secrets (``OMNI_API_KEY``).
+
+        In Google Colab, an unset or empty variable falls back to the secret of the same name.
+        """
+        value = _configuration_value(variable)
         if not value:
             raise CompileError(
                 f"{variable} is not set. Create an API key in Omni (Settings → API keys) and "
@@ -217,16 +270,16 @@ class SessionBuilder:
         return self
 
     def get_or_create(self) -> OmniSession:
-        """Build the session. Performs **no** network calls."""
+        """Build the session without calling Omni; missing settings can use Colab secrets."""
         transport = self._transport
         owns_transport = transport is None
         if transport is None:
-            base_url = self._base_url or os.environ.get(BASE_URL_ENV)
+            base_url = self._base_url or _configuration_value(BASE_URL_ENV)
             if not base_url:
                 raise CompileError(
                     f"no Omni host configured: call .host('acme.omniapp.co') or set {BASE_URL_ENV}"
                 )
-            api_key = self._api_key or os.environ.get(API_KEY_ENV)
+            api_key = self._api_key or _configuration_value(API_KEY_ENV)
             if not api_key:
                 raise CompileError(
                     "no API key configured: call .api_key(...) / .api_key_from_env() or set "
