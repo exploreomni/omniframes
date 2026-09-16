@@ -89,13 +89,17 @@ every local operator). No silent local fallback, ever.
   AD-HOC aggregates still route to tier 2/3, and tier-2 SQL expresses HAVING in the SQL text
   (the sql_job `filters` map silently skips measure filters).
 - **No Omni API calls at build time.** `OmniSession.builder...get_or_create()` resolves each
-  setting from an explicit builder value, then its environment variable, then same-named Colab
-  Secrets when running in Google Colab. The `*_from_env()` helpers also fall back to Secrets,
-  including custom names. Secrets lookup uses Colab's notebook frontend; explicit values or
-  environment variables avoid it, and an injected transport skips automatic credential lookup.
-  No Colab dependency is required outside Colab. The whoami preflight runs lazily before the
-  first real Omni call (cached), or explicitly via `session.verify()`. Clear errors name the
-  `query-api` flag / `QUERY_TOPICS` / `QUERY_FULL_MODEL` when 403s arrive.
+  setting from an explicit builder value, then its environment variable, then one notebook
+  secret provider. `.secrets(provider, scope=..., api_key_name=..., base_url_name=...)` only
+  configures lookup; `None` disables it. Automatic selection recognizes loaded Colab or the
+  active notebook's `dbutils`, independently of telemetry. Databricks requires a scope for
+  secret lookup; Snowflake Workspaces and legacy notebooks require explicit selection and
+  their respective secret identifiers. Ambiguous selection fails instead of choosing a
+  credential source. The `*_from_env()` helpers are strictly environment-only. Secret reads
+  can contact the provider, but complete credentials or an injected transport skip them.
+  Provider dependencies are optional and loaded only as needed. The whoami preflight runs
+  lazily before the first real Omni call (cached), or explicitly via `session.verify()`.
+  Clear errors name the `query-api` flag / `QUERY_TOPICS` / `QUERY_FULL_MODEL` when 403s arrive.
 - **`Column.__bool__` raises** with a message directing to `&`, `|`, `~` (never `and/or/not`).
 - **Schema access** (`df.schema`) runs a cached `planOnly: true` round trip; `summary.fields`
   (with `missing_fields` checked) is the only schema authority. Never the catalog metadata.

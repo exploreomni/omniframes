@@ -204,14 +204,22 @@ Local [pandas]
 
 - `OmniSession.builder` → `SessionBuilder`: `.host(str)` / `.base_url(str)`, `.api_key(str)`,
   `.base_url_from_env()` (OMNI_BASE_URL), `.api_key_from_env()` (OMNI_API_KEY), `.branch(str)`,
+  `.secrets(provider="auto", scope=..., api_key_name=..., base_url_name=...)`,
   `.timezone(str)`, `.cache(str)`,
   `.user_id(str)`, `.rate_limit_wait(float)` (per-GET 429 waiting budget),
   `.transport(QueryTransport)` (injection for tests), `.get_or_create()`.
   No Omni API calls. Explicit builder values override environment variables, which override
-  same-named Colab Secrets in detected Colab runtimes. The `*_from_env()` helpers also fall back
-  to Secrets, including custom names. Colab secret resolution contacts the notebook frontend;
-  an injected transport skips automatic credential lookup. `session.verify()` runs whoami
-  eagerly; otherwise the first action triggers a cached whoami preflight for crisp errors.
+  one selected notebook secret provider. The `*_from_env()` helpers read only the environment;
+  `.secrets(...)` stores configuration and `get_or_create()` reads any missing credentials.
+  Colab uses `userdata.get`, Databricks uses the existing notebook `dbutils.secrets.get` with an
+  explicit scope, Snowflake uses the Snowpark generic-secret helper, and legacy Snowflake uses
+  Streamlit secret aliases. Automatic selection is separate from User-Agent detection: loaded
+  Colab or the active notebook's `dbutils`, with ambiguous candidates rejected. Snowflake
+  requires an explicit provider. `None` disables providers; an injected transport bypasses
+  resolution. Errors suppress provider exception text, and providers never fall through to
+  another platform. `session.verify()` runs whoami eagerly; otherwise the first action triggers
+  a cached whoami preflight for crisp errors. See [notebook setup](quickstart.md#notebook-secrets)
+  for platform prerequisites and API sources.
 - `session.catalog`: `models()` (paginate all), `model(name_or_id)` (one exact-match filtered
   request — `?modelId=` for a UUID, else `?name=`; the cursor walk is only the fallback that
   builds the error's model list), `topics(model)`, `topic(model, name)` (full metadata → typed

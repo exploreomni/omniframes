@@ -39,7 +39,25 @@ export OMNI_API_KEY="…"   # Settings → API keys, in Omni
 
 Use your organization’s `<example-slug>.omniapp.co` hostname; replace `acme` with your own slug.
 
-### Google Colab
+### Notebook secrets
+
+For each credential, `get_or_create()` checks an explicit builder value, then `OMNI_BASE_URL`
+or `OMNI_API_KEY` in the environment, then **one** notebook secret provider. It reads only
+missing credentials. `.secrets(...)` configures that fallback without accessing any secrets;
+passing `.transport(...)` skips credential resolution entirely.
+
+The default `.secrets("auto")` recognizes a loaded Colab runtime or the current notebook's
+`dbutils` object. If both are present, select a provider explicitly. Snowflake requires explicit
+selection because we have not identified a supported notebook detector. Package
+installation alone never selects a provider, and secret selection is independent of the
+User-Agent runtime label.
+
+Use `.secrets(None)` to disable notebook lookup. The `.base_url_from_env()` and
+`.api_key_from_env()` helpers read **only** environment variables and fail immediately when
+the requested variable is missing. For custom secret names, use `.secrets(api_key_name="my_key",
+base_url_name="my_url")`; these names do not change the environment variable names.
+
+#### Google Colab
 
 In Colab, open **Secrets** (the key icon in the sidebar), add `OMNI_BASE_URL` with your Omni
 organization URL and `OMNI_API_KEY` with your API key, and enable **Notebook access** for both.
@@ -51,18 +69,83 @@ from omniframes import OmniSession
 session = OmniSession.builder.get_or_create()
 ```
 
-For each setting, the lookup order is an explicit builder value, the environment variable,
-then the same-named Colab secret. You can also supply `.host("acme.omniapp.co")` and store only
-`OMNI_API_KEY` in Secrets. `.base_url_from_env()` and `.api_key_from_env()` use the same
-environment-then-secrets lookup, including a custom name such as
-`.api_key_from_env("MY_OMNI_KEY")`. Passing `.transport(...)` skips automatic credential lookup.
+You can also supply `.host("acme.omniapp.co")` and store only `OMNI_API_KEY` in Secrets, or
+select `.secrets("colab", api_key_name="my_omni_key")` explicitly. Automatic selection follows
+the `"google.colab" in sys.modules` pattern in a
+[Google-published notebook](https://github.com/GoogleCloudPlatform/generative-ai/blob/main/gemini/use-cases/media-generation/consistent_imagery_generation.ipynb).
+This is a runtime hint, not a guarantee that Secrets is available; Colab Enterprise is excluded
+from automatic selection.
 
-No extra package is required. Colab's
+Colab's published
 [`userdata.get()`](https://github.com/googlecolab/colabtools/blob/main/google/colab/userdata.py)
 contacts the notebook frontend, so secret lookup needs a connected Colab UI. If a secret is
 missing, add it; if access is denied, enable **Notebook access**. When Secrets is unavailable,
-configure the environment variables instead. Errors describe the remedy without exposing
-secret values.
+configure the environment variables instead.
+
+#### Databricks
+
+Create a secret scope containing `OMNI_API_KEY`, grant the notebook's principal access, and
+specify the scope:
+
+```python
+session = (
+    OmniSession.builder.host("acme.omniapp.co").secrets("databricks", scope="omni").get_or_create()
+)
+```
+
+Omniframes uses the notebook's existing `dbutils` and the published
+[`dbutils.secrets.get(scope, key)`](https://docs.databricks.com/aws/en/dev-tools/databricks-utils#secrets-utility-dbutilssecrets)
+API. It does not create an SDK client or try remote authentication. `.secrets(scope="omni")`
+also works with automatic selection. The scope is required only when a missing credential
+needs a secret lookup. Omit `.host(...)` to read `OMNI_BASE_URL` from the scope too.
+
+The active IPython namespace lookup follows a
+[Databricks-published pattern](https://docs.databricks.com/aws/en/dev-tools/databricks-connect-legacy#access-databricks-utilities),
+also used by the [Databricks SDK](https://github.com/databricks/databricks-sdk-py/blob/main/databricks/sdk/runtime/__init__.py).
+Finding `dbutils` is a capability hint; it does not guarantee secret access or a hosted runtime.
+
+#### Snowflake
+
+For **Notebooks in Workspaces**, attach a `GENERIC_STRING` secret and an external access
+integration (EAI) to the notebook service. Configure the EAI's network rule to allow your Omni
+hostname. Set the normalized `database/schema/name` path as documented in
+[Snowflake's secrets guide](https://docs.snowflake.com/en/user-guide/ui-snowsight/notebooks-in-workspaces/notebooks-in-workspaces-using-secrets):
+
+```python
+session = (
+    OmniSession.builder.host("acme.omniapp.co")
+    .secrets("snowflake", api_key_name="analytics/notebooks/omni_api_key")
+    .get_or_create()
+)
+```
+
+This provider calls `snowflake.snowpark.secrets.get_generic_secret_string()` from the notebook
+runtime. For a URL stored as a secret, omit `.host(...)` and also set `base_url_name` to its
+normalized path.
+
+For **legacy Snowflake Notebooks**, associate a `GENERIC_STRING` secret with both the EAI and
+the notebook under an alias, then select the legacy provider:
+
+```python
+session = (
+    OmniSession.builder.host("acme.omniapp.co")
+    .secrets("snowflake-legacy", api_key_name="omni_api_key")
+    .get_or_create()
+)
+```
+
+The legacy provider reads `streamlit.secrets[alias]`, following
+[Snowflake's legacy notebook guide](https://docs.snowflake.com/en/user-guide/ui-snowsight/notebooks-external-access).
+Here `api_key_name` is the notebook alias, rather than a Workspaces path.
+
+Errors identify missing secrets, denied access, or unavailable runtime services where the
+provider exposes that distinction. Some platforms combine missing and inaccessible secrets.
+Provider exception text and secret values are omitted. A failed selected provider never causes
+a lookup on another platform.
+
+The [manual verification notebook](https://github.com/exploreomni/omniframes/blob/main/examples/notebook_secrets.ipynb)
+checks each platform without printing credentials. Automated coverage uses simulated runtimes;
+it does not establish that a live notebook's permissions, frontend, or network are configured.
 
 !!! danger "Never hard-code the key"
     Put it in the environment or a secret manager — never in a notebook cell, a committed file,
@@ -103,17 +186,13 @@ secret values.
 import omniframes as of
 from omniframes import functions as F
 
-session = (
-    of.OmniSession.builder.host("acme.omniapp.co")
-    .api_key_from_env()  # OMNI_API_KEY; .api_key("…") also exists but prefer the env
-    .get_or_create()
-)
+session = of.OmniSession.builder.host("acme.omniapp.co").get_or_create()
 ```
 
 **Building a session makes no Omni API calls.** Authentication and catalog requests remain
-lazy. In Colab, resolving a missing setting from Secrets can contact the notebook frontend;
-explicit values or environment variables skip that lookup. The `whoami` preflight runs lazily,
-once, before the first call that needs Omni.
+lazy. Resolving a missing credential from a notebook provider can contact its secret service
+or frontend; explicit values or environment variables skip that lookup. The `whoami` preflight
+runs lazily, once, before the first call that needs Omni.
 
 Run it eagerly when you want to check credentials up front:
 
@@ -129,7 +208,8 @@ which permissions does it hold on each (`rolesByModel[<modelId>]["permissions"]`
 first thing to run when a query 403s.
 
 Other builder knobs — all optional, all covered in the [API reference](api.md):
-`.base_url(...)` / `.base_url_from_env()`, `.branch(uuid)` to query a model branch,
+`.base_url(...)` / `.base_url_from_env()`, `.secrets(...)` for notebook credentials,
+`.branch(uuid)` to query a model branch,
 `.timezone("America/Los_Angeles")`, `.cache("SkipCache")`, `.user_id(membership_id)` to
 impersonate, `.decomposition_row_cap(n)`, `.rate_limit_wait(seconds)` for each rate-limited GET,
 and `.transport(...)` for injecting a fake in tests.

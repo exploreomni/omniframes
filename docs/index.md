@@ -12,11 +12,7 @@ SQL execution layer.
 import omniframes as of
 from omniframes import functions as F
 
-session = (
-    of.OmniSession.builder.host("acme.omniapp.co")
-    .api_key_from_env()  # reads OMNI_API_KEY
-    .get_or_create()
-)
+session = of.OmniSession.builder.host("acme.omniapp.co").get_or_create()
 
 orders = session.read.topic("ecommerce", "order_items")
 
@@ -32,9 +28,10 @@ print(monthly.explain())  # shows exactly what runs remotely vs. locally
 df = monthly.to_pandas()
 ```
 
-In Google Colab, the builder automatically falls back to Colab Secrets for `OMNI_BASE_URL`
-and `OMNI_API_KEY`. Explicit builder values and environment variables take precedence. See
-the [Colab setup](quickstart.md#google-colab).
+The builder reads `OMNI_API_KEY` from the environment or a configured notebook secret provider.
+Google Colab Secrets work automatically; Databricks needs a secret scope, and Snowflake needs
+an explicit provider and secret identifier. Explicit values take precedence over environment
+variables, then notebook secrets. See [notebook setup](quickstart.md#notebook-secrets).
 
 That whole frame compiles to **one** governed query:
 
