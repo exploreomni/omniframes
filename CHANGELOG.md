@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.0 (2026-09-16)
+
+- Add `SessionBuilder.secrets()` for Google Colab, Databricks, Snowflake Workspaces, and
+  legacy Snowflake notebooks, with custom secret names and Databricks scopes. Credentials
+  resolve from explicit settings, then environment variables, then one notebook provider.
+  Colab and an active notebook's `dbutils` are detected automatically; Snowflake requires
+  explicit selection. ([#27](https://github.com/exploreomni/omniframes/pull/27))
+- Add notebook secret setup documentation and a manual verification notebook.
+- Fix versioned release documentation publication by dispatching the docs workflow from
+  `main` after successful package and GitHub Release publication.
+  ([#26](https://github.com/exploreomni/omniframes/pull/26))
+
+**Behavior change:** `get_or_create()` may now contact a notebook secret service when
+credentials are missing. It still makes no Omni API calls. Use `.secrets(None)` to disable
+notebook lookup; complete explicit/environment credentials and injected transports bypass it.
+
+**Full Changelog**: https://github.com/exploreomni/omniframes/compare/v0.1.1...v0.2.0
+
 ## 0.1.1 (2026-09-15)
 
 - Point PyPI's Documentation link and README guide links to the published Omniframes docs.
