@@ -1,0 +1,1649 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A PySpark-style DataFrame library for Omni — dataframe code in, governed semantic queries out.">
+      
+      
+      
+        <link rel="canonical" href="https://exploreomni.github.io/omniframes/0.2.0/HYBRID/">
+      
+      
+        <link rel="prev" href="../SQLTIER/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Hybrid engine (tier 3) - Omniframes</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CIBM+Plex+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"IBM Plex Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#the-hybrid-engine-authoritative-design" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Omniframes" class="md-header__button md-logo" aria-label="Omniframes" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Omniframes
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Hybrid engine (tier 3)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/exploreomni/omniframes" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    exploreomni/omniframes
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Omniframes" class="md-nav__button md-logo" aria-label="Omniframes" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Omniframes
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/exploreomni/omniframes" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    exploreomni/omniframes
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mental-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mental model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../offline-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Offline testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design notes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design notes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CONTRACT_NOTES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wire contract
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../DESIGN/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../INTERNALS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../SQLTIER/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQL tier (tier 2)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hybrid engine (tier 3)
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hybrid engine (tier 3)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#0-module-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0. Module map
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-executionplan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. ExecutionPlan
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-splitter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The splitter
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. The splitter">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-mixed-aggregation-decomposition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 Mixed-aggregation decomposition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-column-widening" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 Column widening
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-limit-pins-the-frontier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 Limit pins the frontier
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-truncationwarning-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 TruncationWarning policy
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-local-engine-compilelocalpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The local engine (compile/local.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. The local engine (compile/local.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#user-facing-joins-and-unions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User-facing joins and unions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#31-eval_exprexpr-expr-table-patable-paarray-pascalar" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 eval_expr(expr: Expr, table: pa.Table) -&gt; pa.Array | pa.Scalar
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-null-group-keys-and-the-alignjoin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 NULL group keys and the AlignJoin
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-dtype-promotion-local-aggs-the-differential-comparator-uses-the-same-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 Dtype promotion (local aggs; the differential comparator uses the same table)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-local-sort-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4 Local sort order
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-differential-comparator-testsdifferential" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The differential comparator (tests/differential/)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-udf-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. UDF boundary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-supported-paths-and-remaining-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Supported paths and remaining limits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-explain-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. explain() format
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. explain() format">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rendering-opaque-queries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rendering opaque queries
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-test-obligations-each-rule-above-names-its-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Test obligations (each rule above names its test)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#0-module-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0. Module map
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-executionplan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. ExecutionPlan
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-splitter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The splitter
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. The splitter">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-mixed-aggregation-decomposition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 Mixed-aggregation decomposition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-column-widening" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 Column widening
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-limit-pins-the-frontier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 Limit pins the frontier
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-truncationwarning-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 TruncationWarning policy
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-local-engine-compilelocalpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The local engine (compile/local.py)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. The local engine (compile/local.py)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#user-facing-joins-and-unions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User-facing joins and unions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#31-eval_exprexpr-expr-table-patable-paarray-pascalar" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 eval_expr(expr: Expr, table: pa.Table) -&gt; pa.Array | pa.Scalar
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-null-group-keys-and-the-alignjoin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 NULL group keys and the AlignJoin
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-dtype-promotion-local-aggs-the-differential-comparator-uses-the-same-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 Dtype promotion (local aggs; the differential comparator uses the same table)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-local-sort-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4 Local sort order
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-differential-comparator-testsdifferential" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The differential comparator (tests/differential/)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-udf-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. UDF boundary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-supported-paths-and-remaining-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Supported paths and remaining limits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-explain-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. explain() format
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. explain() format">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rendering-opaque-queries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rendering opaque queries
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-test-obligations-each-rule-above-names-its-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Test obligations (each rule above names its test)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="the-hybrid-engine-authoritative-design">The hybrid engine — authoritative design<a class="headerlink" href="#the-hybrid-engine-authoritative-design" title="Permanent link">&para;</a></h1>
+<p>How a plan gets executed: try a semantic query (tier 1), then an OmniSQL statement (tier 2),
+and split remaining work into <strong>remote steps</strong> feeding <strong>local operators</strong> (tier 3), with the
+split always visible in <code>explain()</code>. Aggregates containing only governed measures compile to
+tier 1, measure filters compile to HAVING, and <code>with_totals()</code> requests server-side totals.
+Rules here are binding; deviations require editing this doc in the same change.</p>
+<p>Every DECISION below is a judgment call with its one-line rationale; everything else follows
+from the contract or the existing code.</p>
+<h2 id="0-module-map">0. Module map<a class="headerlink" href="#0-module-map" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>compile/splitter.py   split(plan, *, options) -&gt; ExecutionPlan
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>compile/local.py      LocalOp types, eval_expr, run_local_op
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>compile/executor.py   execute(execution, run_remote) -&gt; pa.Table
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>compile/semantic.py   ExecutionPlan with `root` and `output_columns`
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>compile/explain.py    renders single queries and multi-step DAGs
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>column.py            Udf expression; functions.py exposes F.udf
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>dataframe.py          with_column / map_pandas / mapInPandas; _collect routes through executor
+</code></pre></div>
+<h2 id="1-executionplan">1. ExecutionPlan<a class="headerlink" href="#1-executionplan" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">Step</span><span class="p">:</span> <span class="n">TypeAlias</span> <span class="o">=</span> <span class="s2">&quot;RemoteStep | LocalStep&quot;</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">LocalStep</span><span class="p">:</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">op</span><span class="p">:</span> <span class="n">LocalOp</span>  <span class="c1"># see §3</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">inputs</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Step</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>  <span class="c1"># ≥1; dataflow edges</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="k">class</span><span class="w"> </span><span class="nc">ExecutionPlan</span><span class="p">:</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="n">steps</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">RemoteStep</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>  <span class="c1"># ALL remote steps, DFS order (explain, tests)</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    <span class="n">root</span><span class="p">:</span> <span class="n">Step</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># None ⇒ a single remote step: steps[0]</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    <span class="n">output_columns</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># final user-facing columns when root is local</span>
+</code></pre></div>
+<ul>
+<li>Constructor compatibility: every existing <code>ExecutionPlan((remote_step,))</code> call keeps working;
+  <code>root=None</code> means "single remote step, no local work".</li>
+<li><code>.remote</code> returns the single remote step; it raises when <code>root</code> is set or <code>len(steps) != 1</code>.</li>
+<li><code>.columns</code> returns <code>output_columns</code> when set, else the single remote step's columns.</li>
+<li><code>.tier</code> when root is local: <code>3</code> (report the <em>lowest</em> tier involved; explain shows detail).</li>
+</ul>
+<p><code>DataFrame._collect</code> uses a single-query fast path when <code>execution.root is None</code>; otherwise it
+calls <code>executor.execute</code> with a callback that runs and normalizes each remote step into an
+Arrow table. <code>execute</code> is testable without a session by supplying a fake <code>run_remote</code> callback.</p>
+<h2 id="2-the-splitter">2. The splitter<a class="headerlink" href="#2-the-splitter" title="Permanent link">&para;</a></h2>
+<p><code>split(plan, *, options) -&gt; ExecutionPlan</code>. Top-down recursion; the invariant is
+<strong>maximality</strong>: at every node, attempt <code>try_semantic(node)</code>, then <code>try_sql(node)</code> on the whole
+subtree. If either compiles, that subtree is one RemoteStep and recursion stops. Only when
+both decline does the node become a local op over the split of its child(ren). Because this happens at
+every level, the remote frontier is automatically maximal; no separate analysis pass.</p>
+<p>Per-node rules when the subtree does NOT compile whole:</p>
+<table>
+<thead>
+<tr>
+<th>Node</th>
+<th>Local op</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Filter</code> (uncompilable predicate: cross-field OR, arithmetic, string-vs-measure, Udf)</td>
+<td><code>LocalFilter(predicate)</code></td>
+<td><strong>Column widening</strong> (§2.2): the remote child must also fetch every field the predicate references.</td>
+</tr>
+<tr>
+<td><code>Project</code> (uncompilable column: arithmetic, Udf)</td>
+<td><code>LocalProject(columns)</code></td>
+<td>Compilable columns still push down via widening; the local project computes the rest and sets final order.</td>
+</tr>
+<tr>
+<td><code>Sort</code> above a local op</td>
+<td><code>LocalSort(keys)</code></td>
+<td>A Sort whose subtree compiles rides remote as today.</td>
+</tr>
+<tr>
+<td><code>Limit</code> above a local op</td>
+<td><code>LocalLimit(n, offset)</code></td>
+<td>See §2.3 — a Limit <em>below</em> local ops pins the frontier instead.</td>
+</tr>
+<tr>
+<td><code>Aggregate</code> with any <code>AdHocAgg</code></td>
+<td>decomposition — §2.1</td>
+<td>Used when the whole aggregate cannot run in tier 2. Governed measures must still have a remote query; they cannot be evaluated locally.</td>
+</tr>
+<tr>
+<td><code>WithColumn</code></td>
+<td><code>LocalWithColumn(name, expr)</code></td>
+<td>SQL-expressible derived columns use tier 2; otherwise widening supplies the fields for local evaluation.</td>
+</tr>
+<tr>
+<td><code>MapPandas</code></td>
+<td><code>LocalMapPandas(fn, schema_hint)</code></td>
+<td>Always local, by definition.</td>
+</tr>
+<tr>
+<td><code>Join</code> / <code>Union</code></td>
+<td><code>LocalJoin</code> / <code>LocalUnion</code></td>
+<td><code>df.join()</code> and <code>df.union()</code> split each input independently and combine the results locally.</td>
+</tr>
+</tbody>
+</table>
+<p>The recursion carries a <code>required: frozenset[str]</code> of extra field names needed by local ops
+above (see §2.2) and, at the end, wraps the root in a <code>LocalProject</code> that drops widened columns
+and fixes output order/aliases.</p>
+<h3 id="21-mixed-aggregation-decomposition">2.1 Mixed-aggregation decomposition<a class="headerlink" href="#21-mixed-aggregation-decomposition" title="Permanent link">&para;</a></h3>
+<p>Tier 2 first tries the whole aggregate as one OmniSQL statement. The following decomposition
+is the fallback for <code>Aggregate(child, keys=K, aggs=M ∪ A)</code>, where <code>M</code> are <code>MeasureRef</code>s and
+<code>A</code> are <code>AdHocAgg</code>s (A non-empty; if M is empty, omit the governed step and alignment join):</p>
+<ol>
+<li><strong>RemoteStep "measures"</strong>: <code>compile_semantic(Aggregate(child, K, M))</code> — the governed side,
+   filters and scan included, <code>DEFAULT_FETCH_LIMIT</code> + TruncationWarning as usual. Omitted when
+   <code>M</code> is empty.</li>
+<li>Try the ad-hoc half alone as a tier-2 <code>GROUP BY</code>. If it cannot compile, fetch raw rows of
+   the group keys plus every distinct <code>AdHocAgg.operand</code>, applying any required local work.
+   The raw scan is <strong>unlimited by default</strong> — see the DECISION below.</li>
+<li>When step 2 fetched raw rows, run <code>LocalAggregate(keys=K_names, aggs=A)</code> over them;
+   otherwise use the remotely aggregated result directly.</li>
+<li><code>AlignJoin(on=K_names)</code> joining step 1 ⨝ step 3 (skipped when <code>M</code> is empty). Output column
+   order: keys, then aggs in the user's original <code>agg()</code> order (measures and ad-hoc interleaved
+   as written).</li>
+<li>Everything ABOVE a decomposed Aggregate (Sort/Limit/Filter/…) runs <strong>locally</strong>.
+   DECISION: uniform and honest beats clever re-pushdown; a sort on a measure column <em>could</em>
+   ride step 1, but the join's row alignment makes local sorting equally correct and the rule
+   trivially predictable.</li>
+</ol>
+<p><code>K_names</code> are the user-facing key names (aliases applied) — both remote steps carry the same
+alias map, so the join keys line up by name.</p>
+<p>DECISION — <strong>the raw scan is unlimited</strong> (<code>limit: None</code>): a silently 50k-capped input to a local
+aggregation is a wrong-answer bug, not a truncation inconvenience. The wire allows <code>null</code> limit
+(no pivots involved). Cost is visible: <code>explain()</code> prints <code>raw scan (unlimited)</code> and the docs
+make clear that raw rows are fetched only when SQL pushdown cannot express the aggregation. A safety valve
+<code>OmniSession.builder.decomposition_row_cap(n)</code> (default <code>None</code>) turns the unlimited scan into
+<code>limit n</code> + a <em>mandatory</em> <code>TruncationWarning</code> when hit — opt-in cap, never a silent default.
+When the rows under the aggregate need local work of their own (a UDF, a <code>read.sql</code> scan, a
+join) the scan cannot carry the cap on the wire; it then becomes a <code>LocalLimit(n,
+decomposition_cap=True)</code> instead, which <code>explain()</code> renders as <code>limit: n (decomposition cap)</code>
+and which the executor warns about on exactly the same rule. "Mandatory" is unconditional: a
+capped aggregate is a wrong answer, so there is no arrangement of the plan in which the cap
+bites quietly.</p>
+<p>DECISION — <strong><code>with_totals()</code> on a decomposed aggregate is a <code>CompileError</code></strong>: totals are a
+tier-1 server feature; emulating totals over the local side would break "the local engine never
+computes governed measures".</p>
+<h3 id="22-column-widening">2.2 Column widening<a class="headerlink" href="#22-column-widening" title="Permanent link">&para;</a></h3>
+<p>When a local op references fields the remote projection below it does not carry, the splitter
+<strong>widens</strong> the remote projection with those <code>FieldRef</code>s (bare dimensions/grains only —
+referencing a measure from a local <em>filter</em> is only legal above the aggregate that produced it,
+where it resolves to an output column, §3.1). Widened columns are tracked and dropped by the
+final <code>LocalProject</code>. Widening a raw scan created by decomposition is the same mechanism.
+Referencing a field that cannot be widened (e.g. under a <code>MapPandas</code> whose output schema is
+unknown) is a <code>CompileError</code> naming the column.</p>
+<h3 id="23-limit-pins-the-frontier">2.3 Limit pins the frontier<a class="headerlink" href="#23-limit-pins-the-frontier" title="Permanent link">&para;</a></h3>
+<p><code>…local ops… → Limit → …remote-compilable…</code> : the Limit rides remote (today's semantics), and
+the local ops run on the limited result, preserving the order of operations.
+<code>Limit → …local ops…</code> (limit <em>above</em> local work): <code>LocalLimit</code>. Both directions tested.</p>
+<h3 id="24-truncationwarning-policy">2.4 TruncationWarning policy<a class="headerlink" href="#24-truncationwarning-policy" title="Permanent link">&para;</a></h3>
+<p>The executor warns per RemoteStep whose returned rows == its applied limit (never for
+<code>limit: None</code>), naming the step: <code>"remote step 2 (raw scan) returned exactly its 50000-row
+limit; the local aggregate may be wrong — set decomposition_row_cap(None) or use .limit()"</code>.
+<code>show()</code>/<code>first()</code> keep suppressing warnings only for the final user-facing limit, never for
+intermediate scans.</p>
+<h2 id="3-the-local-engine-compilelocalpy">3. The local engine (<code>compile/local.py</code>)<a class="headerlink" href="#3-the-local-engine-compilelocalpy" title="Permanent link">&para;</a></h2>
+<p>DECISION — <strong>the local engine operates on <code>pyarrow</code> Tables via <code>pyarrow.compute</code>, not pandas</strong>.
+pandas enters only at the <code>MapPandas</code>/<code>Udf</code> boundary and in <code>to_pandas()</code>. Rationale: Arrow
+compute gives SQL parity for free — Kleene three-valued <code>and_kleene</code>/<code>or_kleene</code>/<code>invert</code>,
+null-propagating comparisons, hash <code>group_by</code> that keeps a NULL-key group (SQL
+<code>GROUP BY</code>-with-<code>dropna=False</code> semantics), <code>count_distinct</code> excluding nulls, decimal128
+arithmetic, <code>sort_indices(null_placement=)</code> — while pandas needs per-dtype workarounds for every
+one of those. DESIGN.md's "pandas operator interpreter" wording is superseded by this doc.</p>
+<p>Ops (all pure functions <code>(inputs: tuple[pa.Table, ...]) -&gt; pa.Table</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">LocalFilter</span><span class="p">(</span><span class="n">predicate</span><span class="p">:</span> <span class="n">Expr</span><span class="p">)</span>        <span class="c1"># mask = eval_expr(predicate); pc.filter — NULL mask drops the row</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">LocalProject</span><span class="p">(</span><span class="n">names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">renames</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">])</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">LocalWithColumn</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">expr</span><span class="p">:</span> <span class="n">Expr</span><span class="p">)</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">LocalAggregate</span><span class="p">(</span><span class="n">keys</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">aggs</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">LocalAgg</span><span class="p">,</span> <span class="o">...</span><span class="p">])</span>   <span class="c1"># LocalAgg: (out_name, AggFn, operand_col, distinct)</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">LocalSort</span><span class="p">(</span><span class="n">keys</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">bool</span><span class="p">],</span> <span class="o">...</span><span class="p">])</span>                        <span class="c1"># (name, descending)</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="n">LocalLimit</span><span class="p">(</span><span class="n">n</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">offset</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">LocalMapPandas</span><span class="p">(</span><span class="n">fn</span><span class="p">,</span> <span class="n">schema_hint</span><span class="p">)</span>     <span class="c1"># table.to_pandas(types_mapper=pd.ArrowDtype) → fn → pa.Table.from_pandas</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="n">AlignJoin</span><span class="p">(</span><span class="n">on</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">])</span>      <span class="c1"># §3.2</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="n">LocalJoin</span><span class="p">(</span><span class="n">on</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">how</span><span class="p">:</span> <span class="n">JoinHow</span> <span class="o">=</span> <span class="n">INNER</span><span class="p">)</span>   <span class="c1"># the user-facing join; §3.2</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="n">LocalUnion</span><span class="p">()</span>                                        <span class="c1"># UNION ALL by position; §3.3</span>
+</code></pre></div>
+<h3 id="user-facing-joins-and-unions">User-facing joins and unions<a class="headerlink" href="#user-facing-joins-and-unions" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>LocalJoin</code> is the operator <code>df.join(...)</code> compiles to, and it is deliberately <strong>not</strong>
+  <code>AlignJoin</code>. Its one rule: a NULL key never matches anything, not even another NULL (§3.2).
+  pandas' <code>merge</code> matches NA keys to each other — right for aligning a decomposed aggregate,
+  wrong for a join — so null-keyed rows are held out of the merge entirely and re-attached
+  afterwards as unmatched rows: dropped by <code>inner</code>, kept and NULL-padded by the side an outer
+  join preserves. Overlapping non-key column names are refused by the splitter before the plan
+  runs, so the output is always keys, then the left frame's other columns, then the right's.</li>
+<li><code>LocalUnion</code> stacks two results by position (<code>UNION ALL</code> — nothing de-duplicates), but insists
+  the column <strong>names</strong> agree as well as their count: omniframes' columns are named wire outputs,
+  and borrowing the left side's names for a differently named right side would relabel data
+  rather than stack it. Types widen per §3.3; a pair with no common type is a <code>CompileError</code>.</li>
+<li>Both take two inputs and are always local — the query API takes one query, so each side is its
+  own remote sub-plan and the tiers of the two sides need not match (a governed aggregate joined
+  to a raw-SQL job is the canonical case).</li>
+</ul>
+<h3 id="31-eval_exprexpr-expr-table-patable-paarray-pascalar">3.1 <code>eval_expr(expr: Expr, table: pa.Table) -&gt; pa.Array | pa.Scalar</code><a class="headerlink" href="#31-eval_exprexpr-expr-table-patable-paarray-pascalar" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>FieldRef</code> resolves against the table's column names in order: exact name → alias → wire name
+  → display name (tables reaching local ops are already normalized+aliased). <code>MeasureRef</code>
+  resolves the same way — it is legal only as a <em>column reference</em> to an already-computed remote
+  result; if the name is absent, <code>CompileError</code> ("governed measures only exist remotely").</li>
+<li><code>Comparison</code> → <code>pc.equal/not_equal/less/…</code> (null-propagating: <code>NULL &gt; 5</code> → NULL).</li>
+<li><code>BooleanOp</code>/<code>Not</code> → <code>and_kleene</code>/<code>or_kleene</code>/<code>invert</code> (<code>NOT NULL</code> → NULL → row dropped by
+  LocalFilter; test proves <code>~(col == x)</code> keeps neither the match nor the NULLs).</li>
+<li><code>IsNull</code> → <code>is_null</code>; <code>IsIn</code> → <code>pc.is_in</code> (NULL never matches); <code>Between(low, high)</code> →
+  numbers: <code>low &lt;= x AND x &lt;= high</code> (inclusive, matching the semantic compiler); dates:
+  <code>low &lt;= x AND x &lt; high</code> (half-open, matching the wire). String date-grammar literals
+  ("30 days ago") are refused locally: <code>CannotCompile("relative date literals are evaluated by
+  Omni")</code> — they only ever execute remotely.</li>
+<li><code>StringPredicate</code> → <code>match_substring</code>/<code>starts_with</code>/<code>ends_with</code>/<code>match_like</code>, with
+  <code>ignore_case=case_insensitive</code>; default case-SENSITIVE, matching the wire.</li>
+<li><code>Arithmetic</code> → <code>pc.add/subtract/multiply/divide</code> (decimal-aware; division of ints → float64).</li>
+<li><code>Udf(fn, operands)</code> → evaluate operands, convert to pandas Series (ArrowDtype), apply, convert
+  back. <code>Literal</code> → <code>pa.scalar</code>.</li>
+</ul>
+<h3 id="32-null-group-keys-and-the-alignjoin">3.2 NULL group keys and the AlignJoin<a class="headerlink" href="#32-null-group-keys-and-the-alignjoin" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>LocalAggregate</code> uses <code>pa.TableGroupBy(table, keys, use_threads=False)</code> — NULL keys form a
+  real group (SQL semantics; <code>use_threads=False</code> keeps output order deterministic).
+  Aggregation null semantics (tests for each): <code>sum</code>/<code>min</code>/<code>max</code>/<code>mean</code> skip nulls and return
+  NULL for an all-null or empty group; <code>count(col)</code> counts non-null; <code>count_distinct(col)</code>
+  excludes NULL (<code>count_distinct</code> with mode "only_valid").</li>
+<li><code>AlignJoin</code> merges two tables that aggregate THE SAME underlying rows, keyed by group: it must
+  treat NULL == NULL (both sides have one NULL-state row that must become one output row) —
+  the opposite of SQL join semantics. DECISION: implement via pandas
+  <code>merge(how="outer", on=keys)</code> over ArrowDtype frames — pandas factorization matches NA keys,
+  giving exactly the alignment we need with zero sentinel hacks; convert back to Arrow after.
+  This is an internal op: the user-facing <code>Join</code> implements SQL semantics
+  (NULL keys never match) and uses <code>LocalJoin</code> instead.</li>
+</ul>
+<h3 id="33-dtype-promotion-local-aggs-the-differential-comparator-uses-the-same-table">3.3 Dtype promotion (local aggs; the differential comparator uses the same table)<a class="headerlink" href="#33-dtype-promotion-local-aggs-the-differential-comparator-uses-the-same-table" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>operand</th>
+<th>sum</th>
+<th>avg</th>
+<th>min/max</th>
+<th>count / count_distinct</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>int64</td>
+<td>int64</td>
+<td>float64</td>
+<td>int64</td>
+<td>int64</td>
+</tr>
+<tr>
+<td>float64</td>
+<td>float64</td>
+<td>float64</td>
+<td>float64</td>
+<td>int64</td>
+</tr>
+<tr>
+<td>decimal128(p, s)</td>
+<td>decimal128(38, s) — the operand is widened before the aggregate rather than trusted to Arrow, which only widens a grouped decimal sum from pyarrow 21 while the declared floor is 15</td>
+<td>float64 — DECISION: Arrow <code>mean</code> does not keep decimal; cast once, document, comparator uses tolerance for avg only</td>
+<td>decimal128(p, s)</td>
+<td>int64</td>
+</tr>
+<tr>
+<td>timestamp / date</td>
+<td>error</td>
+<td>error</td>
+<td>same type</td>
+<td>int64</td>
+</tr>
+<tr>
+<td>string / bool</td>
+<td>error</td>
+<td>error</td>
+<td>string: min/max ok; bool: error</td>
+<td>int64</td>
+</tr>
+</tbody>
+</table>
+<p>Errors are <code>CompileError</code> at split time (not runtime) when the operand's type is known from the
+plan; otherwise runtime <code>CompileError</code> from the op.</p>
+<h3 id="34-local-sort-order">3.4 Local sort order<a class="headerlink" href="#34-local-sort-order" title="Permanent link">&para;</a></h3>
+<p><code>sort_indices(null_placement="at_end")</code> for every direction — nulls last, deterministic
+(stable). The wire's <code>OMNI_DEFAULT</code> null order is dialect-dependent and unpinned; the
+differential comparator therefore never compares row order across engines unless the test
+sorts explicitly with nulls normalized (§4).</p>
+<h2 id="4-the-differential-comparator-testsdifferential">4. The differential comparator (<code>tests/differential/</code>)<a class="headerlink" href="#4-the-differential-comparator-testsdifferential" title="Permanent link">&para;</a></h2>
+<p><code>assert_frames_agree(pushdown: pa.Table, reference: pa.Table, *, sort: bool = True)</code>:</p>
+<ol>
+<li>Column names and order must match exactly.</li>
+<li>Normalize dtypes per §3.3's table (both sides): decimals compared as exact strings
+   (<code>Decimal</code> → <code>str</code>), floats with <code>math.isclose(rel_tol=1e-9)</code> — avg columns are float by
+   §3.3, everything decimal stays exact; timestamps normalized to UTC-aware <code>datetime</code>.</li>
+<li>When <code>sort=True</code> (the default; use it unless the test asserts ordering), both tables are
+   sorted by ALL columns using a canonical key (<code>(value is NULL, stringified value)</code>) so null
+   position differences can never fail a test.</li>
+<li>Compare as row-lists; on mismatch print the first differing row from each side.</li>
+</ol>
+<p>Reference computations in the differential lane are <strong>independent pandas</strong> (plain
+<code>read_parquet</code> over <code>tests/data/bench/</code>, <code>groupby(dropna=False)</code>, explicit <code>Decimal</code> handling) —
+NOT the local engine — so the lane cross-checks three implementations: DuckDB (fake), Arrow
+compute (local engine), pandas (reference).</p>
+<h2 id="5-udf-boundary">5. UDF boundary<a class="headerlink" href="#5-udf-boundary" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># column.py</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">Udf</span><span class="p">(</span><span class="n">Expr</span><span class="p">):</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">fn</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">operands</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Expr</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>                      <span class="c1"># display name, e.g. &quot;my_fn(users.state)&quot;</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="c1"># functions.py</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="k">def</span><span class="w"> </span><span class="nf">udf</span><span class="p">(</span><span class="n">fn</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="n">Column</span><span class="p">]</span>   <span class="c1"># F.udf(f)(col, ...) → Column(Udf(...))</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="c1"># dataframe.py</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="k">def</span><span class="w"> </span><span class="nf">with_column</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">col</span><span class="p">:</span> <span class="n">Column</span> <span class="o">|</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DataFrame</span>        <span class="c1"># + withColumn alias</span>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="k">def</span><span class="w"> </span><span class="nf">map_pandas</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fn</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">],</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">],</span>
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>               <span class="n">schema_hint</span><span class="p">:</span> <span class="n">OmniSchema</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DataFrame</span>      <span class="c1"># + mapInPandas alias</span>
+</code></pre></div>
+<ul>
+<li>A <code>Udf</code> anywhere in a projection/filter/with_column pins the frontier below it (it is just an
+  uncompilable expression — the generic rules apply). <code>MapPandas</code> pins it structurally.</li>
+<li><code>schema_hint</code> contract: after <code>map_pandas</code>, <code>df.schema</code> returns the hint if given, else raises
+  <code>CompileError</code> explaining that a Python function's output schema cannot be planned; <code>columns</code>
+  behaves the same. Ops above a <code>MapPandas</code> compile against the hint when present; without it,
+  only ops that need no schema (limit, map_pandas again) are allowed — anything referencing a
+  column raises the §2.2 widening error.</li>
+<li><code>explain()</code> prints the function's <code>__name__</code> for both.</li>
+</ul>
+<h2 id="6-supported-paths-and-remaining-limits">6. Supported paths and remaining limits<a class="headerlink" href="#6-supported-paths-and-remaining-limits" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>read.sql()</code> and <code>read.saved_query()</code> are implemented as opaque remote sources. Operations
+  above their results run locally; their queries are sent as supplied.</li>
+<li><code>df.join()</code> and <code>df.union()</code> combine independently compiled inputs locally (§3).</li>
+<li>Ad-hoc aggregates, HAVING on aggregate outputs, and computed columns use tier 2 when
+  expressible, otherwise the splitter attempts local execution or aggregate decomposition.</li>
+<li><code>with_totals()</code> requires a single tier-1 query; decomposed aggregates raise <code>CompileError</code>.</li>
+<li>Relative date literals run as tier-1 filters. Local evaluation cannot interpret Omni's date
+  grammar; a plan that requires it locally raises an error.</li>
+<li>Governed measures and model grains must be computed remotely. The local engine can use
+  their returned columns but cannot reconstruct their definitions.</li>
+<li>Cross-field OR cannot be represented by the supported tier-1 wire filters. It uses SQL
+  when expressible, otherwise local filtering over the required remote columns.</li>
+</ul>
+<h2 id="7-explain-format">7. explain() format<a class="headerlink" href="#7-explain-format" title="Permanent link">&para;</a></h2>
+<p>Single-remote plans keep today's format byte-for-byte (existing tests). Multi-step:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>== Physical plan ==
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>Remote step 1 [tier 1 · semantic → POST /api/v1/query/run]
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  topic: order_items   model: bench_ecommerce
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  fields: [users.state, order_items.total_sale_price]
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  filters: users.state != NULL
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  limit: 50000   version: 9
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>Remote step 2 [tier 1 · raw scan (unlimited) → POST /api/v1/query/run]
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>  topic: order_items   model: bench_ecommerce
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>  fields: [users.state, users.id]
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>  limit: null   version: 9
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>Local [arrow compute]
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>  aggregate over step 2: keys=[users.state], aggs=[count_distinct(users.id) AS buyers]
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>  align-join: step 1 ⨝ aggregate on [users.state]
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>  sort: buyers desc
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>  project: [users.state, revenue, buyers]
+</code></pre></div>
+<p>Every local line names its inputs; every remote step is numbered in <code>steps</code> order. <code>analyze=True</code>
+appends per-remote-step <code>display_sql</code> exactly as today, per step.</p>
+<p>That decomposition is the <strong>fallback</strong>, not the default: tier 2 takes the whole mixed
+aggregate as one OmniSQL statement (docs/SQLTIER.md §4), and this shape appears only when it
+declines. The rules below are unchanged — they are what runs when it does.</p>
+<h3 id="rendering-opaque-queries">Rendering opaque queries<a class="headerlink" href="#rendering-opaque-queries" title="Permanent link">&para;</a></h3>
+<p>A step whose payload omniframes did not write — <code>SqlScan</code> (<code>read.sql</code>) or <code>SavedQueryScan</code>
+(<code>read.saved_query</code> / <code>session.ask</code>), i.e. <code>SemanticCompilation.opaque</code> — is rendered off the
+<strong>envelope</strong>, not off the typed <code>Query</code>, because for those steps the bytes are the truth:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>Remote step 1 [tier 2 · raw SQL job → POST /api/v1/query/run]
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  sql: &lt;raw SQL job&gt;   model: bench_ecommerce
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  userEditedSQL:
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    SELECT u.state AS state, SUM(oi.sale_price) AS revenue
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    FROM order_items oi LEFT JOIN users u ON u.id = oi.user_id
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    GROUP BY 1
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>  rewriteSql: false   sqlSortsEnabled: true
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>  limit: 50000   version: 9
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>Local [arrow compute]
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>  project over step 1: [state, revenue]
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>  filter: state = &#39;California&#39;
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>  project: [state, revenue]
+</code></pre></div>
+<p><code>rewriteSql</code> is printed rather than assumed: it is the key the server picks the path from, and
+taking the wrong one fails <em>silently</em> (CONTRACT_NOTES §3.4/§3.6), so it belongs where a reader
+can see it. <code>false</code> here means "run this text verbatim"; a tier-2 OmniSQL step leaves the key
+absent and prints its statement under <code>sql:</code> instead. A stored query prints
+its field list, its filter <strong>keys</strong> with <code>(stored — sent verbatim, not recompiled)</code>, and its
+own sorts instead of a SQL body — the point being that none of it was recompiled:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>Remote [tier 1 · saved query → POST /api/v1/query/run]
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  saved query: Revenue by state (bench_dashboard)
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>  fields: [users.state, order_items.total_sale_price]
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>  sort: order_items.total_sale_price DESC
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>  limit: 1000   version: 9
+</code></pre></div>
+<p>This is distinct from the tier-2 <code>sql</code> rendering of §4 in SQLTIER.md, which shows the OmniSQL
+statement omniframes <em>wrote</em>, <code>${…}</code> refs and all. <code>is_sql</code> and <code>opaque</code> are exact complements;
+<code>explain.py</code> branches on them in that order.</p>
+<h2 id="8-test-obligations-each-rule-above-names-its-test">8. Test obligations (each rule above names its test)<a class="headerlink" href="#8-test-obligations-each-rule-above-names-its-test" title="Permanent link">&para;</a></h2>
+<p>Unit (<code>tests/unit/test_splitter.py</code>, <code>test_local.py</code>): maximality (compilable prefix stays one
+RemoteStep), each per-node rule, widening + final drop, limit-pins-frontier both directions,
+decomposition shapes (M∪A, A-only), NULL group in LocalAggregate, AlignJoin NULL-key merge,
+Kleene filter table (TRUE/FALSE/NULL × and/or/not), every promotion-table cell, case
+sensitivity, unlimited raw-scan envelope (<code>limit: None</code> on the wire), decomposition_row_cap
+warning, with_totals×decomposition error, Udf/MapPandas frontier pinning, schema_hint contract.
+Golden: explain() snapshots for the §7 example and a UDF plan. E2E (<code>tests/e2e/</code>): mixed agg
+<code>revenue_and_buyers_by_state</code> vs known_answers (497-buyer alignment incl. the NULL-state
+group), UDF filter fallback, map_pandas roundtrip. Differential: every local op vs pandas
+reference over the bench data, NULL-heavy columns included.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Apache-2.0
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.instant", "navigation.tracking", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

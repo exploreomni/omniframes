@@ -1,0 +1,1401 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A PySpark-style DataFrame library for Omni — dataframe code in, governed semantic queries out.">
+      
+      
+      
+        <link rel="canonical" href="https://exploreomni.github.io/omniframes/0.2.0/quickstart/">
+      
+      
+        <link rel="prev" href="..">
+      
+      
+        <link rel="next" href="../mental-model/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Quickstart - Omniframes</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CIBM+Plex+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"IBM Plex Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#quickstart" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Omniframes" class="md-header__button md-logo" aria-label="Omniframes" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Omniframes
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Quickstart
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/exploreomni/omniframes" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    exploreomni/omniframes
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Omniframes" class="md-nav__button md-logo" aria-label="Omniframes" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Omniframes
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/exploreomni/omniframes" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    exploreomni/omniframes
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Install
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-authenticate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Authenticate
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Authenticate">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#notebook-secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notebook secrets
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Notebook secrets">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#google-colab" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Google Colab
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#databricks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Databricks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#snowflake" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Snowflake
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#two-org-side-prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two org-side prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-build-a-session" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Build a session
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-look-around" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Look around
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-your-first-query" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Your first query
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-your-first-aggregate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Your first aggregate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-read-the-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Read the plan
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mental-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mental model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../offline-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Offline testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design notes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design notes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CONTRACT_NOTES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wire contract
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../DESIGN/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../INTERNALS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../SQLTIER/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQL tier (tier 2)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../HYBRID/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hybrid engine (tier 3)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Install
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-authenticate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Authenticate
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Authenticate">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#notebook-secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notebook secrets
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Notebook secrets">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#google-colab" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Google Colab
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#databricks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Databricks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#snowflake" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Snowflake
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#two-org-side-prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two org-side prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-build-a-session" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Build a session
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-look-around" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Look around
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-your-first-query" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Your first query
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-your-first-aggregate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Your first aggregate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-read-the-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Read the plan
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="quickstart">Quickstart<a class="headerlink" href="#quickstart" title="Permanent link">&para;</a></h1>
+<p>Install, authenticate, run a query, read an <code>explain()</code>. Ten minutes.</p>
+<div class="admonition info">
+<p class="admonition-title">About the examples</p>
+<p>The query examples on this page have been executed, verbatim, against a wire-faithful fake of
+the Omni query API — the outputs below are what it printed. The model is called <code>ecommerce</code>,
+with one topic, <code>order_items</code>, joined to <code>users</code> and <code>products</code>
+(<a href="../offline-testing/">the bench model</a>). Substitute your own model, topic and field names;
+everything else is exactly as written.</p>
+</div>
+<h2 id="1-install">1. Install<a class="headerlink" href="#1-install" title="Permanent link">&para;</a></h2>
+<p>Omniframes is available on PyPI. It is in <strong>beta</strong> — expect breaking changes as the API evolves.</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">uv</label><label for="__tabbed_1_2">pip</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>add<span class="w"> </span>omniframes
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pip<span class="w"> </span>install<span class="w"> </span>omniframes
+</code></pre></div>
+</div>
+</div>
+</div>
+<p>Python 3.11+ is required. <code>pandas</code>, <code>pyarrow</code>, <code>httpx</code> and <code>sqlglot</code> come along; <code>polars</code> is an
+optional extra (<code>omniframes[polars]</code>) used only by <code>to_polars()</code>.</p>
+<h2 id="2-authenticate">2. Authenticate<a class="headerlink" href="#2-authenticate" title="Permanent link">&para;</a></h2>
+<p>Omniframes reads the same two environment variables as the official <code>omni-python-sdk</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OMNI_BASE_URL</span><span class="o">=</span><span class="s2">&quot;https://acme.omniapp.co&quot;</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OMNI_API_KEY</span><span class="o">=</span><span class="s2">&quot;…&quot;</span><span class="w">   </span><span class="c1"># Settings → API keys, in Omni</span>
+</code></pre></div>
+<p>Use your organization’s <code>&lt;example-slug&gt;.omniapp.co</code> hostname; replace <code>acme</code> with your own slug.</p>
+<h3 id="notebook-secrets">Notebook secrets<a class="headerlink" href="#notebook-secrets" title="Permanent link">&para;</a></h3>
+<p>For each credential, <code>get_or_create()</code> checks an explicit builder value, then <code>OMNI_BASE_URL</code>
+or <code>OMNI_API_KEY</code> in the environment, then <strong>one</strong> notebook secret provider. It reads only
+missing credentials. <code>.secrets(...)</code> configures that fallback without accessing any secrets;
+passing <code>.transport(...)</code> skips credential resolution entirely.</p>
+<p>The default <code>.secrets("auto")</code> recognizes a loaded Colab runtime or the current notebook's
+<code>dbutils</code> object. If both are present, select a provider explicitly. Snowflake requires explicit
+selection because we have not identified a supported notebook detector. Package
+installation alone never selects a provider, and secret selection is independent of the
+User-Agent runtime label.</p>
+<p>Use <code>.secrets(None)</code> to disable notebook lookup. The <code>.base_url_from_env()</code> and
+<code>.api_key_from_env()</code> helpers read <strong>only</strong> environment variables and fail immediately when
+the requested variable is missing. For custom secret names, use <code>.secrets(api_key_name="my_key",
+base_url_name="my_url")</code>; these names do not change the environment variable names.</p>
+<h4 id="google-colab">Google Colab<a class="headerlink" href="#google-colab" title="Permanent link">&para;</a></h4>
+<p>In Colab, open <strong>Secrets</strong> (the key icon in the sidebar), add <code>OMNI_BASE_URL</code> with your Omni
+organization URL and <code>OMNI_API_KEY</code> with your API key, and enable <strong>Notebook access</strong> for both.
+The builder detects Colab and reads those secrets automatically:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">omniframes</span><span class="w"> </span><span class="kn">import</span> <span class="n">OmniSession</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">session</span> <span class="o">=</span> <span class="n">OmniSession</span><span class="o">.</span><span class="n">builder</span><span class="o">.</span><span class="n">get_or_create</span><span class="p">()</span>
+</code></pre></div>
+<p>You can also supply <code>.host("acme.omniapp.co")</code> and store only <code>OMNI_API_KEY</code> in Secrets, or
+select <code>.secrets("colab", api_key_name="my_omni_key")</code> explicitly. Automatic selection follows
+the <code>"google.colab" in sys.modules</code> pattern in a
+<a href="https://github.com/GoogleCloudPlatform/generative-ai/blob/main/gemini/use-cases/media-generation/consistent_imagery_generation.ipynb">Google-published notebook</a>.
+This is a runtime hint, not a guarantee that Secrets is available; Colab Enterprise is excluded
+from automatic selection.</p>
+<p>Colab's published
+<a href="https://github.com/googlecolab/colabtools/blob/main/google/colab/userdata.py"><code>userdata.get()</code></a>
+contacts the notebook frontend, so secret lookup needs a connected Colab UI. If a secret is
+missing, add it; if access is denied, enable <strong>Notebook access</strong>. When Secrets is unavailable,
+configure the environment variables instead.</p>
+<h4 id="databricks">Databricks<a class="headerlink" href="#databricks" title="Permanent link">&para;</a></h4>
+<p>Create a secret scope containing <code>OMNI_API_KEY</code>, grant the notebook's principal access, and
+specify the scope:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">session</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="n">OmniSession</span><span class="o">.</span><span class="n">builder</span><span class="o">.</span><span class="n">host</span><span class="p">(</span><span class="s2">&quot;acme.omniapp.co&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">secrets</span><span class="p">(</span><span class="s2">&quot;databricks&quot;</span><span class="p">,</span> <span class="n">scope</span><span class="o">=</span><span class="s2">&quot;omni&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">get_or_create</span><span class="p">()</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="p">)</span>
+</code></pre></div>
+<p>Omniframes uses the notebook's existing <code>dbutils</code> and the published
+<a href="https://docs.databricks.com/aws/en/dev-tools/databricks-utils#secrets-utility-dbutilssecrets"><code>dbutils.secrets.get(scope, key)</code></a>
+API. It does not create an SDK client or try remote authentication. <code>.secrets(scope="omni")</code>
+also works with automatic selection. The scope is required only when a missing credential
+needs a secret lookup. Omit <code>.host(...)</code> to read <code>OMNI_BASE_URL</code> from the scope too.</p>
+<p>The active IPython namespace lookup follows a
+<a href="https://docs.databricks.com/aws/en/dev-tools/databricks-connect-legacy#access-databricks-utilities">Databricks-published pattern</a>,
+also used by the <a href="https://github.com/databricks/databricks-sdk-py/blob/main/databricks/sdk/runtime/__init__.py">Databricks SDK</a>.
+Finding <code>dbutils</code> is a capability hint; it does not guarantee secret access or a hosted runtime.</p>
+<h4 id="snowflake">Snowflake<a class="headerlink" href="#snowflake" title="Permanent link">&para;</a></h4>
+<p>For <strong>Notebooks in Workspaces</strong>, attach a <code>GENERIC_STRING</code> secret and an external access
+integration (EAI) to the notebook service. Configure the EAI's network rule to allow your Omni
+hostname. Set the normalized <code>database/schema/name</code> path as documented in
+<a href="https://docs.snowflake.com/en/user-guide/ui-snowsight/notebooks-in-workspaces/notebooks-in-workspaces-using-secrets">Snowflake's secrets guide</a>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">session</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="n">OmniSession</span><span class="o">.</span><span class="n">builder</span><span class="o">.</span><span class="n">host</span><span class="p">(</span><span class="s2">&quot;acme.omniapp.co&quot;</span><span class="p">)</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="o">.</span><span class="n">secrets</span><span class="p">(</span><span class="s2">&quot;snowflake&quot;</span><span class="p">,</span> <span class="n">api_key_name</span><span class="o">=</span><span class="s2">&quot;analytics/notebooks/omni_api_key&quot;</span><span class="p">)</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="o">.</span><span class="n">get_or_create</span><span class="p">()</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="p">)</span>
+</code></pre></div>
+<p>This provider calls <code>snowflake.snowpark.secrets.get_generic_secret_string()</code> from the notebook
+runtime. For a URL stored as a secret, omit <code>.host(...)</code> and also set <code>base_url_name</code> to its
+normalized path.</p>
+<p>For <strong>legacy Snowflake Notebooks</strong>, associate a <code>GENERIC_STRING</code> secret with both the EAI and
+the notebook under an alias, then select the legacy provider:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">session</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">OmniSession</span><span class="o">.</span><span class="n">builder</span><span class="o">.</span><span class="n">host</span><span class="p">(</span><span class="s2">&quot;acme.omniapp.co&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="o">.</span><span class="n">secrets</span><span class="p">(</span><span class="s2">&quot;snowflake-legacy&quot;</span><span class="p">,</span> <span class="n">api_key_name</span><span class="o">=</span><span class="s2">&quot;omni_api_key&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="o">.</span><span class="n">get_or_create</span><span class="p">()</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="p">)</span>
+</code></pre></div>
+<p>The legacy provider reads <code>streamlit.secrets[alias]</code>, following
+<a href="https://docs.snowflake.com/en/user-guide/ui-snowsight/notebooks-external-access">Snowflake's legacy notebook guide</a>.
+Here <code>api_key_name</code> is the notebook alias, rather than a Workspaces path.</p>
+<p>Errors identify missing secrets, denied access, or unavailable runtime services where the
+provider exposes that distinction. Some platforms combine missing and inaccessible secrets.
+Provider exception text and secret values are omitted. A failed selected provider never causes
+a lookup on another platform.</p>
+<p>The <a href="https://github.com/exploreomni/omniframes/blob/main/examples/notebook_secrets.ipynb">manual verification notebook</a>
+checks each platform without printing credentials. Automated coverage uses simulated runtimes;
+it does not establish that a live notebook's permissions, frontend, or network are configured.</p>
+<div class="admonition danger">
+<p class="admonition-title">Never hard-code the key</p>
+<p>Put it in the environment or a secret manager — never in a notebook cell, a committed file,
+or a docstring. Omniframes holds the key inside the transport and nowhere else: it never
+appears in a <code>repr</code>, a log line, or an error message. Keep it that way on your side too.</p>
+<p>Requests do carry a User-Agent with the Omniframes version, Python language and implementation
+versions, and a coarse Colab or Databricks label when detected. It never includes raw
+environment values, hostnames, usernames, workspace/cluster identifiers, or paths.</p>
+</div>
+<h3 id="two-org-side-prerequisites">Two org-side prerequisites<a class="headerlink" href="#two-org-side-prerequisites" title="Permanent link">&para;</a></h3>
+<ol>
+<li>
+<p><strong>The <code>query-api</code> feature flag must be enabled for your organization.</strong> Without it every
+    query endpoint answers <code>403 Feature not enabled</code> — and <code>whoami</code> keeps working, which is why
+    omniframes preflights with it. The error names the remedy and who can apply it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>the Omni Query API is not enabled for this organization (403 from POST /api/v1/query/run:
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>Feature not enabled). An organization admin has to enable the Query API feature for the org;
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>the same API key then works unchanged. An Omni organization admin has to enable the Query API
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>(the `query-api` feature flag) for this organization; the same API key then works unchanged.
+</code></pre></div>
+</li>
+<li>
+<p><strong>The key's user needs model permissions.</strong> <code>QUERY_TOPICS</code> covers <code>session.read.topic(...)</code>;
+    <code>QUERY_FULL_MODEL</code> is additionally required for <code>session.read.view(...)</code>; <code>QUERY_SQL</code> for
+    <code>session.read.sql(...)</code>; <code>VIEW_SQL</code> to see un-redacted SQL in <code>explain(analyze=True)</code> and in
+    error messages. A missing one is equally explicit:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>Omni denied access to this model (403 from POST /api/v1/query/run: Permission denied). The
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>key&#39;s user needs the QUERY_TOPICS permission to query topics on this model. An Omni
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>organization admin can grant it: …
+</code></pre></div>
+</li>
+</ol>
+<h2 id="3-build-a-session">3. Build a session<a class="headerlink" href="#3-build-a-session" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">omniframes</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">of</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">omniframes</span><span class="w"> </span><span class="kn">import</span> <span class="n">functions</span> <span class="k">as</span> <span class="n">F</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">session</span> <span class="o">=</span> <span class="n">of</span><span class="o">.</span><span class="n">OmniSession</span><span class="o">.</span><span class="n">builder</span><span class="o">.</span><span class="n">host</span><span class="p">(</span><span class="s2">&quot;acme.omniapp.co&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">get_or_create</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Building a session makes no Omni API calls.</strong> Authentication and catalog requests remain
+lazy. Resolving a missing credential from a notebook provider can contact its secret service
+or frontend; explicit values or environment variables skip that lookup. The <code>whoami</code> preflight
+runs lazily, once, before the first call that needs Omni.</p>
+<p>Run it eagerly when you want to check credentials up front:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">identity</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">verify</span><span class="p">()</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">identity</span><span class="p">[</span><span class="s2">&quot;keyScope&quot;</span><span class="p">])</span>  <span class="c1"># &#39;organization&#39; for an org key, &#39;user&#39; for a PAT</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">identity</span><span class="p">))</span>  <span class="c1"># [&#39;keyScope&#39;, &#39;orgRole&#39;, &#39;rolesByModel&#39;, ...]</span>
+</code></pre></div>
+<p><code>verify()</code> answers three questions in one call: is the key valid, which models can it see, and
+which permissions does it hold on each (<code>rolesByModel[&lt;modelId&gt;]["permissions"]</code>). It is the
+first thing to run when a query 403s.</p>
+<p>Other builder knobs — all optional, all covered in the <a href="../api/">API reference</a>:
+<code>.base_url(...)</code> / <code>.base_url_from_env()</code>, <code>.secrets(...)</code> for notebook credentials,
+<code>.branch(uuid)</code> to query a model branch,
+<code>.timezone("America/Los_Angeles")</code>, <code>.cache("SkipCache")</code>, <code>.user_id(membership_id)</code> to
+impersonate, <code>.decomposition_row_cap(n)</code>, <code>.rate_limit_wait(seconds)</code> for each rate-limited GET,
+and <code>.transport(...)</code> for injecting a fake in tests.</p>
+<p>There is deliberately no warehouse-dialect knob. The tier-2 statement omniframes writes is
+OmniSQL, which Omni parses against the model and re-renders in the warehouse's own dialect —
+quoting, <code>LIMIT</code>, <code>NULLS LAST</code> and the <code>LIKE … ESCAPE</code> character are all decided server-side, so
+there is nothing about the connection a client needs to know.</p>
+<h2 id="4-look-around">4. Look around<a class="headerlink" href="#4-look-around" title="Permanent link">&para;</a></h2>
+<p>The catalog is read-through cached and does the minimum number of calls:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nb">print</span><span class="p">([</span><span class="n">model</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">model</span> <span class="ow">in</span> <span class="n">session</span><span class="o">.</span><span class="n">catalog</span><span class="o">.</span><span class="n">models</span><span class="p">()])</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="nb">print</span><span class="p">([</span><span class="n">topic</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">topic</span> <span class="ow">in</span> <span class="n">session</span><span class="o">.</span><span class="n">catalog</span><span class="o">.</span><span class="n">topics</span><span class="p">(</span><span class="s2">&quot;ecommerce&quot;</span><span class="p">)])</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="n">topic</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">catalog</span><span class="o">.</span><span class="n">topic</span><span class="p">(</span><span class="s2">&quot;ecommerce&quot;</span><span class="p">,</span> <span class="s2">&quot;order_items&quot;</span><span class="p">)</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="nb">print</span><span class="p">([</span><span class="n">view</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">view</span> <span class="ow">in</span> <span class="n">topic</span><span class="o">.</span><span class="n">views</span><span class="p">])</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">topic</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="s2">&quot;users.state&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">data_type</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>[&#39;ecommerce&#39;, &#39;bench_marketing&#39;, &#39;bench_finance&#39;, &#39;bench_support&#39;, &#39;bench_ecommerce_branch&#39;]
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>[&#39;order_items&#39;]
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>[&#39;order_items&#39;, &#39;users&#39;, &#39;products&#39;]
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>OmniDataType.STRING
+</code></pre></div>
+<h2 id="5-your-first-query">5. Your first query<a class="headerlink" href="#5-your-first-query" title="Permanent link">&para;</a></h2>
+<p>A <strong>topic</strong> is the governed way in: it carries the model's join paths, so fields from any joined
+view are selectable without saying how they join.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">orders</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">read</span><span class="o">.</span><span class="n">topic</span><span class="p">(</span><span class="s2">&quot;ecommerce&quot;</span><span class="p">,</span> <span class="s2">&quot;order_items&quot;</span><span class="p">)</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="p">(</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>    <span class="n">orders</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;order_items.id&quot;</span><span class="p">,</span> <span class="s2">&quot;users.state&quot;</span><span class="p">,</span> <span class="s2">&quot;order_items.status&quot;</span><span class="p">)</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>    <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;users.state&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;California&quot;</span><span class="p">)</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>    <span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;order_items.id&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">desc</span><span class="p">())</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>    <span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>    <span class="o">.</span><span class="n">show</span><span class="p">()</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>+----------------+-------------+--------------------+
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>| order_items.id | users.state | order_items.status |
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>+----------------+-------------+--------------------+
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>| 10000          | California  | cancelled          |
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>| 9999           | California  | complete           |
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>| 9998           | California  | complete           |
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>| 9997           | California  | shipped            |
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>| 9996           | California  | processing         |
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>+----------------+-------------+--------------------+
+</code></pre></div>
+<p>Field names are fully qualified (<code>view.column</code>). Nothing ran until <code>.show()</code> — everything before
+it just built a plan.</p>
+<div class="admonition tip">
+<p class="admonition-title">Use <code>&amp;</code>, <code>|</code>, <code>~</code> — never <code>and</code>, <code>or</code>, <code>not</code></p>
+<p>Python cannot overload the keywords, so <code>(a == 1) and (b == 2)</code> would silently evaluate to
+<code>b == 2</code>. A <code>Column</code> raises a <code>TypeError</code> naming the operators instead. Parenthesize every
+operand: <code>(F.col("a") == 1) &amp; (F.col("b") == 2)</code>.</p>
+</div>
+<p>Actions: <code>collect()</code> / <code>to_arrow()</code> (Arrow table), <code>to_pandas()</code>, <code>to_polars()</code>, <code>show(n)</code>,
+<code>count()</code>, <code>first()</code>, <code>write.parquet(path)</code> / <code>write.csv(path)</code>, and <code>schema</code> (a <code>planOnly</code>
+round trip — it plans, it never executes).</p>
+<h2 id="6-your-first-aggregate">6. Your first aggregate<a class="headerlink" href="#6-your-first-aggregate" title="Permanent link">&para;</a></h2>
+<p>Ask for a <strong>governed measure</strong> and Omni computes it, under its own server-side definition:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="p">(</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>    <span class="n">orders</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="s2">&quot;users.state&quot;</span><span class="p">)</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>    <span class="o">.</span><span class="n">agg</span><span class="p">(</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>        <span class="n">F</span><span class="o">.</span><span class="n">measure</span><span class="p">(</span><span class="s2">&quot;order_items.total_sale_price&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;revenue&quot;</span><span class="p">),</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>        <span class="n">F</span><span class="o">.</span><span class="n">measure</span><span class="p">(</span><span class="s2">&quot;order_items.count&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;orders&quot;</span><span class="p">),</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>    <span class="p">)</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>    <span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;revenue&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">desc</span><span class="p">())</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>    <span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>    <span class="o">.</span><span class="n">show</span><span class="p">()</span>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>+--------------+-----------+--------+
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>| users.state  | revenue   | orders |
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>+--------------+-----------+--------+
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>| California   | 128597.44 | 1260   |
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>| New York     | 99863.96  | 955    |
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>| Florida      | 79630.35  | 695    |
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>| Texas        | 77864.44  | 723    |
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>| Pennsylvania | 68905.90  | 663    |
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>+--------------+-----------+--------+
+</code></pre></div>
+<p>Add a time grain to bucket a timestamp:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">month</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;order_items.created_at&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">grain</span><span class="p">(</span><span class="s2">&quot;month&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;month&quot;</span><span class="p">)</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="p">(</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>    <span class="n">orders</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="n">month</span><span class="p">)</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>    <span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">measure</span><span class="p">(</span><span class="s2">&quot;order_items.total_sale_price&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;revenue&quot;</span><span class="p">))</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>    <span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;month&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">desc</span><span class="p">())</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>    <span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>    <span class="o">.</span><span class="n">show</span><span class="p">()</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>+---------------------------+----------+
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>| month                     | revenue  |
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>+---------------------------+----------+
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>| 2026-06-01 00:00:00+00:00 | 48764.83 |
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>| 2026-05-01 00:00:00+00:00 | 52536.16 |
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>| 2026-04-01 00:00:00+00:00 | 41157.42 |
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>+---------------------------+----------+
+</code></pre></div>
+<p><code>group_by().agg()</code> is sugar. <code>orders.select("users.state", F.measure("order_items.count"))</code>
+compiles to the byte-identical query — in Omni, selecting dimensions alongside measures <strong>is</strong>
+the group-by. The <a href="../mental-model/">mental model</a> starts there.</p>
+<p>If you chain <code>select(...).group_by(...).agg(F.measure(...))</code> on a topic, the group keys replace
+the previously selected dimensions: omitted dimensions drop out, and Omni evaluates the
+measure at the new grain without summing an intermediate result locally. The grouping fields
+and governed measures must be available in the earlier <code>select()</code>; otherwise compilation
+raises <code>CompileError</code>. See <a href="../mental-model/#regrouping-a-selected-topic-dataframe">regrouping a selected topic DataFrame</a>
+for an example and the scope of this behavior.</p>
+<h2 id="7-read-the-plan">7. Read the plan<a class="headerlink" href="#7-read-the-plan" title="Permanent link">&para;</a></h2>
+<p><code>explain()</code> is the whole safety story. It compiles the plan (no I/O) and prints every query that
+will be sent, at which tier, plus every operator that will run in this process.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="n">plan</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>    <span class="n">orders</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="s2">&quot;users.state&quot;</span><span class="p">)</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>    <span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">measure</span><span class="p">(</span><span class="s2">&quot;order_items.total_sale_price&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;revenue&quot;</span><span class="p">))</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>    <span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;revenue&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">desc</span><span class="p">())</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>    <span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="p">)</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">plan</span><span class="o">.</span><span class="n">explain</span><span class="p">())</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>== Physical plan ==
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>Remote [tier 1 · semantic → POST /api/v1/query/run]
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>  topic: order_items   model: ecommerce
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>  fields: [users.state, order_items.total_sale_price]
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>  group by: [users.state]
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a>  measures: [order_items.total_sale_price]
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>  sort: order_items.total_sale_price DESC   limit: 5   version: 9
+<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a>  aliases: order_items.total_sale_price -&gt; revenue
+<a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a>Local [pandas]
+<a id="__codelineno-20-10" name="__codelineno-20-10" href="#__codelineno-20-10"></a>  (none — fully pushed down)
+</code></pre></div>
+<p><code>(none — fully pushed down)</code> is the line to look for: the entire frame is one governed query.
+When it says something else, that something is exactly what will run on this machine.</p>
+<p><code>explain(analyze=True)</code> additionally sends each step to Omni with <code>planOnly: true</code> and appends
+the server's own SQL — blanked out for callers without <code>VIEW_SQL</code>, which the output says rather
+than pretending there is none.</p>
+<h2 id="next">Next<a class="headerlink" href="#next" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../mental-model/">Mental model</a> — the ideas that make the rest predictable.</li>
+<li><a href="../api/">API reference</a> — every method, with its semantics.</li>
+<li><code>examples/demo.ipynb</code> in the repository — the same ground, end to end, runnable offline.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Apache-2.0
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.instant", "navigation.tracking", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
