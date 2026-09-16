@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.0 (2026-09-16)
+
+<!-- Release notes generated using configuration in .github/release.yml at 57c9c3c444b557144f947335f666ff38d50e7e3e -->
+
+### What's Changed
+#### Features
+* feat(session): resolve credentials from notebook secret providers by @dspangen in https://github.com/exploreomni/omniframes/pull/27
+#### Fixes
+* fix(docs): dispatch release documentation from main by @dspangen in https://github.com/exploreomni/omniframes/pull/26
+
+
+**Full Changelog**: https://github.com/exploreomni/omniframes/compare/v0.1.1...v0.2.0
+
 ## 0.1.1 (2026-09-15)
 
 - Point PyPI's Documentation link and README guide links to the published Omniframes docs.
